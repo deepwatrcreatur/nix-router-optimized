@@ -222,12 +222,18 @@ let
       </div>
 
       <script>
-        function formatBytes(bytes, rate = false) {
-          if (bytes === 0) return '0 B' + (rate ''${"?"} '/s' : '');
+        function formatBytes(bytes, rate) {
+          rate = rate || false;
+          if (bytes === 0) {
+            if (rate) return '0 B/s';
+            return '0 B';
+          }
           const k = 1024;
           const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
           const i = Math.floor(Math.log(bytes) / Math.log(k));
-          return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i] + (rate ''${"?"} '/s' : '');
+          const result = parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+          if (rate) return result + '/s';
+          return result;
         }
 
         function updateDashboard() {
