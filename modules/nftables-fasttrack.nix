@@ -121,6 +121,9 @@ in {
           # Offload established connections to flowtable (FastTrack)
           ip protocol { tcp, udp } flow add @f
 
+          # Allow LAN to LAN forwarding (inter-VLAN routing)
+          iifname $LAN oifname $LAN accept
+          
           # Allow LAN to WAN (new connections)
           iifname $LAN oifname $WAN accept
           
