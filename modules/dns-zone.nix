@@ -38,6 +38,13 @@ in {
       description = "The DNS zone name for local network";
     };
 
+    nameserverIP = mkOption {
+      type = types.str;
+      default = "192.168.1.1";
+      example = "10.10.10.1";
+      description = "IP address of the nameserver (usually the router/gateway)";
+    };
+
     staticHosts = mkOption {
       type = types.attrsOf (types.submodule {
         options = {
@@ -108,7 +115,7 @@ in {
                         86400 )    ; minimum TTL
         
         @       IN      NS      ns1.${cfg.zoneName}.
-        ns1     IN      A       ${config.services.router.interfaces.lan.ipAddress}
+        ns1     IN      A       ${cfg.nameserverIP}
         
         ${concatStringsSep "\n" (mapAttrsToList (name: value: ''
           ${name}    IN      A       ${value.ipAddress}
