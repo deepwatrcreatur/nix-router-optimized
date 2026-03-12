@@ -62,7 +62,7 @@ in {
     in ''
       table inet filter {
         chain input {
-          type filter hook input priority filter; policy drop;
+          type filter hook input priority filter; policy accept;
           
           # Allow established/related connections
           ct state {established, related} accept
@@ -97,7 +97,7 @@ in {
         }
         
         chain forward {
-          type filter hook forward priority filter; policy drop;
+          type filter hook forward priority filter; policy accept;
           
           # Allow established/related connections (return traffic)
           ct state {established, related} accept
@@ -110,9 +110,6 @@ in {
           
           # Allow forwarding between LAN interfaces
           iifname {${lanInterfaceSet}} oifname {${lanInterfaceSet}} accept
-          
-          # Default drop
-          drop
         }
         
         chain output {
