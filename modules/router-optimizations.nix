@@ -10,28 +10,43 @@ in {
   options.services.router-optimizations = {
     enable = mkEnableOption "router performance optimizations";
     
-    wan-interface = mkOption {
-      type = types.str;
-      default = "wan";
-      description = "WAN network interface name";
-    };
-    
-    lan-interface = mkOption {
-      type = types.str;
-      default = "lan";
-      description = "Primary LAN network interface name";
-    };
-    
-    extra-lan-interfaces = mkOption {
-      type = types.listOf types.str;
-      default = [];
-      description = "Additional LAN interfaces";
-    };
-    
-    wan-bandwidth = mkOption {
-      type = types.str;
-      default = "1Gbit";
-      description = "WAN bandwidth for CAKE QoS (e.g., '100Mbit', '1Gbit')";
+    interfaces = mkOption {
+      type = types.attrsOf (types.submodule {
+        options = {
+          device = mkOption {
+            type = types.str;
+            description = "Physical device name (e.g., ens18, eth0)";
+          };
+          
+          role = mkOption {
+            type = types.enum [ "wan" "lan" "opt" "management" ];
+            default = "opt";
+            description = "Interface role (wan, lan, opt, management)";
+          };
+          
+          label = mkOption {
+            type = types.str;
+            description = "Human-readable label for dashboard (e.g., 'WAN', 'LAN', 'OPT1', 'Management')";
+          };
+          
+          bandwidth = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "Bandwidth limit for CAKE QoS (e.g., '100Mbit', '1Gbit'). Only applies to WAN interfaces.";
+          };
+        };
+      });
+      default = {};
+      description = ''
+        Interface configurations. Each interface can have an arbitrary label.
+        Example:
+        {
+          wan = { device = "ens17"; role = "wan"; label = "WAN"; bandwidth = "1Gbit"; };
+          lan = { device = "ens16"; role = "lan"; label = "LAN"; };
+          mgmt = { device = "ens18"; role = "management"; label = "Management"; };
+          opt1 = { device = "ens19"; role = "opt"; label = "OPT1"; };
+        }
+      '';
     };
     
     conntrack-max = mkOption {
@@ -141,14 +156,12 @@ in {
         RemainAfterExit = true;
       };
       
-      script = 
-        let
-          allInterfaces = [ cfg.wan-interface cfg.lan-interface ] ++ cfg.extra-lan-interfaces;
-        in ''
+      script = ''
         # Function to configure interface
         configure_interface() {
           local iface=$1
-          local is_wan=$2
+          local role=$2
+          local bandwidth=$3
           
           # Check if interface exists
           if ! ${pkgs.iproute2}/bin/ip link show $iface &>/dev/null; then
@@ -175,28 +188,23 @@ in {
           ${pkgs.ethtool}/bin/ethtool -C $iface adaptive-tx on 2>/dev/null || true
           
           # Configure queue discipline
-          if [ "$is_wan" = "true" ]; then
+          if [ "$role" = "wan" ] && [ -n "$bandwidth" ]; then
             # WAN interface: use CAKE for better bufferbloat control
-            ${pkgs.iproute2}/bin/tc qdisc replace dev $iface root cake bandwidth ${cfg.wan-bandwidth}
+            ${pkgs.iproute2}/bin/tc qdisc replace dev $iface root cake bandwidth $bandwidth
           else
-            # LAN interfaces: use fq_codel for internal traffic
+            # Non-WAN interfaces: use fq_codel for internal traffic
             ${pkgs.iproute2}/bin/tc qdisc replace dev $iface root fq_codel
           fi
           
-          echo "Configured $iface (WAN: $is_wan)"
+          echo "Configured $iface (Role: $role)"
         }
         
         # Wait for interfaces to be available
         sleep 2
         
-        # Configure WAN interface
-        configure_interface ${cfg.wan-interface} true
-        
-        # Configure LAN interfaces
-        configure_interface ${cfg.lan-interface} false
-        ${concatMapStrings (iface: ''
-          configure_interface ${iface} false
-        '') cfg.extra-lan-interfaces}
+        ${concatStringsSep "\n" (mapAttrsToList (name: iface: ''
+          configure_interface ${iface.device} ${iface.role} ${if iface.bandwidth != null then iface.bandwidth else ""}
+        '') cfg.interfaces)}
         
         echo "Router hardware offload configuration complete"
       '';
