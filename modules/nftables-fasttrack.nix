@@ -61,12 +61,13 @@ in {
       lanInterfaceSet = concatStringsSep ", " (map (iface: "\"${iface}\"") allLanInterfaces);
       lanNetworkSet = concatStringsSep ", " cfg.lan-networks;
       trustedPortSet = concatStringsSep ", " (map toString cfg.trusted-ports);
+      flowtableDevices = concatStringsSep ", " (map (iface: "\"${iface}\"") ([ cfg.wan-interface ] ++ allLanInterfaces));
     in ''
       # Flush existing rules
       flush ruleset
 
       # Define interface and network sets
-      define WAN = ${cfg.wan-interface}
+      define WAN = "${cfg.wan-interface}"
       define LAN = { ${lanInterfaceSet} }
       define LAN_NETS = { ${lanNetworkSet} }
 
@@ -75,7 +76,7 @@ in {
         # Flowtable for hardware/software flow offloading (FastTrack equivalent)
         flowtable f {
           hook ingress priority 0;
-          devices = { $WAN, $LAN };
+          devices = { ${flowtableDevices} };
         }
 
         chain input {
