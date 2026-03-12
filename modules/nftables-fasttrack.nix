@@ -115,14 +115,17 @@ in {
         chain forward {
           type filter hook forward priority 0; policy drop;
 
+          # Allow established/related connections FIRST (before flow offload)
+          ct state established,related accept
+
           # Offload established connections to flowtable (FastTrack)
           ip protocol { tcp, udp } flow add @f
 
-          # Allow established/related connections
-          ct state established,related accept
-
-          # Allow LAN to WAN
+          # Allow LAN to WAN (new connections)
           iifname $LAN oifname $WAN accept
+          
+          # Allow WAN to LAN (return traffic - should be caught by established/related above)
+          iifname $WAN oifname $LAN ct state established,related accept
 
           ${optionalString cfg.enable-ipv6 ''
           # Allow IPv6 forwarding
