@@ -45,6 +45,24 @@ in {
       description = "IP address of the nameserver (usually the router/gateway)";
     };
 
+    zoneConfig = mkOption {
+      type = types.nullOr types.attrs;
+      default = null;
+      example = literalExpression ''
+        {
+          domain = "deepwatercreature.com";
+          hosts = {
+            "gateway" = { ipv4 = "10.10.10.1"; ipv6 = null; };
+            "workstation" = { ipv4 = "10.10.11.90"; ipv6 = null; };
+          };
+          aliases = {
+            "cache" = "attic-cache";
+          };
+        }
+      '';
+      description = "DNS zone configuration imported from external file";
+    };
+
     staticHosts = mkOption {
       type = types.attrsOf (types.submodule {
         options = {
