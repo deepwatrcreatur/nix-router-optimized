@@ -20,6 +20,7 @@
       nftables-fasttrack = import ./modules/nftables-fasttrack.nix;
       caddy-reverse-proxy = import ./modules/caddy-reverse-proxy.nix;
       dns = import ./modules/dns.nix;
+      dns-zone = import ./modules/dns-zone.nix;
       monitoring = import ./modules/monitoring.nix;
     };
 
