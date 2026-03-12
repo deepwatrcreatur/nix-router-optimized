@@ -62,13 +62,10 @@ in {
     in ''
       table inet filter {
         chain input {
-          type filter hook input priority filter; policy accept;
+          type filter hook input priority 0; policy drop;
           
           # Allow established/related connections
           ct state {established, related} accept
-          
-          # Drop invalid packets early
-          ct state invalid drop
           
           # Allow loopback
           iifname "lo" accept
@@ -97,7 +94,7 @@ in {
         }
         
         chain forward {
-          type filter hook forward priority filter; policy accept;
+          type filter hook forward priority 0; policy drop;
           
           # Allow established/related connections (return traffic)
           ct state {established, related} accept
@@ -110,16 +107,19 @@ in {
           
           # Allow forwarding between LAN interfaces
           iifname {${lanInterfaceSet}} oifname {${lanInterfaceSet}} accept
+          
+          # Default drop
+          drop
         }
         
         chain output {
-          type filter hook output priority filter; policy accept;
+          type filter hook output priority 0; policy accept;
         }
       }
       
       table ip nat {
         chain postrouting {
-          type nat hook postrouting priority srcnat; policy accept;
+          type nat hook postrouting priority 100; policy accept;
           
           # Masquerade traffic from LAN going to WAN
           oifname "${cfg.wan-interface}" masquerade
@@ -129,7 +129,7 @@ in {
       ${optionalString cfg.enable-ipv6 ''
       table ip6 nat {
         chain postrouting {
-          type nat hook postrouting priority srcnat; policy accept;
+          type nat hook postrouting priority 100; policy accept;
           
           # IPv6 masquerade for private addresses
           ip6 saddr fd00::/8 oifname "${cfg.wan-interface}" masquerade
