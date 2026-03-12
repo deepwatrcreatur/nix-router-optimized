@@ -94,7 +94,7 @@ in {
     };
   };
 
-  config = mkIf (cfg.enable && config.services.router.enable) {
+  config = mkIf cfg.enable {
     # Generate zone file for Technitium
     environment.etc."technitium/zones/${cfg.zoneName}.zone" = mkIf (cfg.staticHosts != {}) {
       text = ''
