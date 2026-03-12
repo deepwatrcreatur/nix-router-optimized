@@ -13,6 +13,8 @@ let
     
     get_interface_stats() {
       local iface=$1
+      local label=$2
+      local role=$3
       local ip_addr=$(${pkgs.iproute2}/bin/ip -4 addr show $iface 2>/dev/null | ${pkgs.gnugrep}/bin/grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
       local status="down"
       local rx_bytes=0
@@ -48,7 +50,7 @@ let
         echo $(date +%s) > /tmp/router-api-$iface-time
       fi
       
-      echo "\"$iface\": {\"status\": \"$status\", \"ip\": \"$ip_addr\", \"rx\": $rx_bytes, \"tx\": $tx_bytes, \"rx_rate\": $rx_rate, \"tx_rate\": $tx_rate}"
+      echo "\"$iface\": {\"device\": \"$iface\", \"label\": \"$label\", \"role\": \"$role\", \"status\": \"$status\", \"ip\": \"$ip_addr\", \"rx\": $rx_bytes, \"tx\": $tx_bytes, \"rx_rate\": $rx_rate, \"tx_rate\": $tx_rate}"
     }
     
     # Get system info
@@ -63,14 +65,10 @@ let
     echo "  \"connections\": $active_conns,"
     echo "  \"interfaces\": {"
     
-    ${concatStringsSep "\n" (map (iface: ''
-      get_interface_stats "${iface}"
-      echo ","
-    '') (init cfg.interfaces))}
-    
-    ${if cfg.interfaces != [] then ''
-      get_interface_stats "${last cfg.interfaces}"
-    '' else ""}
+    ${concatStringsSep "\n" (imap0 (idx: iface: ''
+      get_interface_stats "${iface.device}" "${iface.label}" "${iface.role}"
+      ${if idx < (length cfg.interfaces) - 1 then "echo \",\"" else ""}
+    '') cfg.interfaces)}
     
     echo "  }"
     echo "}"
@@ -90,10 +88,30 @@ in {
     };
     
     interfaces = mkOption {
-      type = types.listOf types.str;
+      type = types.listOf (types.submodule {
+        options = {
+          device = mkOption {
+            type = types.str;
+            description = "Network interface device name (e.g., eth0, ens18)";
+          };
+          label = mkOption {
+            type = types.str;
+            description = "Human-readable label for the interface (e.g., WAN, LAN, OPT1)";
+          };
+          role = mkOption {
+            type = types.enum [ "wan" "lan" "opt" "mgmt" ];
+            default = "opt";
+            description = "Interface role: wan (external), lan (internal), opt (optional), mgmt (management)";
+          };
+        };
+      });
       default = [];
-      example = [ "wan" "lan" "guest" ];
-      description = "Network interfaces to monitor";
+      example = [
+        { device = "ens17"; label = "WAN"; role = "wan"; }
+        { device = "ens16"; label = "LAN"; role = "lan"; }
+        { device = "ens18"; label = "Management"; role = "mgmt"; }
+      ];
+      description = "Network interfaces to monitor with labels";
     };
     
     bind-address = mkOption {

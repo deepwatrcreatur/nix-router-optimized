@@ -174,9 +174,10 @@
           for (const [name, iface] of Object.entries(data.interfaces || {})) {
             const card = document.createElement('div');
             card.className = 'interface-card';
+            const displayName = iface.label ? `${iface.label} (${iface.device})` : name;
             card.innerHTML = `
               <div class="interface-header">
-                <div class="interface-name">${name}</div>
+                <div class="interface-name">${displayName}</div>
                 <div class="status ${iface.status}">${iface.status.toUpperCase()}</div>
               </div>
               <div class="interface-info">
