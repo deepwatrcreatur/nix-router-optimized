@@ -59,117 +59,86 @@ in {
     networking.nftables.ruleset = let
       allLanInterfaces = [ cfg.lan-interface ] ++ cfg.extra-lan-interfaces;
       lanInterfaceSet = concatStringsSep ", " (map (iface: "\"${iface}\"") allLanInterfaces);
-      lanNetworkSet = concatStringsSep ", " cfg.lan-networks;
-      trustedPortSet = concatStringsSep ", " (map toString cfg.trusted-ports);
-      flowtableDevices = concatStringsSep ", " (map (iface: "\"${iface}\"") ([ cfg.wan-interface ] ++ allLanInterfaces));
     in ''
-      # Flush existing rules
-      flush ruleset
-
-      # Define interface and network sets
-      define WAN = "${cfg.wan-interface}"
-      define LAN = { ${lanInterfaceSet} }
-      define LAN_NETS = { ${lanNetworkSet} }
-
-      # IPv4 Tables
       table inet filter {
-        # Flowtable for hardware/software flow offloading (FastTrack equivalent)
-        flowtable f {
-          hook ingress priority 0;
-          devices = { ${flowtableDevices} };
-        }
-
         chain input {
           type filter hook input priority 0; policy drop;
-
-          # Allow established/related connections (stateful)
-          ct state established,related accept
-
-          # Allow loopback
-          iif lo accept
-
-          # Allow ICMPv4
-          ip protocol icmp accept
           
-          ${optionalString cfg.enable-ipv6 ''
-          # Allow ICMPv6
-          ip6 nexthdr icmpv6 accept
-          ''}
-
-          # Allow SSH, DNS, and other services from LAN
-          iifname $LAN tcp dport { 22, 53 } accept
-          iifname $LAN udp dport { 53, 67 } accept
-
+          # Allow established/related connections
+          ct state {established, related} accept
+          
+          # Drop invalid packets early
+          ct state invalid drop
+          
+          # Allow loopback
+          iifname "lo" accept
+          
+          # Allow ICMP (ping)
+          ip protocol icmp accept
+          ${optionalString cfg.enable-ipv6 "ip6 nexthdr icmpv6 accept"}
+          
+          # Allow DHCPv6 on WAN interface
+          iifname "${cfg.wan-interface}" udp dport 546 accept
+          
+          # Allow SSH from LAN interfaces only (not WAN)
+          iifname {${lanInterfaceSet}} tcp dport 22 accept
+          
+          # Allow DNS and DHCP on LAN interfaces
+          iifname {${lanInterfaceSet}} udp dport {53, 67, 68, 547} accept
+          iifname {${lanInterfaceSet}} udp sport {67, 68} accept
+          iifname {${lanInterfaceSet}} tcp dport 53 accept
+          
           ${optionalString (cfg.trusted-ports != []) ''
           # Allow trusted ports from WAN
-          iifname $WAN tcp dport { ${trustedPortSet} } accept
+          iifname "${cfg.wan-interface}" tcp dport {${concatStringsSep ", " (map toString cfg.trusted-ports)}} accept
           ''}
-
-          # Drop invalid packets
-          ct state invalid drop
-
-          # Log and drop everything else
-          log prefix "INPUT DROP: " limit rate 5/minute
-          drop
+          
+          ${cfg.extra-rules}
         }
-
+        
         chain forward {
           type filter hook forward priority 0; policy drop;
-
-          # Allow established/related connections FIRST (before flow offload)
-          ct state established,related accept
-
-          # Offload established connections to flowtable (FastTrack)
-          ip protocol { tcp, udp } flow add @f
-
-          # Allow LAN to LAN forwarding (inter-VLAN routing)
-          iifname $LAN oifname $LAN accept
           
-          # Allow LAN to WAN (new connections)
-          iifname $LAN oifname $WAN accept
+          # Allow established/related connections (return traffic)
+          ct state {established, related} accept
           
-          # Allow WAN to LAN (return traffic - should be caught by established/related above)
-          iifname $WAN oifname $LAN ct state established,related accept
-
-          ${optionalString cfg.enable-ipv6 ''
-          # Allow IPv6 forwarding
-          ip6 saddr fd00::/8 oifname $WAN accept
-          ''}
-
-          # Drop invalid packets
+          # Drop invalid packets early
           ct state invalid drop
-
-          # Log and drop everything else
-          log prefix "FORWARD DROP: " limit rate 5/minute
+          
+          # Allow forwarding from LAN interfaces to WAN
+          iifname {${lanInterfaceSet}} oifname "${cfg.wan-interface}" accept
+          
+          # Allow forwarding between LAN interfaces
+          iifname {${lanInterfaceSet}} oifname {${lanInterfaceSet}} accept
+          
+          # Default drop
           drop
         }
-
+        
         chain output {
           type filter hook output priority 0; policy accept;
         }
       }
-
-      # NAT table
-      table inet nat {
-        chain prerouting {
-          type nat hook prerouting priority -100; policy accept;
-          # Port forwarding rules can be added here
-        }
-
+      
+      table ip nat {
         chain postrouting {
           type nat hook postrouting priority 100; policy accept;
-
-          # Masquerade all traffic going to WAN (simpler and more reliable)
-          oifname $WAN masquerade
-
-          ${optionalString cfg.enable-ipv6 ''
-          # IPv6 masquerade for private addresses
-          ip6 saddr fd00::/8 oifname $WAN masquerade
-          ''}
+          
+          # Masquerade traffic from LAN going to WAN
+          oifname "${cfg.wan-interface}" masquerade
         }
       }
-
-      ${cfg.extra-rules}
+      
+      ${optionalString cfg.enable-ipv6 ''
+      table ip6 nat {
+        chain postrouting {
+          type nat hook postrouting priority 100; policy accept;
+          
+          # IPv6 masquerade for private addresses
+          ip6 saddr fd00::/8 oifname "${cfg.wan-interface}" masquerade
+        }
+      }
+      ''}
     '';
   };
 }
