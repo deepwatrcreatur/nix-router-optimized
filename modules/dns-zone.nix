@@ -3,172 +3,367 @@
 with lib;
 
 let
-  cfg = config.services.router.dnsZone;
-  
-  # Convert host records to Technitium zone format
-  generateZoneRecords = hosts: concatStringsSep "\n" (
-    mapAttrsToList (name: value: ''
-      {
-        "name": "${name}",
-        "type": "A",
-        "ttl": ${toString value.ttl},
-        "ipAddress": "${value.ipAddress}"
-      }
-    '') hosts
-  );
+  legacyCfg = config.services.router.dnsZone;
+  multiCfg = config.services.router.dnsZones;
 
-  zoneConfigFile = pkgs.writeText "dns-zone-records.json" (builtins.toJSON {
-    zoneName = cfg.zoneName;
-    records = mapAttrsToList (name: value: {
-      inherit name;
-      type = "A";
-      ttl = value.ttl;
-      ipAddress = value.ipAddress;
-    }) cfg.staticHosts;
-  });
+  hostModule = types.submodule {
+    options = {
+      ipAddress = mkOption {
+        type = types.str;
+        example = "10.10.11.52";
+        description = "IP address for this host";
+      };
 
-in {
-  options.services.router.dnsZone = {
-    enable = mkEnableOption "DNS zone management with static host records";
+      ttl = mkOption {
+        type = types.int;
+        default = 3600;
+        description = "TTL for DNS record in seconds";
+      };
 
-    zoneName = mkOption {
-      type = types.str;
-      default = "lan.local";
-      example = "deepwatercreature.com";
-      description = "The DNS zone name for local network";
-    };
-
-    nameserverIP = mkOption {
-      type = types.str;
-      default = "192.168.1.1";
-      example = "10.10.10.1";
-      description = "IP address of the nameserver (usually the router/gateway)";
-    };
-
-    zoneConfig = mkOption {
-      type = types.nullOr types.attrs;
-      default = null;
-      example = literalExpression ''
-        {
-          domain = "deepwatercreature.com";
-          hosts = {
-            "gateway" = { ipv4 = "10.10.10.1"; ipv6 = null; };
-            "workstation" = { ipv4 = "10.10.11.90"; ipv6 = null; };
-          };
-          aliases = {
-            "cache" = "attic-cache";
-          };
-        }
-      '';
-      description = "DNS zone configuration imported from external file";
-    };
-
-    staticHosts = mkOption {
-      type = types.attrsOf (types.submodule {
-        options = {
-          ipAddress = mkOption {
-            type = types.str;
-            example = "10.10.11.52";
-            description = "IP address for this host";
-          };
-
-          ttl = mkOption {
-            type = types.int;
-            default = 3600;
-            description = "TTL for DNS record in seconds";
-          };
-
-          aliases = mkOption {
-            type = types.listOf types.str;
-            default = [];
-            example = [ "alias1" "alias2" ];
-            description = "CNAME aliases for this host";
-          };
-        };
-      });
-      default = {};
-      example = literalExpression ''
-        {
-          gateway = {
-            ipAddress = "10.10.10.1";
-            aliases = [ "router" "dns" ];
-          };
-          pve-gateway = {
-            ipAddress = "10.10.11.52";
-          };
-        }
-      '';
-      description = "Static host records to add to DNS zone";
-    };
-
-    allowDynamicUpdates = mkOption {
-      type = types.bool;
-      default = true;
-      description = "Whether to allow DHCP to dynamically register hosts";
-    };
-
-    reverseZone = {
-      enable = mkEnableOption "automatic reverse DNS (PTR) records";
-      
-      networks = mkOption {
+      aliases = mkOption {
         type = types.listOf types.str;
         default = [];
-        example = [ "10.10.10.0/24" "10.10.11.0/24" ];
-        description = "Networks for which to create reverse zones";
+        example = [ "alias1" "alias2" ];
+        description = "CNAME aliases for this host";
       };
     };
   };
 
-  config = mkIf cfg.enable {
-    # Generate zone file for Technitium
-    environment.etc."technitium/zones/${cfg.zoneName}.zone" = mkIf (cfg.staticHosts != {}) {
-      text = ''
-        $ORIGIN ${cfg.zoneName}.
-        $TTL 3600
-        @       IN      SOA     ns1.${cfg.zoneName}. admin.${cfg.zoneName}. (
-                        ${toString (builtins.hashString "sha256" (builtins.toJSON cfg.staticHosts))}  ; serial
-                        3600       ; refresh
-                        900        ; retry
-                        604800     ; expire
-                        86400 )    ; minimum TTL
-        
-        @       IN      NS      ns1.${cfg.zoneName}.
-        ns1     IN      A       ${cfg.nameserverIP}
-        
-        ${concatStringsSep "\n" (mapAttrsToList (name: value: ''
+  zoneModule = types.submodule ({ name, ... }: {
+    options = {
+      nameserverIP = mkOption {
+        type = types.str;
+        default = "192.168.1.1";
+        example = "10.10.10.1";
+        description = "IP address of the nameserver (usually the router/gateway)";
+      };
+
+      staticHosts = mkOption {
+        type = types.attrsOf hostModule;
+        default = {};
+        example = literalExpression ''
+          {
+            gateway = {
+              ipAddress = "10.10.10.1";
+              aliases = [ "router" "dns" ];
+            };
+            pve-gateway = {
+              ipAddress = "10.10.11.52";
+            };
+          }
+        '';
+        description = "Static host records to add to this DNS zone";
+      };
+
+      aliases = mkOption {
+        type = types.attrsOf types.str;
+        default = {};
+        example = {
+          cache = "attic-cache";
+        };
+        description = "Additional CNAME aliases mapping alias name to target host";
+      };
+
+      allowDynamicUpdates = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to allow DHCP to dynamically register hosts";
+      };
+
+      reverseZone = {
+        enable = mkEnableOption "automatic reverse DNS (PTR) records";
+
+        networks = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          example = [ "10.10.10.0/24" "10.10.11.0/24" ];
+          description = "Networks for which to create reverse zones";
+        };
+      };
+
+      zoneConfig = mkOption {
+        type = types.nullOr types.attrs;
+        default = null;
+        example = literalExpression ''
+          {
+            domain = "deepwatercreature.com";
+            hosts = {
+              gateway = { ipv4 = "10.10.10.1"; ipv6 = null; };
+            };
+          }
+        '';
+        description = "Reserved for external zone configuration imports";
+      };
+    };
+  });
+
+  legacyZone =
+    optionalAttrs legacyCfg.enable {
+      "${legacyCfg.zoneName}" = {
+        inherit (legacyCfg)
+          nameserverIP
+          staticHosts
+          allowDynamicUpdates
+          zoneConfig
+          reverseZone
+          ;
+        aliases = {};
+      };
+    };
+
+  zoneNames = attrNames multiCfg;
+
+  allZones =
+    if zoneNames != [] then
+      multiCfg
+    else
+      legacyZone;
+
+  hasZones = allZones != {};
+  allZoneNames = attrNames allZones;
+
+  zoneFileText =
+    zoneName: zone:
+    let
+      recordText = concatStringsSep "\n" (
+        mapAttrsToList (name: value: ''
           ${name}    IN      A       ${value.ipAddress}
           ${concatMapStringsSep "\n" (alias: "${alias}    IN      CNAME   ${name}") value.aliases}
-        '') cfg.staticHosts)}
+        '') zone.staticHosts
+      );
+
+      aliasText = concatStringsSep "\n" (
+        mapAttrsToList (alias: target: "${alias}    IN      CNAME   ${target}") zone.aliases
+      );
+    in
+    ''
+      $ORIGIN ${zoneName}.
+      $TTL 3600
+      @       IN      SOA     ns1.${zoneName}. admin.${zoneName}. (
+                      ${toString (builtins.hashString "sha256" (builtins.toJSON {
+                        inherit zoneName;
+                        inherit (zone) staticHosts aliases;
+                      }))}  ; serial
+                      3600       ; refresh
+                      900        ; retry
+                      604800     ; expire
+                      86400 )    ; minimum TTL
+
+      @       IN      NS      ns1.${zoneName}.
+      ns1     IN      A       ${zone.nameserverIP}
+
+      ${recordText}
+      ${aliasText}
+    '';
+
+  zoneSyncScript =
+    concatStringsSep "\n" (
+      mapAttrsToList (
+        zoneName: zone:
+        let
+          hostCommands = concatStringsSep "\n" (
+            mapAttrsToList (name: value: ''
+              echo "Adding DNS record: ${name}.${zoneName} -> ${value.ipAddress}"
+              ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add" \
+                -H "Authorization: Bearer $TOKEN" \
+                -d "zone=${zoneName}" \
+                -d "domain=${name}" \
+                -d "type=A" \
+                -d "ttl=${toString value.ttl}" \
+                -d "ipAddress=${value.ipAddress}" \
+                -d "overwrite=true" || echo "Failed to add ${name}.${zoneName}"
+
+              ${concatMapStringsSep "\n" (alias: ''
+                echo "Adding alias: ${alias}.${zoneName} -> ${name}.${zoneName}"
+                ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add" \
+                  -H "Authorization: Bearer $TOKEN" \
+                  -d "zone=${zoneName}" \
+                  -d "domain=${alias}" \
+                  -d "type=CNAME" \
+                  -d "ttl=${toString value.ttl}" \
+                  -d "cname=${name}.${zoneName}" \
+                  -d "overwrite=true" || echo "Failed to add alias ${alias}.${zoneName}"
+              '') value.aliases}
+            '') zone.staticHosts
+          );
+
+          aliasCommands = concatStringsSep "\n" (
+            mapAttrsToList (alias: target: ''
+              echo "Adding zone alias: ${alias}.${zoneName} -> ${target}.${zoneName}"
+              ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add" \
+                -H "Authorization: Bearer $TOKEN" \
+                -d "zone=${zoneName}" \
+                -d "domain=${alias}" \
+                -d "type=CNAME" \
+                -d "ttl=3600" \
+                -d "cname=${target}.${zoneName}" \
+                -d "overwrite=true" || echo "Failed to add zone alias ${alias}.${zoneName}"
+            '') zone.aliases
+          );
+        in
+        ''
+          echo "Ensuring DNS zone exists: ${zoneName}"
+          ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/create" \
+            -H "Authorization: Bearer $TOKEN" \
+            -d "zone=${zoneName}" \
+            -d "type=Primary" || true
+
+          ${hostCommands}
+          ${aliasCommands}
+        ''
+      ) allZones
+    );
+
+  sshHostEntries =
+    concatStringsSep "\n\n" (
+      flatten (
+        mapAttrsToList (
+          zoneName: zone:
+          mapAttrsToList (
+            name: _value:
+            let
+              shortPatterns = optionalString (length allZoneNames <= 1) " ${name}";
+            in
+            ''
+              Host ${name}.${zoneName}${shortPatterns}
+                  Hostname ${name}.${zoneName}
+            ''
+          ) zone.staticHosts
+        ) allZones
+      )
+    );
+in
+{
+  options.services.router = {
+    dnsZone = {
+      enable = mkEnableOption "DNS zone management with static host records";
+
+      zoneName = mkOption {
+        type = types.str;
+        default = "lan.local";
+        example = "deepwatercreature.com";
+        description = "The DNS zone name for local network";
+      };
+
+      nameserverIP = mkOption {
+        type = types.str;
+        default = "192.168.1.1";
+        example = "10.10.10.1";
+        description = "IP address of the nameserver (usually the router/gateway)";
+      };
+
+      zoneConfig = mkOption {
+        type = types.nullOr types.attrs;
+        default = null;
+        example = literalExpression ''
+          {
+            domain = "deepwatercreature.com";
+            hosts = {
+              gateway = { ipv4 = "10.10.10.1"; ipv6 = null; };
+            };
+          }
+        '';
+        description = "Reserved for external zone configuration imports";
+      };
+
+      staticHosts = mkOption {
+        type = types.attrsOf hostModule;
+        default = {};
+        example = literalExpression ''
+          {
+            gateway = {
+              ipAddress = "10.10.10.1";
+              aliases = [ "router" "dns" ];
+            };
+          }
+        '';
+        description = "Static host records to add to DNS zone";
+      };
+
+      allowDynamicUpdates = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to allow DHCP to dynamically register hosts";
+      };
+
+      reverseZone = {
+        enable = mkEnableOption "automatic reverse DNS (PTR) records";
+
+        networks = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          example = [ "10.10.10.0/24" "10.10.11.0/24" ];
+          description = "Networks for which to create reverse zones";
+        };
+      };
+    };
+
+    dnsZones = mkOption {
+      type = types.attrsOf zoneModule;
+      default = {};
+      example = literalExpression ''
+        {
+          "deepwatercreature.com" = {
+            nameserverIP = "10.10.10.1";
+            staticHosts.gateway = {
+              ipAddress = "10.10.10.1";
+              aliases = [ "router" "dns" ];
+            };
+          };
+          "lab.deepwatercreature.com" = {
+            nameserverIP = "10.10.10.1";
+            staticHosts.attic-cache.ipAddress = "10.10.11.39";
+          };
+        }
       '';
-      mode = "0644";
+      description = "Multiple DNS zones keyed by zone name";
     };
+  };
 
-    # Store JSON format for API-based management
-    environment.etc."technitium/static-hosts.json" = {
-      text = builtins.toJSON cfg.staticHosts;
-      mode = "0644";
-    };
+  config = mkIf hasZones {
+    assertions = [
+      {
+        assertion = !(legacyCfg.enable && zoneNames != []);
+        message = "Use either services.router.dnsZone or services.router.dnsZones, not both.";
+      }
+    ];
 
-    # Script to sync static hosts to Technitium via API
-    systemd.services.technitium-sync-static-hosts = mkIf (cfg.staticHosts != {}) {
+    environment.etc =
+      (mapAttrs'
+        (zoneName: zone:
+          nameValuePair "technitium/zones/${zoneName}.zone" {
+            text = zoneFileText zoneName zone;
+            mode = "0644";
+          })
+        allZones)
+      // {
+        "technitium/static-hosts.json" = {
+          text = builtins.toJSON allZones;
+          mode = "0644";
+        };
+      };
+
+    systemd.services.technitium-sync-static-hosts = {
       description = "Sync static DNS records to Technitium";
       after = [ "technitium-dns-server.service" ];
       wants = [ "technitium-dns-server.service" ];
       wantedBy = [ "multi-user.target" ];
-      
+
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
       };
 
       script = let
-        apiToken = if (config.age.secrets ? technitium-api-key) 
-                   then config.age.secrets.technitium-api-key.path
-                   else "/dev/null";
-      in ''
+        apiToken =
+          if config.age.secrets ? technitium-api-key then
+            config.age.secrets.technitium-api-key.path
+          else
+            "/dev/null";
+      in
+      ''
         set -euo pipefail
-        
-        # Wait for Technitium to be ready
+
         for i in {1..30}; do
           if ${pkgs.curl}/bin/curl -s http://localhost:5380/api/dns/status >/dev/null 2>&1; then
             break
@@ -177,53 +372,17 @@ in {
           sleep 2
         done
 
-        # Read API token if available
         TOKEN=""
         if [ -f "${apiToken}" ]; then
           TOKEN=$(cat "${apiToken}")
         fi
 
-        # Ensure zone exists
-        ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/create" \
-          -H "Authorization: Bearer $TOKEN" \
-          -d "zone=${cfg.zoneName}" \
-          -d "type=Primary" || true
-
-        # Add each static host record
-        ${concatStringsSep "\n" (mapAttrsToList (name: value: ''
-          echo "Adding DNS record: ${name}.${cfg.zoneName} -> ${value.ipAddress}"
-          ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add" \
-            -H "Authorization: Bearer $TOKEN" \
-            -d "zone=${cfg.zoneName}" \
-            -d "domain=${name}" \
-            -d "type=A" \
-            -d "ttl=${toString value.ttl}" \
-            -d "ipAddress=${value.ipAddress}" \
-            -d "overwrite=true" || echo "Failed to add ${name}"
-          
-          ${concatMapStringsSep "\n" (alias: ''
-            echo "Adding alias: ${alias}.${cfg.zoneName} -> ${name}.${cfg.zoneName}"
-            ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add" \
-              -H "Authorization: Bearer $TOKEN" \
-              -d "zone=${cfg.zoneName}" \
-              -d "domain=${alias}" \
-              -d "type=CNAME" \
-              -d "ttl=${toString value.ttl}" \
-              -d "cname=${name}.${cfg.zoneName}" \
-              -d "overwrite=true" || echo "Failed to add alias ${alias}"
-          '') value.aliases}
-        '') cfg.staticHosts)}
+        ${zoneSyncScript}
 
         echo "Static DNS records synchronized"
       '';
     };
 
-    # Generate SSH config from DNS zone
-    programs.ssh.extraConfig = mkIf (cfg.staticHosts != {}) (
-      concatStringsSep "\n\n" (mapAttrsToList (name: value: ''
-        Host ${name}
-            Hostname ${name}.${cfg.zoneName}
-      '') cfg.staticHosts)
-    );
+    programs.ssh.extraConfig = mkIf (sshHostEntries != "") sshHostEntries;
   };
 }

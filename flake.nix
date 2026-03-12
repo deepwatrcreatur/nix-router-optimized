@@ -34,12 +34,27 @@
           # Minimal example configuration
           networking.hostName = "router-example";
           system.stateVersion = "25.11";
+          fileSystems."/" = {
+            device = "none";
+            fsType = "tmpfs";
+          };
+          boot.loader.grub.devices = [ "nodev" ];
           
           # Example router configuration
           services.router-optimizations = {
             enable = true;
-            wan-interface = "eth0";
-            lan-interface = "eth1";
+            interfaces = {
+              wan = {
+                device = "eth0";
+                role = "wan";
+                label = "WAN";
+              };
+              lan = {
+                device = "eth1";
+                role = "lan";
+                label = "LAN";
+              };
+            };
           };
         }
       ];
