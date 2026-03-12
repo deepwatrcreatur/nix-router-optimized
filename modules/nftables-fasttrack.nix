@@ -159,11 +159,11 @@ in {
         chain postrouting {
           type nat hook postrouting priority 100; policy accept;
 
-          # Masquerade LAN to WAN (IPv4 NAT)
-          ip saddr $LAN_NETS oifname $WAN masquerade
+          # Masquerade all traffic going to WAN (simpler and more reliable)
+          oifname $WAN masquerade
 
           ${optionalString cfg.enable-ipv6 ''
-          # IPv6 NAT (NAT66) if needed
+          # IPv6 masquerade for private addresses
           ip6 saddr fd00::/8 oifname $WAN masquerade
           ''}
         }
