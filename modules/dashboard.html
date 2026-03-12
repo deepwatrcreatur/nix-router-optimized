@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Router Dashboard</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .header h1 {
+      color: #667eea;
+      margin-bottom: 10px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stat-card h3 {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .stat-card .value {
+      color: #667eea;
+      font-size: 24px;
+      font-weight: bold;
+    }
+    .interfaces {
+      display: grid;
+      gap: 15px;
+    }
+    .interface-card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .interface-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    .interface-name {
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+    }
+    .status {
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .status.up {
+      background: #10b981;
+      color: white;
+    }
+    .status.down {
+      background: #ef4444;
+      color: white;
+    }
+    .interface-info {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+    }
+    .info-item {
+      padding: 10px;
+      background: #f3f4f6;
+      border-radius: 5px;
+    }
+    .info-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .info-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+    }
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: white;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="error" class="error" style="display: none;"></div>
+    <div id="loading" class="loading">Loading router data...</div>
+    <div id="dashboard" style="display: none;">
+      <div class="header">
+        <h1 id="hostname">Router Dashboard</h1>
+        <div class="stats">
+          <div class="stat-card">
+            <h3>Uptime</h3>
+            <div class="value" id="uptime">-</div>
+          </div>
+          <div class="stat-card">
+            <h3>Active Connections</h3>
+            <div class="value" id="connections">-</div>
+          </div>
+        </div>
+      </div>
+      <div class="interfaces" id="interfaces"></div>
+    </div>
+  </div>
+
+  <script>
+    function formatBytes(bytes, rate) {
+      rate = rate || false;
+      if (bytes === 0) {
+        if (rate) return '0 B/s';
+        return '0 B';
+      }
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      const result = parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      if (rate) return result + '/s';
+      return result;
+    }
+
+    function updateDashboard() {
+      fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('dashboard').style.display = 'block';
+          document.getElementById('error').style.display = 'none';
+          
+          document.getElementById('hostname').textContent = data.hostname || 'Router Dashboard';
+          document.getElementById('uptime').textContent = data.uptime || '-';
+          document.getElementById('connections').textContent = data.connections || '0';
+          
+          const interfacesDiv = document.getElementById('interfaces');
+          interfacesDiv.innerHTML = '';
+          
+          for (const [name, iface] of Object.entries(data.interfaces || {})) {
+            const card = document.createElement('div');
+            card.className = 'interface-card';
+            card.innerHTML = `
+              <div class="interface-header">
+                <div class="interface-name">${name}</div>
+                <div class="status ${iface.status}">${iface.status.toUpperCase()}</div>
+              </div>
+              <div class="interface-info">
+                <div class="info-item">
+                  <div class="info-label">IPv4 Address</div>
+                  <div class="info-value">${iface.ip || 'N/A'}</div>
+                </div>
+                <div class="info-item">
+                  <div class="info-label">RX Total</div>
+                  <div class="info-value">${formatBytes(iface.rx)}</div>
+                </div>
+                <div class="info-item">
+                  <div class="info-label">TX Total</div>
+                  <div class="info-value">${formatBytes(iface.tx)}</div>
+                </div>
+                <div class="info-item">
+                  <div class="info-label">RX Rate</div>
+                  <div class="info-value">${formatBytes(iface.rx_rate, true)}</div>
+                </div>
+                <div class="info-item">
+                  <div class="info-label">TX Rate</div>
+                  <div class="info-value">${formatBytes(iface.tx_rate, true)}</div>
+                </div>
+              </div>
+            `;
+            interfacesDiv.appendChild(card);
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching stats:', error);
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('error').style.display = 'block';
+          document.getElementById('error').textContent = 'Error loading router data: ' + error.message;
+        });
+    }
+
+    // Update every 2 seconds
+    updateDashboard();
+    setInterval(updateDashboard, 2000);
+  </script>
+</body>
+</html>
