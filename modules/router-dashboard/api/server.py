@@ -196,21 +196,29 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             max_count = int(self.read_file('/proc/sys/net/netfilter/nf_conntrack_max') or 262144)
 
             # Get protocol breakdown using conntrack
+            # Format with -o extended: "ipv4     2 tcp      6 ..." or "ipv4     2 udp      17 ..."
             by_protocol = {'tcp': 0, 'udp': 0, 'icmp': 0, 'other': 0}
             try:
                 result = subprocess.run(
                     ['conntrack', '-L', '-o', 'extended'],
-                    capture_output=True, text=True, timeout=3
+                    capture_output=True, text=True, timeout=3,
+                    env={**os.environ, 'LC_ALL': 'C'}
                 )
                 for line in result.stdout.split('\n'):
-                    if line.startswith('tcp'):
-                        by_protocol['tcp'] += 1
-                    elif line.startswith('udp'):
-                        by_protocol['udp'] += 1
-                    elif line.startswith('icmp'):
-                        by_protocol['icmp'] += 1
-                    elif line.strip():
-                        by_protocol['other'] += 1
+                    if not line.strip():
+                        continue
+                    # Parse: "ipv4     2 tcp      6 ..." - protocol is 3rd field
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        proto = parts[2].lower()
+                        if proto == 'tcp':
+                            by_protocol['tcp'] += 1
+                        elif proto == 'udp':
+                            by_protocol['udp'] += 1
+                        elif proto == 'icmp':
+                            by_protocol['icmp'] += 1
+                        else:
+                            by_protocol['other'] += 1
             except:
                 pass
 
