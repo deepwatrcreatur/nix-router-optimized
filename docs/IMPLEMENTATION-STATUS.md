@@ -139,13 +139,43 @@ modules/
 | `/api/connections/top` | Top N connections with filtering |
 | `/api/firewall/stats` | Enhanced with packet counters |
 
-## Phase 3: Service Integration - NOT STARTED
+## Phase 3: Service Integration - IN PROGRESS
+
+### Implemented
+
+- [x] DNS statistics (Technitium API integration)
+- [x] DHCP lease information
 
 ### Planned
 
-- [ ] DNS statistics (Technitium API integration)
-- [ ] DHCP lease information
-- [ ] Service control (start/stop/restart)
+- [ ] Service control (start/stop/restart) - requires user authentication
+
+### Widgets Added
+
+1. **DNS Statistics Widget**
+   - Total queries (last hour)
+   - Blocked queries count and percentage
+   - Cache hit rate
+   - Top 5 queried domains
+   - Top 5 clients
+
+2. **DHCP Leases Widget**
+   - DHCP scope overview (enabled/disabled, IP range)
+   - Active lease count per scope
+   - Lease table (IP, hostname, MAC, expiry)
+
+### API Endpoints Added
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/dns/stats` | Technitium DNS statistics (queries, blocked, cached, top domains/clients) |
+| `/api/dhcp/leases` | DHCP scopes and active leases |
+
+### Notes
+
+- DNS/DHCP widgets integrate with Technitium DNS Server API
+- Requires `TECHNITIUM_API_KEY_FILE` environment variable (automatically set from agenix)
+- Service control intentionally deferred - requires user authentication for write operations
 
 ## Phase 4: Firewall & Security - NOT STARTED
 

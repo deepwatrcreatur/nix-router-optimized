@@ -140,6 +140,10 @@ in {
         DASHBOARD_BIND = cfg.bind-address;
         DASHBOARD_STATIC = "${dashboardStatic}";
         DASHBOARD_THEME = cfg.theme;
+        TECHNITIUM_URL = "http://localhost:5380";
+        TECHNITIUM_API_KEY_FILE = if config.age.secrets ? technitium-api-key
+          then config.age.secrets.technitium-api-key.path
+          else "";
       };
 
       serviceConfig = {
@@ -171,6 +175,7 @@ in {
         ReadOnlyPaths = [
           "/proc"
           "/sys/class/net"
+          "/run/agenix"
         ];
       };
 

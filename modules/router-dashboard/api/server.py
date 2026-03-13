@@ -11,8 +11,10 @@ import json
 import os
 import re
 import time
+import urllib.request
+import urllib.error
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 
 # Configuration from environment
 PORT = int(os.environ.get('DASHBOARD_PORT', 8888))
@@ -22,6 +24,11 @@ STATIC_DIR = os.environ.get('DASHBOARD_STATIC', '/etc/router-dashboard')
 # Rate tracking for interface stats
 RATE_CACHE = {}
 RATE_CACHE_TIME = {}
+
+# Technitium DNS Server configuration
+TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
+TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
+TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
 
 
 class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
@@ -56,6 +63,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_firewall_stats()
         elif path == '/api/gateway/health':
             self.handle_gateway_health()
+        elif path == '/api/dns/stats':
+            self.handle_dns_stats()
+        elif path == '/api/dhcp/leases':
+            self.handle_dhcp_leases()
         elif path.startswith('/api/'):
             self.send_error(404, 'API endpoint not found')
         else:
@@ -484,6 +495,173 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({'connections': connections})
         except Exception as e:
             self.send_error_json(500, str(e))
+
+    def handle_dns_stats(self):
+        """Get DNS statistics from Technitium"""
+        try:
+            token = self.get_technitium_token()
+            if not token:
+                # Return mock/empty data if Technitium not available
+                self.send_json({
+                    'available': False,
+                    'message': 'Technitium DNS not configured or unavailable'
+                })
+                return
+
+            # Get dashboard stats
+            stats_url = f"{TECHNITIUM_URL}/api/dashboard/stats/get?token={token}&type=LastHour"
+            stats_data = self.fetch_technitium_api(stats_url)
+
+            if not stats_data or stats_data.get('status') == 'error':
+                self.send_json({
+                    'available': False,
+                    'message': stats_data.get('errorMessage', 'Failed to get DNS stats')
+                })
+                return
+
+            response = stats_data.get('response', {})
+            stats = response.get('stats', {})
+            main_chart = stats.get('mainChartData', {})
+
+            # Calculate totals from chart data
+            total_queries = sum(main_chart.get('totalQueries', [0]))
+            total_blocked = sum(main_chart.get('totalBlockedQueries', [0]))
+            total_cached = sum(main_chart.get('totalCachedQueries', [0]))
+
+            # Get top stats
+            top_url = f"{TECHNITIUM_URL}/api/dashboard/stats/getTop?token={token}&type=LastHour&statsType=TopDomains&limit=5"
+            top_data = self.fetch_technitium_api(top_url)
+            top_domains = []
+            if top_data and top_data.get('status') == 'ok':
+                top_domains = top_data.get('response', {}).get('topDomains', [])[:5]
+
+            # Get top clients
+            clients_url = f"{TECHNITIUM_URL}/api/dashboard/stats/getTop?token={token}&type=LastHour&statsType=TopClients&limit=5"
+            clients_data = self.fetch_technitium_api(clients_url)
+            top_clients = []
+            if clients_data and clients_data.get('status') == 'ok':
+                top_clients = clients_data.get('response', {}).get('topClients', [])[:5]
+
+            self.send_json({
+                'available': True,
+                'totalQueries': total_queries,
+                'totalBlocked': total_blocked,
+                'totalCached': total_cached,
+                'blockRate': (total_blocked / total_queries * 100) if total_queries > 0 else 0,
+                'cacheRate': (total_cached / total_queries * 100) if total_queries > 0 else 0,
+                'topDomains': top_domains,
+                'topClients': top_clients
+            })
+        except Exception as e:
+            self.send_json({
+                'available': False,
+                'message': str(e)
+            })
+
+    def handle_dhcp_leases(self):
+        """Get DHCP lease information from Technitium"""
+        try:
+            token = self.get_technitium_token()
+            if not token:
+                self.send_json({
+                    'available': False,
+                    'message': 'Technitium DNS not configured or unavailable'
+                })
+                return
+
+            # Get DHCP scopes
+            scopes_url = f"{TECHNITIUM_URL}/api/dhcp/scopes/list?token={token}"
+            scopes_data = self.fetch_technitium_api(scopes_url)
+
+            if not scopes_data or scopes_data.get('status') == 'error':
+                self.send_json({
+                    'available': False,
+                    'message': scopes_data.get('errorMessage', 'Failed to get DHCP scopes')
+                })
+                return
+
+            scopes = scopes_data.get('response', {}).get('scopes', [])
+            all_leases = []
+            scope_stats = []
+
+            for scope in scopes:
+                scope_name = scope.get('name', 'unknown')
+
+                # Get leases for this scope
+                leases_url = f"{TECHNITIUM_URL}/api/dhcp/scopes/getLeases?token={token}&name={scope_name}"
+                leases_data = self.fetch_technitium_api(leases_url)
+
+                leases = []
+                if leases_data and leases_data.get('status') == 'ok':
+                    leases = leases_data.get('response', {}).get('leases', [])
+
+                # Add scope info
+                scope_stats.append({
+                    'name': scope_name,
+                    'enabled': scope.get('enabled', False),
+                    'startAddress': scope.get('startingAddress', ''),
+                    'endAddress': scope.get('endingAddress', ''),
+                    'leaseCount': len(leases)
+                })
+
+                # Add leases with scope name
+                for lease in leases[:20]:  # Limit to 20 per scope
+                    all_leases.append({
+                        'scope': scope_name,
+                        'address': lease.get('address', ''),
+                        'hostname': lease.get('hostName', ''),
+                        'hardwareAddress': lease.get('hardwareAddress', ''),
+                        'leaseExpires': lease.get('leaseExpires', ''),
+                        'type': lease.get('type', '')
+                    })
+
+            self.send_json({
+                'available': True,
+                'scopes': scope_stats,
+                'leases': all_leases[:50],  # Limit total leases
+                'totalLeases': len(all_leases)
+            })
+        except Exception as e:
+            self.send_json({
+                'available': False,
+                'message': str(e)
+            })
+
+    def get_technitium_token(self):
+        """Get Technitium API token from file or cache"""
+        global TECHNITIUM_TOKEN_CACHE
+
+        # Check cache
+        if TECHNITIUM_TOKEN_CACHE['token'] and time.time() < TECHNITIUM_TOKEN_CACHE['expires']:
+            return TECHNITIUM_TOKEN_CACHE['token']
+
+        # Read token from file
+        if TECHNITIUM_API_KEY_FILE and os.path.exists(TECHNITIUM_API_KEY_FILE):
+            try:
+                with open(TECHNITIUM_API_KEY_FILE, 'r') as f:
+                    token = f.read().strip()
+                    if token:
+                        # Cache for 25 minutes (Technitium default is 30 min)
+                        TECHNITIUM_TOKEN_CACHE['token'] = token
+                        TECHNITIUM_TOKEN_CACHE['expires'] = time.time() + 1500
+                        return token
+            except:
+                pass
+
+        return None
+
+    def fetch_technitium_api(self, url):
+        """Fetch data from Technitium API"""
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'RouterDashboard/1.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return json.loads(response.read().decode())
+        except urllib.error.HTTPError as e:
+            return {'status': 'error', 'errorMessage': f'HTTP {e.code}'}
+        except urllib.error.URLError as e:
+            return {'status': 'error', 'errorMessage': str(e.reason)}
+        except Exception as e:
+            return {'status': 'error', 'errorMessage': str(e)}
 
     def get_default_gateway(self):
         """Get the default gateway IP"""

@@ -132,6 +132,22 @@ class Dashboard {
     });
     firewall.render(container);
     this.widgets.push(firewall);
+
+    // DNS Statistics widget
+    const dns = new DnsWidget({
+      id: 'dns',
+      refreshInterval: 30000
+    });
+    dns.render(container);
+    this.widgets.push(dns);
+
+    // DHCP Leases widget
+    const dhcp = new DhcpWidget({
+      id: 'dhcp',
+      refreshInterval: 60000
+    });
+    dhcp.render(container);
+    this.widgets.push(dhcp);
   }
 
   /**
