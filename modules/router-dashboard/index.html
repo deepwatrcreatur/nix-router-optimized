@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Router Dashboard</title>
+  <link rel="stylesheet" href="/css/dashboard.css">
+  <!-- Chart.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1 id="hostname">Router Dashboard</h1>
+      <div class="header-info">
+        <div class="header-stat">
+          <div class="header-stat-label">Uptime</div>
+          <div class="header-stat-value" id="uptime">--</div>
+        </div>
+        <div class="header-stat">
+          <div class="header-stat-label">Kernel</div>
+          <div class="header-stat-value" id="kernel">--</div>
+        </div>
+        <div class="last-update" id="last-update">Loading...</div>
+      </div>
+    </header>
+
+    <div class="dashboard-grid" id="dashboard-grid">
+      <!-- Widgets will be dynamically inserted here -->
+    </div>
+
+    <footer style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 0.85rem;">
+      NixOS Router Dashboard &bull; Powered by <a href="https://github.com/deepwatrcreatur/nix-router-optimized" style="color: var(--accent-blue);">nix-router-optimized</a>
+    </footer>
+  </div>
+
+  <!-- Widget Scripts -->
+  <script src="/js/widgets/base-widget.js"></script>
+  <script src="/js/widgets/traffic-widget.js"></script>
+  <script src="/js/widgets/system-widget.js"></script>
+  <script src="/js/widgets/interface-widget.js"></script>
+  <script src="/js/widgets/connections-widget.js"></script>
+  <script src="/js/widgets/services-widget.js"></script>
+  <script src="/js/widgets/links-widget.js"></script>
+
+  <!-- Dashboard Configuration -->
+  <script>
+    window.DASHBOARD_CONFIG = {
+      interfaces: [
+        { device: 'wan', label: 'WAN', role: 'wan' },
+        { device: 'lan', label: 'LAN', role: 'lan' },
+        { device: 'mgmt', label: 'Management', role: 'mgmt' }
+      ],
+      links: [
+        { label: 'Netdata', url: 'http://gateway:8080', icon: '📊' },
+        { label: 'Grafana', url: 'http://gateway:3001', icon: '📈' },
+        { label: 'DNS Admin', url: 'http://gateway:5380', icon: '🌍' },
+        { label: 'Prometheus', url: 'http://gateway:9090', icon: '🎯' },
+        { label: 'Proxy Manager', url: 'http://gateway:81', icon: '🔀' }
+      ],
+      services: [
+        'nftables',
+        'caddy',
+        'prometheus',
+        'grafana',
+        'netdata',
+        'technitium-dns-server'
+      ]
+    };
+  </script>
+
+  <!-- Main Dashboard Script -->
+  <script src="/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""
+Enhanced Router Dashboard API Server
+Provides REST endpoints for dashboard widgets
+"""
+
+import http.server
+import socketserver
+import subprocess
+import json
+import os
+import re
+import time
+from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+
+# Configuration from environment
+PORT = int(os.environ.get('DASHBOARD_PORT', 8888))
+BIND = os.environ.get('DASHBOARD_BIND', '0.0.0.0')
+STATIC_DIR = os.environ.get('DASHBOARD_STATIC', '/etc/router-dashboard')
+
+# Rate tracking for interface stats
+RATE_CACHE = {}
+RATE_CACHE_TIME = {}
+
+
+class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
+    """HTTP handler for router dashboard API and static files"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=STATIC_DIR, **kwargs)
+
+    def log_message(self, format, *args):
+        """Suppress default logging"""
+        pass
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+
+        # API routes
+        if path == '/api/system/status':
+            self.handle_system_status()
+        elif path == '/api/system/resources':
+            self.handle_system_resources()
+        elif path == '/api/interfaces/stats':
+            self.handle_interface_stats()
+        elif path == '/api/connections/summary':
+            self.handle_connections_summary()
+        elif path == '/api/services/status':
+            self.handle_services_status()
+        elif path == '/api/firewall/stats':
+            self.handle_firewall_stats()
+        elif path.startswith('/api/'):
+            self.send_error(404, 'API endpoint not found')
+        else:
+            # Serve static files
+            if path == '/':
+                self.path = '/index.html'
+            super().do_GET()
+
+    def send_json(self, data, status=200):
+        """Send JSON response"""
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cache-Control', 'no-cache')
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def send_error_json(self, status, message):
+        """Send JSON error response"""
+        self.send_json({'error': message}, status)
+
+    # === API Handlers ===
+
+    def handle_system_status(self):
+        """System status endpoint"""
+        try:
+            hostname = self.read_file('/proc/sys/kernel/hostname').strip()
+            uptime = self.get_uptime()
+            kernel = self.read_file('/proc/version').split()[2] if self.read_file('/proc/version') else 'unknown'
+
+            self.send_json({
+                'hostname': hostname,
+                'uptime': uptime,
+                'kernel': kernel,
+                'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S')
+            })
+        except Exception as e:
+            self.send_error_json(500, str(e))
+
+    def handle_system_resources(self):
+        """CPU, memory, disk, load average"""
+        try:
+            # CPU usage
+            cpu = self.get_cpu_usage()
+
+            # Memory
+            meminfo = self.parse_meminfo()
+            mem_total = meminfo.get('MemTotal', 0)
+            mem_available = meminfo.get('MemAvailable', 0)
+            mem_percent = ((mem_total - mem_available) / mem_total * 100) if mem_total > 0 else 0
+
+            # Disk usage (root filesystem)
+            disk = self.get_disk_usage('/')
+
+            # Load average
+            loadavg = self.read_file('/proc/loadavg').split()[:3] if self.read_file('/proc/loadavg') else ['0', '0', '0']
+
+            # Process count
+            try:
+                procs = len([d for d in os.listdir('/proc') if d.isdigit()])
+            except:
+                procs = 0
+
+            self.send_json({
+                'cpu': cpu,
+                'memory': mem_percent,
+                'memory_total': mem_total,
+                'memory_available': mem_available,
+                'disk': disk,
+                'load_avg': loadavg,
+                'processes': procs
+            })
+        except Exception as e:
+            self.send_error_json(500, str(e))
+
+    def handle_interface_stats(self):
+        """Network interface statistics"""
+        try:
+            interfaces = {}
+            net_path = Path('/sys/class/net')
+
+            # Interface mapping (customize as needed)
+            iface_map = {
+                'ens17': 'wan',
+                'ens16': 'lan',
+                'ens18': 'mgmt',
+                'eth0': 'wan',
+                'eth1': 'lan'
+            }
+
+            for iface_path in net_path.iterdir():
+                name = iface_path.name
+                if name.startswith(('lo', 'docker', 'veth', 'br-', 'virbr')):
+                    continue
+
+                stats_path = iface_path / 'statistics'
+                if not stats_path.exists():
+                    continue
+
+                rx_bytes = int(self.read_file(stats_path / 'rx_bytes') or 0)
+                tx_bytes = int(self.read_file(stats_path / 'tx_bytes') or 0)
+
+                # Calculate rates
+                rx_rate, tx_rate = self.calculate_rates(name, rx_bytes, tx_bytes)
+
+                # Get IP address
+                ipv4 = self.get_ipv4(name)
+
+                # Use mapped name or device name
+                key = iface_map.get(name, name)
+
+                interfaces[key] = {
+                    'device': name,
+                    'state': self.read_file(iface_path / 'operstate').strip().upper() or 'UNKNOWN',
+                    'ipv4': ipv4,
+                    'rx_bytes': rx_bytes,
+                    'tx_bytes': tx_bytes,
+                    'rx_rate': rx_rate,
+                    'tx_rate': tx_rate,
+                    'rx_packets': int(self.read_file(stats_path / 'rx_packets') or 0),
+                    'tx_packets': int(self.read_file(stats_path / 'tx_packets') or 0),
+                    'rx_errors': int(self.read_file(stats_path / 'rx_errors') or 0),
+                    'tx_errors': int(self.read_file(stats_path / 'tx_errors') or 0)
+                }
+
+            self.send_json(interfaces)
+        except Exception as e:
+            self.send_error_json(500, str(e))
+
+    def handle_connections_summary(self):
+        """Connection tracking summary"""
+        try:
+            count = int(self.read_file('/proc/sys/net/netfilter/nf_conntrack_count') or 0)
+            max_count = int(self.read_file('/proc/sys/net/netfilter/nf_conntrack_max') or 262144)
+
+            # Get protocol breakdown using conntrack
+            by_protocol = {'tcp': 0, 'udp': 0, 'icmp': 0, 'other': 0}
+            try:
+                result = subprocess.run(
+                    ['conntrack', '-L', '-o', 'extended'],
+                    capture_output=True, text=True, timeout=3
+                )
+                for line in result.stdout.split('\n'):
+                    if line.startswith('tcp'):
+                        by_protocol['tcp'] += 1
+                    elif line.startswith('udp'):
+                        by_protocol['udp'] += 1
+                    elif line.startswith('icmp'):
+                        by_protocol['icmp'] += 1
+                    elif line.strip():
+                        by_protocol['other'] += 1
+            except:
+                pass
+
+            self.send_json({
+                'count': count,
+                'max': max_count,
+                'by_protocol': by_protocol
+            })
+        except Exception as e:
+            self.send_error_json(500, str(e))
+
+    def handle_services_status(self):
+        """Systemd services status"""
+        services_to_check = [
+            'nftables',
+            'caddy',
+            'prometheus',
+            'grafana',
+            'netdata',
+            'technitium-dns-server',
+            'router-dashboard'
+        ]
+
+        results = []
+        for service in services_to_check:
+            try:
+                result = subprocess.run(
+                    ['systemctl', 'is-active', service],
+                    capture_output=True, text=True, timeout=2
+                )
+                status = result.stdout.strip()
+                results.append({
+                    'name': service,
+                    'status': status,
+                    'active': result.returncode == 0
+                })
+            except:
+                results.append({
+                    'name': service,
+                    'status': 'unknown',
+                    'active': False
+                })
+
+        self.send_json({'services': results})
+
+    def handle_firewall_stats(self):
+        """nftables statistics"""
+        try:
+            result = subprocess.run(
+                ['nft', '-j', 'list', 'ruleset'],
+                capture_output=True, text=True, timeout=5
+            )
+
+            if result.returncode != 0:
+                self.send_json({'error': 'Failed to get nftables stats'})
+                return
+
+            data = json.loads(result.stdout)
+            rules_count = 0
+            flowtable_active = False
+
+            for item in data.get('nftables', []):
+                if 'rule' in item:
+                    rules_count += 1
+                if 'flowtable' in item:
+                    flowtable_active = True
+
+            self.send_json({
+                'rules_count': rules_count,
+                'flowtable_active': flowtable_active
+            })
+        except Exception as e:
+            self.send_error_json(500, str(e))
+
+    # === Helper Methods ===
+
+    def read_file(self, path):
+        """Read file contents safely"""
+        try:
+            with open(path, 'r') as f:
+                return f.read()
+        except:
+            return ''
+
+    def get_uptime(self):
+        """Get human-readable uptime"""
+        try:
+            uptime_secs = float(self.read_file('/proc/uptime').split()[0])
+            days = int(uptime_secs // 86400)
+            hours = int((uptime_secs % 86400) // 3600)
+            minutes = int((uptime_secs % 3600) // 60)
+            return f"up {days}d {hours}h {minutes}m"
+        except:
+            return 'unknown'
+
+    def parse_meminfo(self):
+        """Parse /proc/meminfo into dict"""
+        result = {}
+        try:
+            for line in self.read_file('/proc/meminfo').split('\n'):
+                if ':' in line:
+                    key, value = line.split(':')
+                    # Convert kB to bytes
+                    value = value.strip().replace(' kB', '')
+                    result[key.strip()] = int(value) * 1024
+        except:
+            pass
+        return result
+
+    def get_cpu_usage(self):
+        """Calculate CPU usage percentage"""
+        try:
+            # Read current stats
+            with open('/proc/stat', 'r') as f:
+                line = f.readline()
+
+            parts = line.split()
+            # user, nice, system, idle, iowait, irq, softirq, steal
+            idle = int(parts[4])
+            total = sum(int(p) for p in parts[1:8])
+
+            # Get previous values
+            prev_idle = getattr(self, '_prev_cpu_idle', idle)
+            prev_total = getattr(self, '_prev_cpu_total', total)
+
+            # Calculate
+            diff_idle = idle - prev_idle
+            diff_total = total - prev_total
+
+            # Store for next time
+            self._prev_cpu_idle = idle
+            self._prev_cpu_total = total
+
+            if diff_total == 0:
+                return 0.0
+
+            return (1.0 - diff_idle / diff_total) * 100
+        except:
+            return 0.0
+
+    def get_disk_usage(self, path):
+        """Get disk usage percentage for a path"""
+        try:
+            stat = os.statvfs(path)
+            total = stat.f_blocks * stat.f_frsize
+            free = stat.f_bfree * stat.f_frsize
+            used = total - free
+            return (used / total * 100) if total > 0 else 0
+        except:
+            return 0
+
+    def get_ipv4(self, interface):
+        """Get IPv4 address for interface"""
+        try:
+            result = subprocess.run(
+                ['ip', '-4', 'addr', 'show', interface],
+                capture_output=True, text=True, timeout=2
+            )
+            match = re.search(r'inet (\d+\.\d+\.\d+\.\d+)', result.stdout)
+            return match.group(1) if match else 'N/A'
+        except:
+            return 'N/A'
+
+    def calculate_rates(self, interface, rx_bytes, tx_bytes):
+        """Calculate RX/TX rates based on previous readings"""
+        global RATE_CACHE, RATE_CACHE_TIME
+
+        now = time.time()
+        rx_rate = 0
+        tx_rate = 0
+
+        cache_key = interface
+        if cache_key in RATE_CACHE:
+            prev_rx, prev_tx = RATE_CACHE[cache_key]
+            prev_time = RATE_CACHE_TIME[cache_key]
+            time_diff = now - prev_time
+
+            if time_diff > 0:
+                rx_rate = max(0, (rx_bytes - prev_rx) / time_diff)
+                tx_rate = max(0, (tx_bytes - prev_tx) / time_diff)
+
+        RATE_CACHE[cache_key] = (rx_bytes, tx_bytes)
+        RATE_CACHE_TIME[cache_key] = now
+
+        return int(rx_rate), int(tx_rate)
+
+
+def run_server():
+    """Start the HTTP server"""
+    handler = RouterAPIHandler
+
+    # Allow address reuse
+    socketserver.TCPServer.allow_reuse_address = True
+
+    with socketserver.TCPServer((BIND, PORT), handler) as httpd:
+        print(f"Router Dashboard serving on http://{BIND}:{PORT}")
+        print(f"Static files from: {STATIC_DIR}")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print("\nShutting down...")
+
+
+if __name__ == '__main__':
+    run_server()

@@ -1,92 +1,56 @@
 # Router web dashboard with real-time traffic monitoring
+# Enhanced version with Chart.js graphs and modular widgets
 { config, pkgs, lib, ... }:
 
 with lib;
 
 let
   cfg = config.services.router-dashboard;
-  
-  # Dashboard API script that provides router stats
-  dashboardAPI = pkgs.writeShellScriptBin "router-api" ''
-    #!/bin/sh
-    set -e
-    
-    get_interface_stats() {
-      local iface=$1
-      local label=$2
-      local role=$3
-      local ip_addr=$(${pkgs.iproute2}/bin/ip -4 addr show $iface 2>/dev/null | ${pkgs.gnugrep}/bin/grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
-      local status="down"
-      local rx_bytes=0
-      local tx_bytes=0
-      local rx_rate=0
-      local tx_rate=0
-      
-      if ${pkgs.iproute2}/bin/ip link show $iface up &>/dev/null; then
-        status="up"
-        if [ -f /sys/class/net/$iface/statistics/rx_bytes ]; then
-          rx_bytes=$(cat /sys/class/net/$iface/statistics/rx_bytes)
-        fi
-        if [ -f /sys/class/net/$iface/statistics/tx_bytes ]; then
-          tx_bytes=$(cat /sys/class/net/$iface/statistics/tx_bytes)
-        fi
-        
-        # Calculate rates (bytes/sec) - compare with previous reading
-        if [ -f /tmp/router-api-$iface-rx ]; then
-          local prev_rx=$(cat /tmp/router-api-$iface-rx)
-          local prev_time=$(cat /tmp/router-api-$iface-time)
-          local curr_time=$(date +%s)
-          local time_diff=$((curr_time - prev_time))
-          if [ $time_diff -gt 0 ]; then
-            rx_rate=$(( (rx_bytes - prev_rx) / time_diff ))
-            local prev_tx=$(cat /tmp/router-api-$iface-tx)
-            tx_rate=$(( (tx_bytes - prev_tx) / time_diff ))
-          fi
-        fi
-        
-        # Store current values for next calculation
-        echo $rx_bytes > /tmp/router-api-$iface-rx
-        echo $tx_bytes > /tmp/router-api-$iface-tx
-        echo $(date +%s) > /tmp/router-api-$iface-time
-      fi
-      
-      echo "\"$iface\": {\"device\": \"$iface\", \"label\": \"$label\", \"role\": \"$role\", \"status\": \"$status\", \"ip\": \"$ip_addr\", \"rx\": $rx_bytes, \"tx\": $tx_bytes, \"rx_rate\": $rx_rate, \"tx_rate\": $tx_rate}"
-    }
-    
-    # Get system info
-    hostname=$(${pkgs.hostname}/bin/hostname)
-    uptime=$(${pkgs.procps}/bin/uptime -p | ${pkgs.gnused}/bin/sed 's/up //')
-    active_conns=$(${pkgs.conntrack-tools}/bin/conntrack -C 2>/dev/null || echo 0)
-    
-    # Build JSON response
-    echo "{"
-    echo "  \"hostname\": \"$hostname\","
-    echo "  \"uptime\": \"$uptime\","
-    echo "  \"connections\": $active_conns,"
-    echo "  \"interfaces\": {"
-    
-    ${concatStringsSep "\n" (imap0 (idx: iface: ''
-      get_interface_stats "${iface.device}" "${iface.label}" "${iface.role}"
-      ${if idx < (length cfg.interfaces) - 1 then "echo \",\"" else ""}
-    '') cfg.interfaces)}
-    
-    echo "  }"
-    echo "}"
-  '';
 
-  # Simple web dashboard HTML - read from external file to avoid Nix/JavaScript syntax conflicts
-  dashboardHTML = ./dashboard.html;
+  # Package all dashboard static files
+  dashboardStatic = pkgs.stdenv.mkDerivation {
+    name = "router-dashboard-static";
+    src = ./router-dashboard;
+
+    installPhase = ''
+      mkdir -p $out
+      cp -r * $out/
+
+      # Generate config.js with Nix-provided configuration
+      cat > $out/js/config.js << 'EOF'
+      window.DASHBOARD_CONFIG = {
+        interfaces: ${builtins.toJSON (map (iface: {
+          device = iface.device;
+          label = iface.label;
+          role = iface.role;
+        }) cfg.interfaces)},
+        links: ${builtins.toJSON cfg.links},
+        services: ${builtins.toJSON cfg.services},
+        refreshInterval: ${toString cfg.refreshInterval}
+      };
+      EOF
+    '';
+  };
+
+  # API server script
+  apiServer = ./router-dashboard/api/server.py;
 
 in {
   options.services.router-dashboard = {
-    enable = mkEnableOption "router web dashboard";
-    
+    enable = mkEnableOption "enhanced router web dashboard";
+
     port = mkOption {
       type = types.port;
       default = 8888;
       description = "Port for the router dashboard";
     };
-    
+
+    bind-address = mkOption {
+      type = types.str;
+      default = "0.0.0.0";
+      description = "IP address to bind the dashboard to";
+    };
+
     interfaces = mkOption {
       type = types.listOf (types.submodule {
         options = {
@@ -96,7 +60,7 @@ in {
           };
           label = mkOption {
             type = types.str;
-            description = "Human-readable label for the interface (e.g., WAN, LAN, OPT1)";
+            description = "Human-readable label for the interface (e.g., WAN, LAN)";
           };
           role = mkOption {
             type = types.enum [ "wan" "lan" "opt" "mgmt" ];
@@ -113,79 +77,114 @@ in {
       ];
       description = "Network interfaces to monitor with labels";
     };
-    
-    bind-address = mkOption {
-      type = types.str;
-      default = "0.0.0.0";
-      description = "IP address to bind the dashboard to";
+
+    links = mkOption {
+      type = types.listOf (types.submodule {
+        options = {
+          label = mkOption {
+            type = types.str;
+            description = "Link button label";
+          };
+          url = mkOption {
+            type = types.str;
+            description = "URL to link to";
+          };
+          icon = mkOption {
+            type = types.str;
+            default = "";
+            description = "Optional emoji icon";
+          };
+        };
+      });
+      default = [
+        { label = "Netdata"; url = "http://gateway:8080"; icon = "📊"; }
+        { label = "Grafana"; url = "http://gateway:3001"; icon = "📈"; }
+        { label = "DNS Admin"; url = "http://gateway:5380"; icon = "🌍"; }
+        { label = "Prometheus"; url = "http://gateway:9090"; icon = "🎯"; }
+      ];
+      description = "Quick links to display on dashboard";
+    };
+
+    services = mkOption {
+      type = types.listOf types.str;
+      default = [
+        "nftables"
+        "caddy"
+        "prometheus"
+        "grafana"
+        "netdata"
+      ];
+      description = "Systemd services to monitor";
+    };
+
+    refreshInterval = mkOption {
+      type = types.int;
+      default = 5;
+      description = "Widget refresh interval in seconds";
+    };
+
+    theme = mkOption {
+      type = types.enum [ "dark" "light" ];
+      default = "dark";
+      description = "Dashboard color theme";
     };
   };
 
   config = mkIf cfg.enable {
-    # Create a simple HTTP server for the dashboard
+    # Router dashboard service
     systemd.services.router-dashboard = {
-      description = "Router Dashboard HTTP Server";
+      description = "Enhanced Router Dashboard HTTP Server";
       after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
-      
+
+      environment = {
+        DASHBOARD_PORT = toString cfg.port;
+        DASHBOARD_BIND = cfg.bind-address;
+        DASHBOARD_STATIC = "${dashboardStatic}";
+        DASHBOARD_THEME = cfg.theme;
+      };
+
       serviceConfig = {
         Type = "simple";
+        ExecStart = "${pkgs.python3}/bin/python3 ${apiServer}";
         Restart = "always";
-        RestartSec = "10s";
+        RestartSec = "5s";
+
+        # Run as dynamic user for security
+        DynamicUser = true;
+
+        # Security hardening
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        NoNewPrivileges = true;
+        ProtectKernelTunables = true;
+        ProtectControlGroups = true;
+        RestrictSUIDSGID = true;
+
+        # Allow reading network stats
+        AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
+        CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
+
+        # Read-only paths we need access to
+        ReadOnlyPaths = [
+          "/proc"
+          "/sys/class/net"
+        ];
       };
-      
-      script = ''
-        # Simple HTTP server using Python
-        ${pkgs.python3}/bin/python3 -c '
-import http.server
-import socketserver
-import subprocess
-import json
-from urllib.parse import urlparse
 
-PORT = ${toString cfg.port}
-BIND = "${cfg.bind-address}"
-
-class RouterHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        parsed_path = urlparse(self.path)
-        
-        if parsed_path.path == "/api/stats":
-            try:
-                result = subprocess.run(
-                    ["${dashboardAPI}/bin/router-api"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                
-                self.send_response(200)
-                self.send_header("Content-type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(result.stdout.encode())
-            except Exception as e:
-                self.send_response(500)
-                self.send_header("Content-type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": str(e)}).encode())
-        elif parsed_path.path == "/" or parsed_path.path == "/index.html":
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            with open("${dashboardHTML}", "rb") as f:
-                self.wfile.write(f.read())
-        else:
-            self.send_error(404)
-
-with socketserver.TCPServer((BIND, PORT), RouterHandler) as httpd:
-    print(f"Router dashboard serving on {BIND}:{PORT}")
-    httpd.serve_forever()
-'
-      '';
+      path = with pkgs; [
+        iproute2
+        procps
+        conntrack-tools
+        nftables
+        coreutils
+        systemd
+      ];
     };
 
-    # Allow dashboard port in firewall if using it
-    networking.firewall.allowedTCPPorts = mkIf (config.networking.firewall.enable) [ cfg.port ];
+    # Allow dashboard port in firewall
+    networking.firewall.allowedTCPPorts = mkIf config.networking.firewall.enable [ cfg.port ];
   };
 }
