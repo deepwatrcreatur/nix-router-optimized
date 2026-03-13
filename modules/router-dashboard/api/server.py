@@ -656,9 +656,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 })
                 return
 
+            # Find sudo wrapper (NixOS uses /run/wrappers/bin/sudo)
+            sudo_cmd = '/run/wrappers/bin/sudo'
+            if not os.path.exists(sudo_cmd):
+                sudo_cmd = 'sudo'
+
             # Get jail list
             result = subprocess.run(
-                ['sudo', f2b_client, 'status'],
+                [sudo_cmd, f2b_client, 'status'],
                 capture_output=True, text=True, timeout=5
             )
 
@@ -684,7 +689,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
             for jail in jails:
                 jail_result = subprocess.run(
-                    ['sudo', f2b_client, 'status', jail],
+                    [sudo_cmd, f2b_client, 'status', jail],
                     capture_output=True, text=True, timeout=5
                 )
 

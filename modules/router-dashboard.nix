@@ -194,19 +194,11 @@ in {
 
     # Allow any user to run fail2ban-client status (read-only) via sudo without password
     # This is safe since 'status' is a read-only command
-    security.sudo.extraRules = [{
-      users = [ "ALL" ];
-      commands = [
-        {
-          command = "${pkgs.fail2ban}/bin/fail2ban-client status";
-          options = [ "NOPASSWD" ];
-        }
-        {
-          command = "${pkgs.fail2ban}/bin/fail2ban-client status *";
-          options = [ "NOPASSWD" ];
-        }
-      ];
-    }];
+    # Use the symlink path which is stable across rebuilds
+    security.sudo.extraConfig = ''
+      ALL ALL=(ALL) NOPASSWD: /run/current-system/sw/bin/fail2ban-client status
+      ALL ALL=(ALL) NOPASSWD: /run/current-system/sw/bin/fail2ban-client status *
+    '';
 
     # Allow dashboard port in firewall
     networking.firewall.allowedTCPPorts = mkIf config.networking.firewall.enable [ cfg.port ];
