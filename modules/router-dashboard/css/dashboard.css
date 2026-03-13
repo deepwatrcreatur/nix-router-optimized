@@ -435,6 +435,184 @@ header h1 {
   border-bottom: none;
 }
 
+/* Gateway health widget */
+.gateway-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gateway-target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border-radius: 6px;
+}
+
+.gateway-target-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.gateway-target-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gateway-target-host {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.gateway-target-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-right: 12px;
+}
+
+.gateway-latency {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.gateway-loss {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.gateway-loss.has-loss {
+  color: var(--accent-red);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.status-up {
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+}
+
+.status-dot.status-down {
+  background: var(--accent-red);
+  box-shadow: 0 0 8px var(--accent-red);
+}
+
+/* Connections table */
+.connections-table-wrapper {
+  max-height: 350px;
+  overflow-y: auto;
+}
+
+.connections-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.connections-table th,
+.connections-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.connections-table th {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+}
+
+.connections-table tr:hover {
+  background: var(--bg-input);
+}
+
+.proto-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.proto-tcp {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--accent-blue);
+}
+
+.proto-udp {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--accent-green);
+}
+
+.proto-other {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-secondary);
+}
+
+.conn-endpoint {
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.conn-ip {
+  color: var(--text-primary);
+}
+
+.conn-port {
+  color: var(--text-muted);
+}
+
+.conn-state {
+  font-size: 0.75rem;
+}
+
+.state-established {
+  color: var(--accent-green);
+}
+
+.state-timewait {
+  color: var(--text-muted);
+}
+
+.conn-age {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+/* Widget controls */
+.widget-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.widget-select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.widget-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
 /* Animations */
 @keyframes pulse {
   0%, 100% { opacity: 1; }

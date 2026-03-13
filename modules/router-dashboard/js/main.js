@@ -107,6 +107,31 @@ class Dashboard {
     });
     services.render(container);
     this.widgets.push(services);
+
+    // Gateway health widget
+    const gateway = new GatewayWidget({
+      id: 'gateway',
+      refreshInterval: 10000
+    });
+    gateway.render(container);
+    this.widgets.push(gateway);
+
+    // Top connections widget
+    const topConns = new TopConnectionsWidget({
+      id: 'top-connections',
+      refreshInterval: 10000,
+      limit: 15
+    });
+    topConns.render(container);
+    this.widgets.push(topConns);
+
+    // Firewall widget
+    const firewall = new FirewallWidget({
+      id: 'firewall',
+      refreshInterval: 30000
+    });
+    firewall.render(container);
+    this.widgets.push(firewall);
   }
 
   /**

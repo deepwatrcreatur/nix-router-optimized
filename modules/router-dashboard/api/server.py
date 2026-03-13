@@ -48,10 +48,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_interface_stats()
         elif path == '/api/connections/summary':
             self.handle_connections_summary()
+        elif path == '/api/connections/top':
+            self.handle_connections_top(query)
         elif path == '/api/services/status':
             self.handle_services_status()
         elif path == '/api/firewall/stats':
             self.handle_firewall_stats()
+        elif path == '/api/gateway/health':
+            self.handle_gateway_health()
         elif path.startswith('/api/'):
             self.send_error(404, 'API endpoint not found')
         else:
@@ -295,6 +299,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(result.stdout)
             rules_count = 0
             flowtable_active = False
+            offloaded_flows = 0
 
             for item in data.get('nftables', []):
                 if 'rule' in item:
@@ -302,12 +307,184 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 if 'flowtable' in item:
                     flowtable_active = True
 
+            # Get flowtable flow count if available
+            try:
+                ft_result = subprocess.run(
+                    ['conntrack', '-L', '-o', 'extended'],
+                    capture_output=True, text=True, timeout=3
+                )
+                # Count flows with offload mark (simplified - actual implementation may vary)
+                offloaded_flows = ft_result.stdout.count('[OFFLOAD]')
+            except:
+                pass
+
+            # Get packet counters from interfaces
+            packets_in = 0
+            packets_out = 0
+            try:
+                for iface in ['ens16', 'ens17', 'ens18']:
+                    rx = self.read_file(f'/sys/class/net/{iface}/statistics/rx_packets')
+                    tx = self.read_file(f'/sys/class/net/{iface}/statistics/tx_packets')
+                    if rx:
+                        packets_in += int(rx)
+                    if tx:
+                        packets_out += int(tx)
+            except:
+                pass
+
             self.send_json({
                 'rules_count': rules_count,
-                'flowtable_active': flowtable_active
+                'flowtable_active': flowtable_active,
+                'offloaded_flows': offloaded_flows,
+                'packets_in': packets_in,
+                'packets_out': packets_out
             })
         except Exception as e:
             self.send_error_json(500, str(e))
+
+    def handle_gateway_health(self):
+        """Ping upstream gateways and DNS servers"""
+        targets = [
+            {'name': 'Gateway', 'host': self.get_default_gateway()},
+            {'name': 'Cloudflare', 'host': '1.1.1.1'},
+            {'name': 'Google', 'host': '8.8.8.8'},
+        ]
+
+        results = []
+        for target in targets:
+            if not target['host']:
+                continue
+
+            try:
+                result = subprocess.run(
+                    ['ping', '-c', '3', '-W', '2', target['host']],
+                    capture_output=True, text=True, timeout=10
+                )
+
+                latency = None
+                loss = 100.0
+                status = 'down'
+
+                if result.returncode == 0:
+                    # Parse ping output for latency
+                    # Example: "rtt min/avg/max/mdev = 1.234/2.345/3.456/0.567 ms"
+                    for line in result.stdout.split('\n'):
+                        if 'avg' in line and '/' in line:
+                            try:
+                                parts = line.split('=')[1].strip().split('/')
+                                latency = float(parts[1])
+                            except:
+                                pass
+                        if 'packet loss' in line:
+                            try:
+                                loss = float(line.split('%')[0].split()[-1])
+                            except:
+                                pass
+
+                    if latency is not None:
+                        status = 'up'
+
+                results.append({
+                    'name': target['name'],
+                    'host': target['host'],
+                    'latency': latency,
+                    'loss': loss,
+                    'status': status
+                })
+            except Exception as e:
+                results.append({
+                    'name': target['name'],
+                    'host': target['host'],
+                    'latency': None,
+                    'loss': 100.0,
+                    'status': 'error'
+                })
+
+        self.send_json({'targets': results})
+
+    def handle_connections_top(self, query):
+        """Get top connections by various criteria"""
+        try:
+            limit = int(query.get('limit', ['10'])[0])
+            filter_proto = query.get('filter', ['all'])[0]
+
+            connections = []
+            result = subprocess.run(
+                ['conntrack', '-L', '-o', 'extended'],
+                capture_output=True, text=True, timeout=5,
+                env={**os.environ, 'LC_ALL': 'C'}
+            )
+
+            for line in result.stdout.split('\n'):
+                if not line.strip():
+                    continue
+
+                parts = line.split()
+                if len(parts) < 10:
+                    continue
+
+                proto = parts[2].lower() if len(parts) > 2 else 'unknown'
+
+                # Apply filter
+                if filter_proto != 'all' and proto != filter_proto:
+                    continue
+
+                # Parse connection details
+                conn = {'protocol': proto}
+
+                # Extract timeout (4th field typically)
+                try:
+                    conn['timeout'] = int(parts[4]) if parts[4].isdigit() else None
+                except:
+                    conn['timeout'] = None
+
+                # Parse src/dst from the line
+                for part in parts:
+                    if part.startswith('src='):
+                        if 'src_ip' not in conn:
+                            conn['src_ip'] = part.split('=')[1]
+                    elif part.startswith('dst='):
+                        if 'dst_ip' not in conn:
+                            conn['dst_ip'] = part.split('=')[1]
+                    elif part.startswith('sport='):
+                        if 'src_port' not in conn:
+                            conn['src_port'] = part.split('=')[1]
+                    elif part.startswith('dport='):
+                        if 'dst_port' not in conn:
+                            conn['dst_port'] = part.split('=')[1]
+
+                # Get state for TCP
+                conn['state'] = None
+                for state in ['ESTABLISHED', 'TIME_WAIT', 'SYN_SENT', 'SYN_RECV', 'FIN_WAIT', 'CLOSE_WAIT', 'CLOSE']:
+                    if state in parts:
+                        conn['state'] = state
+                        break
+
+                # Only add if we have the required fields
+                if all(k in conn for k in ['src_ip', 'dst_ip', 'src_port', 'dst_port']):
+                    connections.append(conn)
+
+                if len(connections) >= limit:
+                    break
+
+            self.send_json({'connections': connections})
+        except Exception as e:
+            self.send_error_json(500, str(e))
+
+    def get_default_gateway(self):
+        """Get the default gateway IP"""
+        try:
+            result = subprocess.run(
+                ['ip', 'route', 'show', 'default'],
+                capture_output=True, text=True, timeout=2
+            )
+            # Parse: "default via 192.168.1.1 dev eth0"
+            for part in result.stdout.split():
+                if re.match(r'\d+\.\d+\.\d+\.\d+', part):
+                    return part
+        except:
+            pass
+        return None
 
     # === Helper Methods ===
 
