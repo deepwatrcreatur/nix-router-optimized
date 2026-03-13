@@ -19,6 +19,7 @@ class SystemWidget extends BaseWidget {
         <canvas id="${this.id}-disk-gauge"></canvas>
         <div class="gauge-label">Disk</div>
         <div class="gauge-value" id="${this.id}-disk-value">--%</div>
+        <div class="gauge-detail" id="${this.id}-disk-detail">-- / --</div>
       </div>
     ` : '';
 
@@ -37,6 +38,7 @@ class SystemWidget extends BaseWidget {
             <canvas id="${this.id}-mem-gauge"></canvas>
             <div class="gauge-label">Memory</div>
             <div class="gauge-value" id="${this.id}-mem-value">--%</div>
+            <div class="gauge-detail" id="${this.id}-mem-detail">-- / --</div>
           </div>
           ${diskGauge}
         </div>
@@ -124,10 +126,22 @@ class SystemWidget extends BaseWidget {
       this.updateGauge(this.memChart, memory);
       this.updateElement(`#${this.id}-mem-value`, this.formatPercent(memory));
 
+      // Update memory detail (used / total)
+      if (data.memory_used_human && data.memory_total_human) {
+        this.updateElement(`#${this.id}-mem-detail`,
+          `${data.memory_used_human} / ${data.memory_total_human}`);
+      }
+
       // Update Disk if enabled
       if (this.showDisk && data.disk !== undefined) {
         this.updateGauge(this.diskChart, data.disk);
         this.updateElement(`#${this.id}-disk-value`, this.formatPercent(data.disk));
+
+        // Update disk detail (used / total)
+        if (data.disk_used_human && data.disk_total_human) {
+          this.updateElement(`#${this.id}-disk-detail`,
+            `${data.disk_used_human} / ${data.disk_total_human}`);
+        }
       }
 
       // Update load average

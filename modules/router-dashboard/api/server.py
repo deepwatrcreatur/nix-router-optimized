@@ -101,10 +101,11 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             meminfo = self.parse_meminfo()
             mem_total = meminfo.get('MemTotal', 0)
             mem_available = meminfo.get('MemAvailable', 0)
-            mem_percent = ((mem_total - mem_available) / mem_total * 100) if mem_total > 0 else 0
+            mem_used = mem_total - mem_available
+            mem_percent = (mem_used / mem_total * 100) if mem_total > 0 else 0
 
             # Disk usage (root filesystem)
-            disk = self.get_disk_usage('/')
+            disk_percent, disk_used, disk_total = self.get_disk_usage_detailed('/')
 
             # Load average
             loadavg = self.read_file('/proc/loadavg').split()[:3] if self.read_file('/proc/loadavg') else ['0', '0', '0']
@@ -119,8 +120,15 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'cpu': cpu,
                 'memory': mem_percent,
                 'memory_total': mem_total,
+                'memory_used': mem_used,
                 'memory_available': mem_available,
-                'disk': disk,
+                'memory_total_human': self.format_bytes(mem_total),
+                'memory_used_human': self.format_bytes(mem_used),
+                'disk': disk_percent,
+                'disk_total': disk_total,
+                'disk_used': disk_used,
+                'disk_total_human': self.format_bytes(disk_total),
+                'disk_used_human': self.format_bytes(disk_used),
                 'load_avg': loadavg,
                 'processes': procs
             })
@@ -226,23 +234,39 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'router-dashboard'
         ]
 
+        # Find systemctl - try common NixOS paths
+        systemctl = None
+        for path in ['/run/current-system/sw/bin/systemctl', '/usr/bin/systemctl', 'systemctl']:
+            try:
+                result = subprocess.run([path, '--version'], capture_output=True, timeout=2)
+                if result.returncode == 0:
+                    systemctl = path
+                    break
+            except:
+                continue
+
+        if not systemctl:
+            self.send_json({'services': [], 'error': 'systemctl not found'})
+            return
+
         results = []
         for service in services_to_check:
             try:
                 result = subprocess.run(
-                    ['systemctl', 'is-active', service],
-                    capture_output=True, text=True, timeout=2
+                    [systemctl, 'is-active', service],
+                    capture_output=True, text=True, timeout=2,
+                    env={**os.environ, 'DBUS_SESSION_BUS_ADDRESS': ''}
                 )
-                status = result.stdout.strip()
+                status = result.stdout.strip() or 'unknown'
                 results.append({
                     'name': service,
                     'status': status,
-                    'active': result.returncode == 0
+                    'active': status == 'active'
                 })
-            except:
+            except Exception as e:
                 results.append({
                     'name': service,
-                    'status': 'unknown',
+                    'status': 'error',
                     'active': False
                 })
 
@@ -353,6 +377,30 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return (used / total * 100) if total > 0 else 0
         except:
             return 0
+
+    def get_disk_usage_detailed(self, path):
+        """Get disk usage with absolute values"""
+        try:
+            stat = os.statvfs(path)
+            total = stat.f_blocks * stat.f_frsize
+            free = stat.f_bfree * stat.f_frsize
+            used = total - free
+            percent = (used / total * 100) if total > 0 else 0
+            return percent, used, total
+        except:
+            return 0, 0, 0
+
+    def format_bytes(self, bytes_val):
+        """Format bytes to human readable string"""
+        if bytes_val == 0:
+            return "0 B"
+        units = ['B', 'KB', 'MB', 'GB', 'TB']
+        i = 0
+        val = float(bytes_val)
+        while val >= 1024 and i < len(units) - 1:
+            val /= 1024
+            i += 1
+        return f"{val:.1f} {units[i]}"
 
     def get_ipv4(self, interface):
         """Get IPv4 address for interface"""

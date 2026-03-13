@@ -280,6 +280,12 @@ header h1 {
   margin-top: 4px;
 }
 
+.gauge-detail {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
 /* Traffic chart */
 .traffic-chart-container {
   height: 200px;
