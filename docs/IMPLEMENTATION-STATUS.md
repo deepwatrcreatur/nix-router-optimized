@@ -104,14 +104,40 @@ modules/
 └── dashboard.html                # Legacy (can be removed)
 ```
 
-## Phase 2: Network Monitoring - NOT STARTED
+## Phase 2: Network Monitoring - COMPLETE
 
-### Planned
+### Implemented
 
-- [ ] Gateway health monitoring (latency, packet loss)
-- [ ] Connection tracking table (top connections)
-- [ ] Per-IP connection counts
-- [ ] More detailed interface statistics
+- [x] Gateway health monitoring (latency, packet loss)
+- [x] Connection tracking table (top connections with filter)
+- [x] Firewall stats widget (rules count, packet counters)
+
+### Widgets Added
+
+1. **Gateway Health Widget**
+   - Pings upstream gateway, Cloudflare (1.1.1.1), Google (8.8.8.8)
+   - Shows latency in ms and packet loss %
+   - Latency history graph
+   - Status indicators (UP/DOWN/DEGRADED)
+
+2. **Top Connections Widget**
+   - Filterable by protocol (All/TCP/UDP)
+   - Shows source/destination IPs and ports
+   - Connection state for TCP
+   - Timeout/age display
+
+3. **Firewall Widget**
+   - nftables rules count
+   - Flowtable status (ON/OFF)
+   - Total packets in/out
+
+### API Endpoints Added
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/gateway/health` | Ping latency to upstream gateways |
+| `/api/connections/top` | Top N connections with filtering |
+| `/api/firewall/stats` | Enhanced with packet counters |
 
 ## Phase 3: Service Integration - NOT STARTED
 
