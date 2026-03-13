@@ -67,6 +67,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_dns_stats()
         elif path == '/api/dhcp/leases':
             self.handle_dhcp_leases()
+        elif path == '/api/fail2ban/status':
+            self.handle_fail2ban_status()
         elif path.startswith('/api/'):
             self.send_error(404, 'API endpoint not found')
         else:
@@ -606,8 +608,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                     'leaseCount': len(leases)
                 })
 
-                # Add leases with scope name
-                for lease in leases[:20]:  # Limit to 20 per scope
+                # Add leases with scope name (show all from this scope)
+                for lease in leases:
                     all_leases.append({
                         'scope': scope_name,
                         'address': lease.get('address', ''),
@@ -617,12 +619,113 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                         'type': lease.get('type', '')
                     })
 
+            # Calculate real total before truncation
+            real_total = len(all_raw_leases)
+
             self.send_json({
                 'available': True,
                 'scopes': scope_stats,
-                'leases': all_leases[:50],  # Limit total leases
-                'totalLeases': len(all_leases)
+                'leases': all_leases[:100],  # Display up to 100 leases
+                'totalLeases': real_total,
+                'displayedLeases': min(len(all_leases), 100)
             })
+        except Exception as e:
+            self.send_json({
+                'available': False,
+                'message': str(e)
+            })
+
+    def handle_fail2ban_status(self):
+        """Get Fail2ban jail status and banned IPs"""
+        try:
+            # Find fail2ban-client
+            f2b_client = None
+            for path in ['/run/current-system/sw/bin/fail2ban-client', '/usr/bin/fail2ban-client', 'fail2ban-client']:
+                try:
+                    result = subprocess.run([path, '--version'], capture_output=True, timeout=2)
+                    if result.returncode == 0:
+                        f2b_client = path
+                        break
+                except:
+                    continue
+
+            if not f2b_client:
+                self.send_json({
+                    'available': False,
+                    'message': 'fail2ban-client not found'
+                })
+                return
+
+            # Get jail list
+            result = subprocess.run(
+                ['sudo', f2b_client, 'status'],
+                capture_output=True, text=True, timeout=5
+            )
+
+            if result.returncode != 0:
+                self.send_json({
+                    'available': False,
+                    'message': 'Failed to get fail2ban status'
+                })
+                return
+
+            # Parse jail list
+            jails = []
+            for line in result.stdout.split('\n'):
+                if 'Jail list:' in line:
+                    jail_names = line.split(':')[1].strip().split(', ')
+                    jails = [j.strip() for j in jail_names if j.strip()]
+                    break
+
+            # Get status for each jail
+            jail_stats = []
+            total_banned = 0
+            all_banned_ips = []
+
+            for jail in jails:
+                jail_result = subprocess.run(
+                    ['sudo', f2b_client, 'status', jail],
+                    capture_output=True, text=True, timeout=5
+                )
+
+                if jail_result.returncode != 0:
+                    continue
+
+                stats = {
+                    'name': jail,
+                    'currentlyFailed': 0,
+                    'totalFailed': 0,
+                    'currentlyBanned': 0,
+                    'totalBanned': 0,
+                    'bannedIPs': []
+                }
+
+                for line in jail_result.stdout.split('\n'):
+                    line = line.strip()
+                    if 'Currently failed:' in line:
+                        stats['currentlyFailed'] = int(line.split(':')[1].strip())
+                    elif 'Total failed:' in line:
+                        stats['totalFailed'] = int(line.split(':')[1].strip())
+                    elif 'Currently banned:' in line:
+                        stats['currentlyBanned'] = int(line.split(':')[1].strip())
+                    elif 'Total banned:' in line:
+                        stats['totalBanned'] = int(line.split(':')[1].strip())
+                    elif 'Banned IP list:' in line:
+                        ip_list = line.split(':')[1].strip()
+                        if ip_list:
+                            stats['bannedIPs'] = ip_list.split()
+                            all_banned_ips.extend(stats['bannedIPs'])
+
+                total_banned += stats['currentlyBanned']
+                jail_stats.append(stats)
+
+            self.send_json({
+                'available': True,
+                'jails': jail_stats,
+                'totalCurrentlyBanned': total_banned,
+                'allBannedIPs': list(set(all_banned_ips))
+            })
+
         except Exception as e:
             self.send_json({
                 'available': False,

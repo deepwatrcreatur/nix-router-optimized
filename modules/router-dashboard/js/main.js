@@ -148,6 +148,14 @@ class Dashboard {
     });
     dhcp.render(container);
     this.widgets.push(dhcp);
+
+    // Fail2ban widget
+    const fail2ban = new Fail2banWidget({
+      id: 'fail2ban',
+      refreshInterval: 30000
+    });
+    fail2ban.render(container);
+    this.widgets.push(fail2ban);
   }
 
   /**

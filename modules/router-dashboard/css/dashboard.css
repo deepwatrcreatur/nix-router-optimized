@@ -826,3 +826,90 @@ header h1 {
   border-radius: 4px;
   font-size: 0.85em;
 }
+
+/* Fail2ban Widget Styles */
+.f2b-jail-card {
+  background: var(--bg-input);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--accent-green);
+}
+
+.f2b-jail-card:last-child {
+  margin-bottom: 0;
+}
+
+.f2b-jail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.f2b-jail-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  font-size: 0.9rem;
+}
+
+.f2b-jail-banned {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg-primary);
+  border-radius: 10px;
+}
+
+.f2b-jail-banned.has-banned {
+  color: var(--accent-red);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.f2b-jail-stats {
+  display: flex;
+  gap: 15px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.f2b-banned-list {
+  background: var(--bg-input);
+  border-radius: 6px;
+  padding: 10px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.f2b-banned-ip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+}
+
+.f2b-banned-ip:last-child {
+  border-bottom: none;
+}
+
+.f2b-ip-badge {
+  font-size: 0.8rem;
+}
+
+.f2b-banned-ip code {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-red);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.f2b-no-bans {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 15px;
+  font-size: 0.9rem;
+}

@@ -177,14 +177,38 @@ modules/
 - Requires `TECHNITIUM_API_KEY_FILE` environment variable (automatically set from agenix)
 - Service control intentionally deferred - requires user authentication for write operations
 
-## Phase 4: Firewall & Security - NOT STARTED
+## Phase 4: Firewall & Security - IN PROGRESS
+
+### Implemented
+
+- [x] Fail2ban integration
+- [x] Blocked IP display
+- [x] Jail status monitoring
 
 ### Planned
 
-- [ ] nftables rule hit counters
-- [ ] Flowtable offload statistics
-- [ ] Fail2ban integration
-- [ ] Blocked IP display
+- [ ] nftables rule hit counters (requires counter rules in nftables config)
+- [ ] Flowtable offload statistics (requires flowtable configuration)
+
+### Widgets Added
+
+1. **Fail2ban Widget**
+   - Active jail count
+   - Currently banned IP count
+   - Per-jail statistics (failed attempts, total bans)
+   - Banned IP list display
+
+### API Endpoints Added
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/fail2ban/status` | Fail2ban jails, banned IPs, statistics |
+
+### Notes
+
+- Fail2ban widget requires sudoers rule for fail2ban-client (automatically configured)
+- nftables hit counters require counter rules to be defined in nftables config
+- Flowtable statistics require flowtable to be configured in the kernel
 
 ## Phase 5: Advanced Features - NOT STARTED
 

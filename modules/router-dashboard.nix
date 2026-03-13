@@ -187,8 +187,26 @@ in {
         coreutils
         systemd
         iputils  # for ping
+        fail2ban
+        "/run/wrappers"  # for sudo wrapper
       ];
     };
+
+    # Allow any user to run fail2ban-client status (read-only) via sudo without password
+    # This is safe since 'status' is a read-only command
+    security.sudo.extraRules = [{
+      users = [ "ALL" ];
+      commands = [
+        {
+          command = "${pkgs.fail2ban}/bin/fail2ban-client status";
+          options = [ "NOPASSWD" ];
+        }
+        {
+          command = "${pkgs.fail2ban}/bin/fail2ban-client status *";
+          options = [ "NOPASSWD" ];
+        }
+      ];
+    }];
 
     # Allow dashboard port in firewall
     networking.firewall.allowedTCPPorts = mkIf config.networking.firewall.enable [ cfg.port ];
