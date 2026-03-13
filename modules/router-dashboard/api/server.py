@@ -584,16 +584,18 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             all_leases = []
             scope_stats = []
 
+            # Get all leases (single API call for all scopes)
+            leases_url = f"{TECHNITIUM_URL}/api/dhcp/leases/list?token={token}"
+            leases_data = self.fetch_technitium_api(leases_url)
+            all_raw_leases = []
+            if leases_data and leases_data.get('status') == 'ok':
+                all_raw_leases = leases_data.get('response', {}).get('leases', [])
+
             for scope in scopes:
                 scope_name = scope.get('name', 'unknown')
 
-                # Get leases for this scope
-                leases_url = f"{TECHNITIUM_URL}/api/dhcp/scopes/getLeases?token={token}&name={scope_name}"
-                leases_data = self.fetch_technitium_api(leases_url)
-
-                leases = []
-                if leases_data and leases_data.get('status') == 'ok':
-                    leases = leases_data.get('response', {}).get('leases', [])
+                # Filter leases for this scope
+                leases = [l for l in all_raw_leases if l.get('scope') == scope_name]
 
                 # Add scope info
                 scope_stats.append({
