@@ -169,8 +169,9 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 # Calculate rates
                 rx_rate, tx_rate = self.calculate_rates(name, rx_bytes, tx_bytes)
 
-                # Get IP address
+                # Get IP addresses
                 ipv4 = self.get_ipv4(name)
+                ipv6_list = self.get_ipv6(name)
 
                 # Use mapped name or device name
                 key = iface_map.get(name, name)
@@ -179,6 +180,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                     'device': name,
                     'state': self.read_file(iface_path / 'operstate').strip().upper() or 'UNKNOWN',
                     'ipv4': ipv4,
+                    'ipv6': ipv6_list,
                     'rx_bytes': rx_bytes,
                     'tx_bytes': tx_bytes,
                     'rx_rate': rx_rate,
@@ -610,6 +612,19 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return match.group(1) if match else 'N/A'
         except:
             return 'N/A'
+
+    def get_ipv6(self, interface):
+        """Get IPv6 addresses for interface (global scope only)"""
+        try:
+            result = subprocess.run(
+                ['ip', '-6', 'addr', 'show', interface, 'scope', 'global'],
+                capture_output=True, text=True, timeout=2
+            )
+            # Find all global IPv6 addresses
+            addresses = re.findall(r'inet6 ([0-9a-f:]+)', result.stdout)
+            return addresses if addresses else []
+        except:
+            return []
 
     def calculate_rates(self, interface, rx_bytes, tx_bytes):
         """Calculate RX/TX rates based on previous readings"""

@@ -23,8 +23,12 @@ class InterfaceWidget extends BaseWidget {
       </div>
       <div class="widget-body">
         <div class="metric metric-small">
-          <div class="metric-label">IPv4 Address</div>
-          <div class="metric-value" id="${this.id}-ipv4">--</div>
+          <div class="metric-label">IPv4</div>
+          <div class="metric-value" id="${this.id}-ipv4" style="font-size: 1rem;">--</div>
+        </div>
+        <div class="metric metric-small" id="${this.id}-ipv6-container" style="display: none;">
+          <div class="metric-label">IPv6</div>
+          <div class="metric-value ipv6-addresses" id="${this.id}-ipv6" style="font-size: 0.75rem; word-break: break-all;">--</div>
         </div>
         <div class="stat-grid">
           <div class="metric metric-small">
@@ -116,8 +120,22 @@ class InterfaceWidget extends BaseWidget {
       const isUp = state === 'UP';
       this.updateStatus(isUp ? 'up' : 'down', state);
 
-      // Update IP
+      // Update IPv4
       this.updateElement(`#${this.id}-ipv4`, stats.ipv4 || 'N/A');
+
+      // Update IPv6
+      const ipv6Container = this.container?.querySelector(`#${this.id}-ipv6-container`);
+      const ipv6El = this.container?.querySelector(`#${this.id}-ipv6`);
+      if (ipv6Container && ipv6El) {
+        if (stats.ipv6 && stats.ipv6.length > 0) {
+          ipv6Container.style.display = 'block';
+          ipv6El.innerHTML = stats.ipv6.map(addr =>
+            `<div style="margin-bottom: 2px;">${addr}</div>`
+          ).join('');
+        } else {
+          ipv6Container.style.display = 'none';
+        }
+      }
 
       // Update current rates
       this.updateElement(`#${this.id}-rx`, this.formatBytes(stats.rx_rate, true));

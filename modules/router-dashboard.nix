@@ -97,10 +97,7 @@ in {
         };
       });
       default = [
-        { label = "Netdata"; url = "http://gateway:8080"; icon = "📊"; }
-        { label = "Grafana"; url = "http://gateway:3001"; icon = "📈"; }
         { label = "DNS Admin"; url = "http://gateway:5380"; icon = "🌍"; }
-        { label = "Prometheus"; url = "http://gateway:9090"; icon = "🎯"; }
       ];
       description = "Quick links to display on dashboard";
     };
