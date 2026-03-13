@@ -350,6 +350,18 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             {'name': 'Google', 'host': '8.8.8.8'},
         ]
 
+        # Find ping binary - prefer setuid wrapper on NixOS
+        ping_cmd = 'ping'
+        for path in ['/run/wrappers/bin/ping', '/usr/bin/ping', 'ping']:
+            try:
+                test = subprocess.run([path, '-c', '1', '-W', '1', '127.0.0.1'],
+                                     capture_output=True, timeout=3)
+                if test.returncode == 0:
+                    ping_cmd = path
+                    break
+            except:
+                continue
+
         results = []
         for target in targets:
             if not target['host']:
@@ -357,7 +369,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
             try:
                 result = subprocess.run(
-                    ['ping', '-c', '3', '-W', '2', target['host']],
+                    [ping_cmd, '-c', '3', '-W', '2', target['host']],
                     capture_output=True, text=True, timeout=10
                 )
 

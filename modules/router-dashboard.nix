@@ -163,9 +163,12 @@ in {
         ProtectControlGroups = true;
         RestrictSUIDSGID = true;
 
-        # Allow reading network stats
+        # Allow reading network stats and ping
         AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
         CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
+
+        # Needed for ping to work with dynamic user
+        PrivateUsers = false;
 
         # Read-only paths we need access to
         ReadOnlyPaths = [
@@ -181,6 +184,7 @@ in {
         nftables
         coreutils
         systemd
+        iputils  # for ping
       ];
     };
 
