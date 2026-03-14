@@ -68,6 +68,16 @@ Declarative Caddy configuration with automatic HTTPS for services.
 
 See `examples/` directory for complete working configurations.
 
+## Usage Notes
+
+- If another flake consumes this repo, deploy tested changes by pushing them and updating that flake's lock file. A temporary `path:` input works for local debugging, but it will break pure-eval rebuilds on other hosts.
+- The dashboard frontend uses browser-side layout persistence. After adding widgets or changing widget geometry, hard-refresh the page and use `Reset Layout` once if a widget appears to be missing.
+- The dashboard API is intended to run threaded. Long-running endpoints such as speed tests or firewall log streaming can stall the rest of the UI if the service is downgraded to a single-threaded server.
+- Service status is only meaningful for services that are actually enabled on the target host. Keep the monitored service list aligned with the host configuration instead of assuming Prometheus, Grafana, or Netdata are present everywhere.
+- Technitium DNS statistics vary by API version. On the current gateway, cache hits come from `totalCached` and cache size comes from `cachedEntries`, not `totalCachedQueries`.
+- Firewall log streaming and flow offload widgets need matching nftables support on the host. Without `FW-*` log rules and a runtime-created flowtable/offload rule, the dashboard will correctly show no events and `flowtable off`.
+- Fail2ban integration requires the dashboard service to have access to the fail2ban control path with the right privilege model. If the widget shows offline, verify backend access first before treating it as a frontend problem.
+
 ## Performance Improvements
 
 Typical improvements over default NixOS networking:

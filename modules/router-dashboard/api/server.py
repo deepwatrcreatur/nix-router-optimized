@@ -559,13 +559,23 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             )
             total_blocked = self.sum_numeric_values(
                 main_chart.get('totalBlockedQueries'),
+                main_chart.get('totalBlocked'),
                 stats.get('totalBlockedQueries'),
-                response.get('totalBlockedQueries')
+                stats.get('totalBlocked'),
+                response.get('totalBlockedQueries'),
+                response.get('totalBlocked')
             )
             total_cached = self.sum_numeric_values(
                 main_chart.get('totalCachedQueries'),
+                main_chart.get('totalCached'),
                 stats.get('totalCachedQueries'),
-                response.get('totalCachedQueries')
+                stats.get('totalCached'),
+                response.get('totalCachedQueries'),
+                response.get('totalCached')
+            )
+            cached_entries = self.sum_numeric_values(
+                stats.get('cachedEntries'),
+                response.get('cachedEntries')
             )
 
             # Get top stats
@@ -595,6 +605,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'totalQueries': total_queries,
                 'totalBlocked': total_blocked,
                 'totalCached': total_cached,
+                'cachedEntries': cached_entries,
                 'blockRate': (total_blocked / total_queries * 100) if total_queries > 0 else 0,
                 'cacheRate': (total_cached / total_queries * 100) if total_queries > 0 else 0,
                 'topDomains': top_domains,
@@ -631,6 +642,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             scopes = scopes_data.get('response', {}).get('scopes', [])
             all_leases = []
             scope_stats = []
+            sections = []
 
             # Get all leases (single API call for all scopes)
             leases_url = f"{TECHNITIUM_URL}/api/dhcp/leases/list?token={token}"
@@ -641,6 +653,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
             for scope in scopes:
                 scope_name = scope.get('name', 'unknown')
+                interface_name = (
+                    scope.get('interface')
+                    or scope.get('interfaceName')
+                    or scope.get('networkInterface')
+                    or scope.get('adapter')
+                    or scope_name
+                )
 
                 # Filter leases for this scope
                 leases = [l for l in all_raw_leases if l.get('scope') == scope_name]
@@ -648,22 +667,39 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 # Add scope info
                 scope_stats.append({
                     'name': scope_name,
+                    'interface': interface_name,
                     'enabled': scope.get('enabled', False),
                     'startAddress': scope.get('startingAddress', ''),
                     'endAddress': scope.get('endingAddress', ''),
                     'leaseCount': len(leases)
                 })
 
+                section_leases = []
                 # Add leases with scope name (show all from this scope)
                 for lease in leases:
-                    all_leases.append({
+                    lease_entry = {
                         'scope': scope_name,
+                        'interface': interface_name,
                         'address': lease.get('address', ''),
                         'hostname': lease.get('hostName', ''),
                         'hardwareAddress': lease.get('hardwareAddress', ''),
                         'leaseExpires': lease.get('leaseExpires', ''),
                         'type': lease.get('type', '')
-                    })
+                    }
+                    all_leases.append(lease_entry)
+                    section_leases.append(lease_entry)
+
+                sections.append({
+                    'id': scope_name,
+                    'title': interface_name if interface_name != scope_name else scope_name,
+                    'scope': scope_name,
+                    'interface': interface_name,
+                    'enabled': scope.get('enabled', False),
+                    'startAddress': scope.get('startingAddress', ''),
+                    'endAddress': scope.get('endingAddress', ''),
+                    'leaseCount': len(section_leases),
+                    'leases': section_leases[:50]
+                })
 
             # Calculate real total before truncation
             real_total = len(all_raw_leases)
@@ -672,6 +708,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'available': True,
                 'scopes': scope_stats,
                 'leases': all_leases[:100],  # Display up to 100 leases
+                'sections': sections,
                 'totalLeases': real_total,
                 'displayedLeases': min(len(all_leases), 100)
             })
