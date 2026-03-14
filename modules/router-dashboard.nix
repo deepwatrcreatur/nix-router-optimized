@@ -26,6 +26,12 @@ let
         }) cfg.interfaces)},
         links: ${builtins.toJSON cfg.links},
         services: ${builtins.toJSON cfg.services},
+        wolDevices: ${builtins.toJSON (map (device: {
+          name = device.name;
+          macAddress = device.macAddress;
+          broadcastAddress = device.broadcastAddress;
+          port = device.port;
+        }) cfg.wakeOnLan.devices)},
         refreshInterval: ${toString cfg.refreshInterval}
       };
       EOF
@@ -125,6 +131,41 @@ in {
       default = "dark";
       description = "Dashboard color theme";
     };
+
+    wakeOnLan.devices = mkOption {
+      type = types.listOf (types.submodule {
+        options = {
+          name = mkOption {
+            type = types.str;
+            description = "Display name for the Wake-on-LAN target.";
+          };
+          macAddress = mkOption {
+            type = types.str;
+            description = "Target MAC address in AA:BB:CC:DD:EE:FF format.";
+          };
+          broadcastAddress = mkOption {
+            type = types.str;
+            default = "255.255.255.255";
+            description = "Broadcast address used for the magic packet.";
+          };
+          port = mkOption {
+            type = types.port;
+            default = 9;
+            description = "UDP port used for Wake-on-LAN magic packets.";
+          };
+        };
+      });
+      default = [];
+      example = [
+        {
+          name = "Media Server";
+          macAddress = "AA:BB:CC:DD:EE:FF";
+          broadcastAddress = "10.10.10.255";
+          port = 9;
+        }
+      ];
+      description = "Devices exposed in the dashboard Wake-on-LAN widget.";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -140,6 +181,8 @@ in {
         DASHBOARD_BIND = cfg.bind-address;
         DASHBOARD_STATIC = "${dashboardStatic}";
         DASHBOARD_THEME = cfg.theme;
+        DASHBOARD_SERVICES = builtins.toJSON cfg.services;
+        DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
         TECHNITIUM_URL = "http://localhost:5380";
         TECHNITIUM_API_KEY_FILE = if config.age.secrets ? technitium-api-key
           then config.age.secrets.technitium-api-key.path
@@ -154,6 +197,7 @@ in {
 
         # Run as dynamic user for security
         DynamicUser = true;
+        SupplementaryGroups = [ "systemd-journal" ];
 
         # Security hardening
         ProtectSystem = "strict";
@@ -175,6 +219,7 @@ in {
         ReadOnlyPaths = [
           "/proc"
           "/sys/class/net"
+          "/var/log/journal"
           "/run/agenix"
         ];
       };
@@ -188,6 +233,7 @@ in {
         systemd
         iputils  # for ping
         fail2ban
+        speedtest-cli  # for speed tests
         "/run/wrappers"  # for sudo wrapper
       ];
     };

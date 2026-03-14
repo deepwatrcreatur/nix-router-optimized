@@ -10,9 +10,12 @@ import subprocess
 import json
 import os
 import re
+import socket
 import time
 import urllib.request
 import urllib.error
+import threading
+import select
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode
 
@@ -20,6 +23,14 @@ from urllib.parse import urlparse, parse_qs, urlencode
 PORT = int(os.environ.get('DASHBOARD_PORT', 8888))
 BIND = os.environ.get('DASHBOARD_BIND', '0.0.0.0')
 STATIC_DIR = os.environ.get('DASHBOARD_STATIC', '/etc/router-dashboard')
+try:
+    DASHBOARD_SERVICES = json.loads(os.environ.get('DASHBOARD_SERVICES', '[]'))
+except json.JSONDecodeError:
+    DASHBOARD_SERVICES = []
+try:
+    WOL_DEVICES = json.loads(os.environ.get('DASHBOARD_WOL_DEVICES', '[]'))
+except json.JSONDecodeError:
+    WOL_DEVICES = []
 
 # Rate tracking for interface stats
 RATE_CACHE = {}
@@ -29,6 +40,16 @@ RATE_CACHE_TIME = {}
 TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
 TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
 TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
+
+# Speed test state
+SPEEDTEST_STATE = {
+    'running': False,
+    'stage': None,
+    'progress': 0,
+    'result': None,
+    'error': None,
+    'thread': None
+}
 
 
 class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
@@ -40,6 +61,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         """Suppress default logging"""
         pass
+
+    def end_headers(self):
+        """Disable caching for dashboard assets and API responses"""
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -61,6 +89,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_services_status()
         elif path == '/api/firewall/stats':
             self.handle_firewall_stats()
+        elif path == '/api/firewall/logs/recent':
+            self.handle_firewall_logs_recent(query)
+        elif path == '/api/firewall/logs/stream':
+            self.handle_firewall_logs_stream(query)
         elif path == '/api/gateway/health':
             self.handle_gateway_health()
         elif path == '/api/dns/stats':
@@ -69,6 +101,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_dhcp_leases()
         elif path == '/api/fail2ban/status':
             self.handle_fail2ban_status()
+        elif path == '/api/speedtest/status':
+            self.handle_speedtest_status()
         elif path.startswith('/api/'):
             self.send_error(404, 'API endpoint not found')
         else:
@@ -76,6 +110,17 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             if path == '/':
                 self.path = '/index.html'
             super().do_GET()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == '/api/speedtest/run':
+            self.handle_speedtest_run()
+        elif path == '/api/wol/wake':
+            self.handle_wol_wake()
+        else:
+            self.send_error(404, 'API endpoint not found')
 
     def send_json(self, data, status=200):
         """Send JSON response"""
@@ -251,14 +296,12 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def handle_services_status(self):
         """Systemd services status"""
-        services_to_check = [
+        services_to_check = DASHBOARD_SERVICES or [
             'nftables',
             'caddy',
             'prometheus',
             'grafana',
-            'netdata',
-            'technitium-dns-server',
-            'router-dashboard'
+            'netdata'
         ]
 
         # Find systemctl - try common NixOS paths
@@ -278,24 +321,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
         results = []
         for service in services_to_check:
-            try:
-                result = subprocess.run(
-                    [systemctl, 'is-active', service],
-                    capture_output=True, text=True, timeout=2,
-                    env={**os.environ, 'DBUS_SESSION_BUS_ADDRESS': ''}
-                )
-                status = result.stdout.strip() or 'unknown'
-                results.append({
-                    'name': service,
-                    'status': status,
-                    'active': status == 'active'
-                })
-            except Exception as e:
-                results.append({
-                    'name': service,
-                    'status': 'error',
-                    'active': False
-                })
+            results.append(self.get_service_status(systemctl, service))
 
         self.send_json({'services': results})
 
@@ -511,7 +537,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             # Get dashboard stats
-            stats_url = f"{TECHNITIUM_URL}/api/dashboard/stats/get?token={token}&type=LastHour"
+            stats_url = f"{TECHNITIUM_URL}/api/dashboard/stats/get?token={token}&type=LastHour&utc=true"
             stats_data = self.fetch_technitium_api(stats_url)
 
             if not stats_data or stats_data.get('status') == 'error':
@@ -522,27 +548,47 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             response = stats_data.get('response', {})
-            stats = response.get('stats', {})
-            main_chart = stats.get('mainChartData', {})
+            stats = response.get('stats', response)
+            main_chart = stats.get('mainChartData', response.get('mainChartData', {}))
 
             # Calculate totals from chart data
-            total_queries = sum(main_chart.get('totalQueries', [0]))
-            total_blocked = sum(main_chart.get('totalBlockedQueries', [0]))
-            total_cached = sum(main_chart.get('totalCachedQueries', [0]))
+            total_queries = self.sum_numeric_values(
+                main_chart.get('totalQueries'),
+                stats.get('totalQueries'),
+                response.get('totalQueries')
+            )
+            total_blocked = self.sum_numeric_values(
+                main_chart.get('totalBlockedQueries'),
+                stats.get('totalBlockedQueries'),
+                response.get('totalBlockedQueries')
+            )
+            total_cached = self.sum_numeric_values(
+                main_chart.get('totalCachedQueries'),
+                stats.get('totalCachedQueries'),
+                response.get('totalCachedQueries')
+            )
 
             # Get top stats
-            top_url = f"{TECHNITIUM_URL}/api/dashboard/stats/getTop?token={token}&type=LastHour&statsType=TopDomains&limit=5"
+            top_url = f"{TECHNITIUM_URL}/api/dashboard/stats/getTop?token={token}&type=LastHour&statsType=TopDomains&limit=5&utc=true"
             top_data = self.fetch_technitium_api(top_url)
             top_domains = []
             if top_data and top_data.get('status') == 'ok':
-                top_domains = top_data.get('response', {}).get('topDomains', [])[:5]
+                top_response = top_data.get('response', {})
+                top_domains = (top_response.get('topDomains')
+                               or top_response.get('domains')
+                               or top_response.get('items')
+                               or [])[:5]
 
             # Get top clients
-            clients_url = f"{TECHNITIUM_URL}/api/dashboard/stats/getTop?token={token}&type=LastHour&statsType=TopClients&limit=5"
+            clients_url = f"{TECHNITIUM_URL}/api/dashboard/stats/getTop?token={token}&type=LastHour&statsType=TopClients&limit=5&utc=true"
             clients_data = self.fetch_technitium_api(clients_url)
             top_clients = []
             if clients_data and clients_data.get('status') == 'ok':
-                top_clients = clients_data.get('response', {}).get('topClients', [])[:5]
+                clients_response = clients_data.get('response', {})
+                top_clients = (clients_response.get('topClients')
+                               or clients_response.get('clients')
+                               or clients_response.get('items')
+                               or [])[:5]
 
             self.send_json({
                 'available': True,
@@ -663,14 +709,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
             # Get jail list
             result = subprocess.run(
-                [sudo_cmd, f2b_client, 'status'],
+                [sudo_cmd, '-n', f2b_client, 'status'],
                 capture_output=True, text=True, timeout=5
             )
 
             if result.returncode != 0:
                 self.send_json({
                     'available': False,
-                    'message': 'Failed to get fail2ban status'
+                    'message': result.stderr.strip() or result.stdout.strip() or 'Failed to get fail2ban status'
                 })
                 return
 
@@ -689,7 +735,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
             for jail in jails:
                 jail_result = subprocess.run(
-                    [sudo_cmd, f2b_client, 'status', jail],
+                    [sudo_cmd, '-n', f2b_client, 'status', jail],
                     capture_output=True, text=True, timeout=5
                 )
 
@@ -736,6 +782,233 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'available': False,
                 'message': str(e)
             })
+
+    def handle_speedtest_run(self):
+        """Start a speed test"""
+        global SPEEDTEST_STATE
+
+        if SPEEDTEST_STATE['running']:
+            self.send_json({'error': 'Speed test already running'}, 400)
+            return
+
+        # Find speedtest-cli
+        speedtest_cmd = None
+        for path in ['/run/current-system/sw/bin/speedtest-cli', '/usr/bin/speedtest-cli', 'speedtest-cli']:
+            try:
+                result = subprocess.run([path, '--version'], capture_output=True, timeout=2)
+                if result.returncode == 0:
+                    speedtest_cmd = path
+                    break
+            except:
+                continue
+
+        if not speedtest_cmd:
+            self.send_json({'error': 'speedtest-cli not found'}, 500)
+            return
+
+        # Reset state
+        SPEEDTEST_STATE['running'] = True
+        SPEEDTEST_STATE['stage'] = 'Initializing...'
+        SPEEDTEST_STATE['progress'] = 0
+        SPEEDTEST_STATE['result'] = None
+        SPEEDTEST_STATE['error'] = None
+
+        # Start speed test in background thread
+        def run_speedtest():
+            global SPEEDTEST_STATE
+            try:
+                SPEEDTEST_STATE['stage'] = 'Finding best server...'
+                SPEEDTEST_STATE['progress'] = 10
+
+                # Run speedtest-cli with JSON output
+                result = subprocess.run(
+                    [speedtest_cmd, '--json', '--secure'],
+                    capture_output=True, text=True, timeout=120
+                )
+
+                if result.returncode != 0:
+                    SPEEDTEST_STATE['error'] = result.stderr or 'Speed test failed'
+                    SPEEDTEST_STATE['running'] = False
+                    return
+
+                # Parse JSON output
+                data = json.loads(result.stdout)
+
+                # Extract results (speedtest-cli outputs bits/second, convert to Mbps)
+                download_mbps = data.get('download', 0) / 1_000_000
+                upload_mbps = data.get('upload', 0) / 1_000_000
+                ping_ms = data.get('ping', 0)
+
+                # Get server info
+                server = data.get('server', {})
+                server_name = f"{server.get('name', 'Unknown')} ({server.get('sponsor', '')})"
+
+                SPEEDTEST_STATE['result'] = {
+                    'download': download_mbps,
+                    'upload': upload_mbps,
+                    'ping': ping_ms,
+                    'server': server_name,
+                    'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S')
+                }
+                SPEEDTEST_STATE['progress'] = 100
+                SPEEDTEST_STATE['stage'] = 'Complete'
+
+            except subprocess.TimeoutExpired:
+                SPEEDTEST_STATE['error'] = 'Speed test timed out'
+            except json.JSONDecodeError as e:
+                SPEEDTEST_STATE['error'] = f'Failed to parse results: {e}'
+            except Exception as e:
+                SPEEDTEST_STATE['error'] = str(e)
+            finally:
+                SPEEDTEST_STATE['running'] = False
+
+        # Progress simulation thread (speedtest-cli doesn't give real-time progress)
+        def simulate_progress():
+            global SPEEDTEST_STATE
+            stages = [
+                (10, 'Finding best server...'),
+                (20, 'Connecting to server...'),
+                (30, 'Testing download speed...'),
+                (50, 'Testing download speed...'),
+                (70, 'Testing upload speed...'),
+                (85, 'Testing upload speed...'),
+                (95, 'Finalizing...')
+            ]
+            for progress, stage in stages:
+                if not SPEEDTEST_STATE['running']:
+                    break
+                SPEEDTEST_STATE['progress'] = progress
+                SPEEDTEST_STATE['stage'] = stage
+                time.sleep(3)
+
+        thread = threading.Thread(target=run_speedtest, daemon=True)
+        progress_thread = threading.Thread(target=simulate_progress, daemon=True)
+        SPEEDTEST_STATE['thread'] = thread
+        thread.start()
+        progress_thread.start()
+
+        self.send_json({'status': 'started'})
+
+    def handle_speedtest_status(self):
+        """Get speed test status"""
+        global SPEEDTEST_STATE
+
+        self.send_json({
+            'running': SPEEDTEST_STATE['running'],
+            'stage': SPEEDTEST_STATE['stage'],
+            'progress': SPEEDTEST_STATE['progress'],
+            'result': SPEEDTEST_STATE['result'],
+            'error': SPEEDTEST_STATE['error']
+        })
+
+    def handle_firewall_logs_recent(self, query):
+        """Return recent firewall log lines"""
+        limit = self.parse_positive_int(query.get('limit', ['30'])[0], default=30, minimum=1, maximum=200)
+
+        try:
+            logs = self.read_firewall_logs(limit=limit)
+            self.send_json({
+                'logs': logs,
+                'count': len(logs)
+            })
+        except Exception as e:
+            self.send_error_json(500, f'Failed to read firewall logs: {e}')
+
+    def handle_firewall_logs_stream(self, query):
+        """Stream firewall logs via Server-Sent Events"""
+        limit = self.parse_positive_int(query.get('limit', ['20'])[0], default=20, minimum=0, maximum=100)
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'keep-alive')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        try:
+            initial_logs = self.read_firewall_logs(limit=limit)
+            for entry in initial_logs:
+                self.write_sse_event('log', entry)
+
+            self.write_sse_event('ready', {'count': len(initial_logs)})
+
+            process = subprocess.Popen(
+                ['journalctl', '-k', '-f', '-n', '0', '-o', 'short-iso'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                bufsize=1
+            )
+
+            try:
+                stdout = process.stdout
+                if stdout is None:
+                    self.write_sse_event('error', {'message': 'journalctl stream unavailable'})
+                    return
+
+                while True:
+                    ready, _, _ = select.select([stdout], [], [], 15)
+                    if ready:
+                        line = stdout.readline()
+                        if not line:
+                            break
+
+                        entry = self.parse_firewall_log_line(line)
+                        if entry:
+                            self.write_sse_event('log', entry)
+                    else:
+                        self.write_sse_event('heartbeat', {'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S')})
+            finally:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:
+            try:
+                self.write_sse_event('error', {'message': str(e)})
+            except Exception:
+                pass
+
+    def handle_wol_wake(self):
+        """Send a Wake-on-LAN magic packet"""
+        if not WOL_DEVICES:
+            self.send_error_json(403, 'Wake-on-LAN is not configured')
+            return
+
+        try:
+            content_length = int(self.headers.get('Content-Length', '0'))
+            raw_body = self.rfile.read(content_length) if content_length > 0 else b'{}'
+            payload = json.loads(raw_body.decode('utf-8'))
+        except json.JSONDecodeError:
+            self.send_error_json(400, 'Invalid JSON payload')
+            return
+
+        mac_address = str(payload.get('macAddress', '')).strip()
+        if not self.is_valid_mac_address(mac_address):
+            self.send_error_json(400, 'Invalid or missing macAddress')
+            return
+
+        device = self.find_wol_device(mac_address)
+        if not device:
+            self.send_error_json(403, 'Requested device is not allowed')
+            return
+
+        broadcast_address = str(device.get('broadcastAddress', '255.255.255.255')).strip() or '255.255.255.255'
+        port = int(device.get('port', 9))
+
+        try:
+            self.send_magic_packet(mac_address, broadcast_address, port)
+            self.send_json({
+                'status': 'sent',
+                'macAddress': mac_address,
+                'broadcastAddress': broadcast_address,
+                'port': port
+            })
+        except Exception as e:
+            self.send_error_json(500, f'Failed to send magic packet: {e}')
 
     def get_technitium_token(self):
         """Get Technitium API token from file or cache"""
@@ -787,6 +1060,172 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         except:
             pass
         return None
+
+    def parse_positive_int(self, value, default=0, minimum=0, maximum=None):
+        """Parse positive integer query parameter safely"""
+        try:
+            result = int(value)
+        except (TypeError, ValueError):
+            return default
+
+        if result < minimum:
+            return default
+        if maximum is not None and result > maximum:
+            return maximum
+        return result
+
+    def sum_numeric_values(self, *values):
+        """Sum numeric values from scalars or lists"""
+        total = 0
+        for value in values:
+            if value is None:
+                continue
+            if isinstance(value, list):
+                total += sum(v for v in value if isinstance(v, (int, float)))
+            elif isinstance(value, (int, float)):
+                total += value
+        return total
+
+    def get_service_status(self, systemctl, service):
+        """Resolve and return status for a systemd unit name"""
+        candidates = [service]
+        if not service.endswith('.service'):
+            candidates.append(f'{service}.service')
+
+        for candidate in candidates:
+            try:
+                result = subprocess.run(
+                    [systemctl, 'show', candidate, '--property=Id,ActiveState,LoadState', '--value'],
+                    capture_output=True, text=True, timeout=3,
+                    env={**os.environ, 'DBUS_SESSION_BUS_ADDRESS': ''}
+                )
+
+                if result.returncode != 0:
+                    continue
+
+                values = result.stdout.strip().splitlines()
+                if len(values) < 3:
+                    continue
+
+                unit_id, active_state, load_state = values[:3]
+                if load_state == 'not-found':
+                    continue
+
+                return {
+                    'name': service,
+                    'unit': unit_id or candidate,
+                    'status': active_state or 'unknown',
+                    'active': active_state == 'active'
+                }
+            except Exception:
+                continue
+
+        return {
+            'name': service,
+            'unit': '',
+            'status': 'not-found',
+            'active': False
+        }
+
+    def read_firewall_logs(self, limit=30):
+        """Read recent firewall logs from the kernel journal"""
+        result = subprocess.run(
+            ['journalctl', '-k', '-n', str(limit * 5), '-o', 'short-iso', '--no-pager'],
+            capture_output=True, text=True, timeout=5
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or 'journalctl failed')
+
+        logs = []
+        for line in result.stdout.splitlines():
+            entry = self.parse_firewall_log_line(line)
+            if entry:
+                logs.append(entry)
+
+        return logs[-limit:]
+
+    def parse_firewall_log_line(self, line):
+        """Parse a kernel journal line into structured firewall log data"""
+        if 'FW-' not in line:
+            return None
+
+        raw = line.strip()
+        prefix_match = re.search(r'(FW-[A-Z-]+)', raw)
+        prefix = prefix_match.group(1) if prefix_match else 'FW-LOG'
+
+        fields = {}
+        for key in ['IN', 'OUT', 'MAC', 'SRC', 'DST', 'LEN', 'TOS', 'PREC', 'TTL',
+                    'ID', 'DF', 'PROTO', 'SPT', 'DPT', 'WINDOW', 'RES', 'SYN',
+                    'URGP', 'MARK']:
+            match = re.search(rf'\b{key}=([^\s]+)', raw)
+            if match:
+                fields[key] = match.group(1)
+
+        action = prefix.replace('FW-', '').replace('-', ' ').title()
+        proto = fields.get('PROTO', '--')
+        src = fields.get('SRC', '--')
+        dst = fields.get('DST', '--')
+
+        summary = f'{action}: {proto} {src}'
+        if 'SPT' in fields:
+            summary += f':{fields["SPT"]}'
+        summary += f' -> {dst}'
+        if 'DPT' in fields:
+            summary += f':{fields["DPT"]}'
+
+        timestamp_match = re.match(r'^(\S+\s+\S+)\s+', raw)
+
+        return {
+            'timestamp': timestamp_match.group(1) if timestamp_match else '',
+            'prefix': prefix,
+            'action': action,
+            'summary': summary,
+            'raw': raw,
+            'interfaceIn': fields.get('IN', ''),
+            'interfaceOut': fields.get('OUT', ''),
+            'protocol': proto,
+            'src': src,
+            'srcPort': fields.get('SPT'),
+            'dst': dst,
+            'dstPort': fields.get('DPT')
+        }
+
+    def write_sse_event(self, event_name, payload):
+        """Write a single SSE event to the client"""
+        body = json.dumps(payload)
+        self.wfile.write(f'event: {event_name}\n'.encode())
+        self.wfile.write(f'data: {body}\n\n'.encode())
+        self.wfile.flush()
+
+    def is_valid_mac_address(self, value):
+        """Validate MAC address format"""
+        return bool(re.fullmatch(r'([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}', value))
+
+    def normalize_mac_address(self, value):
+        """Normalize MAC address for comparisons"""
+        return value.replace('-', ':').upper()
+
+    def find_wol_device(self, mac_address):
+        """Return configured Wake-on-LAN device by MAC address"""
+        normalized_mac = self.normalize_mac_address(mac_address)
+        for device in WOL_DEVICES:
+            configured_mac = str(device.get('macAddress', ''))
+            if self.is_valid_mac_address(configured_mac) and self.normalize_mac_address(configured_mac) == normalized_mac:
+                return device
+        return None
+
+    def send_magic_packet(self, mac_address, broadcast_address, port):
+        """Send a Wake-on-LAN magic packet over UDP broadcast"""
+        mac_hex = self.normalize_mac_address(mac_address).replace(':', '')
+        payload = bytes.fromhex('FF' * 6 + mac_hex * 16)
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.sendto(payload, (broadcast_address, port))
+        finally:
+            sock.close()
 
     # === Helper Methods ===
 

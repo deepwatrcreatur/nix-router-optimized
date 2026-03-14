@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-03-12
+Last updated: 2026-03-14
 
 ## Phase 1: Core Dashboard - COMPLETE
 
@@ -210,14 +210,48 @@ modules/
 - nftables hit counters require counter rules to be defined in nftables config
 - Flowtable statistics require flowtable to be configured in the kernel
 
-## Phase 5: Advanced Features - NOT STARTED
+## Phase 5: Advanced Features - COMPLETE
 
-### Planned
+### Implemented
 
-- [ ] Live firewall logging (SSE)
-- [ ] Speed test integration
-- [ ] Wake-on-LAN
-- [ ] GridStack drag-and-drop layout
+- [x] Speed test integration
+- [x] Wake-on-LAN
+- [x] Live firewall logging (SSE)
+- [x] GridStack drag-and-drop layout
+
+### Widgets Added
+
+1. **Speed Test Widget**
+   - On-demand internet speed testing using speedtest-cli
+   - Displays download/upload speeds (Mbps) and ping (ms)
+   - Shows server name used for testing
+   - Progress indicator during test
+   - Test history stored in localStorage (last 10 tests)
+
+2. **Wake-on-LAN Widget**
+   - Configurable device list from NixOS module options
+   - Sends UDP magic packets directly from the dashboard API
+   - Per-device wake action with success/error feedback
+
+3. **Firewall Log Widget**
+   - Server-Sent Events (SSE) stream for live firewall activity
+   - Recent log backlog on initial connect
+   - Parses prefixed nftables kernel log lines into structured entries
+
+4. **GridStack Layout**
+   - Drag-and-drop and resize support for widgets
+   - Layout persistence in localStorage
+   - Reset layout control in the dashboard header
+
+### API Endpoints Added
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/speedtest/run` | POST | Start a new speed test |
+| `/api/speedtest/status` | GET | Get test status/results |
+| `/api/wol/wake` | POST | Send a Wake-on-LAN magic packet |
+| `/api/firewall/logs/recent` | GET | Return recent firewall log entries |
+| `/api/firewall/logs/stream` | GET | Stream live firewall logs over SSE |
 
 ## Usage Example
 
@@ -250,6 +284,15 @@ modules/
 
     refreshInterval = 5;
     theme = "dark";
+
+    wakeOnLan.devices = [
+      {
+        name = "Media Server";
+        macAddress = "AA:BB:CC:DD:EE:FF";
+        broadcastAddress = "10.10.10.255";
+        port = 9;
+      }
+    ];
   };
 }
 ```
@@ -268,10 +311,10 @@ To test the dashboard locally:
 2. Interface mapping hardcoded in server.py - needs to use Nix config
 3. No authentication - assumes trusted LAN access
 4. Light theme not yet implemented (CSS variables ready)
+5. Live firewall logging depends on nftables log rules with `FW-*` prefixes
 
 ## Next Steps
 
 1. Test on actual gateway hardware
 2. Add error handling for API failures
-3. Implement remaining phases as needed
-4. Consider adding Prometheus query support for historical data
+3. Consider adding Prometheus query support for historical data

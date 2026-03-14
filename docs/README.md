@@ -6,8 +6,8 @@ This directory contains planning, research, and implementation status documents 
 
 If you're an AI agent picking up this work, start here:
 
-### Current State (Phase 1 Complete)
-- **Enhanced dashboard**: Modular widget-based dashboard with Chart.js graphs
+### Current State
+- **Enhanced dashboard**: Modular widget-based dashboard with Chart.js graphs and GridStack layout persistence
 - **Location**: `modules/router-dashboard/` (HTML, CSS, JS, API)
 - **Module**: `modules/router-dashboard.nix`
 - **Gateway config**: `../unified-nix-configuration/hosts/nixos/gateway/`
@@ -19,13 +19,15 @@ If you're an AI agent picking up this work, start here:
 4. Connection tracking display ✅
 5. Services status table ✅
 6. Quick links widget ✅
+7. Speed test widget ✅
+8. Wake-on-LAN widget ✅
+9. Live firewall logging (SSE) ✅
+10. Drag-and-drop layout persistence ✅
 
-### What's Remaining (Phases 2-5)
-- Gateway health monitoring (latency graphs)
-- DNS/DHCP statistics integration
-- Firewall rule statistics
-- Live logging (SSE)
-- GridStack drag-and-drop layout
+### Remaining Gaps
+- Phase 3 service control is still deferred
+- Phase 4 nftables hit counters/flowtable detail remain partial
+- Historical metrics via Prometheus are not integrated yet
 
 ### Key Documents
 

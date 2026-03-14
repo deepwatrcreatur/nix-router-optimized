@@ -7,7 +7,9 @@ class BaseWidget {
     this.id = config.id || this.generateId();
     this.title = config.title || 'Widget';
     this.refreshInterval = config.refreshInterval || 5000;
+    this.grid = config.grid || null;
     this.container = null;
+    this.gridItem = null;
     this.intervalId = null;
     this.isLoading = true;
     this.hasError = false;
@@ -70,15 +72,45 @@ class BaseWidget {
       return;
     }
 
+    const gridItem = document.createElement('div');
+    gridItem.className = 'grid-stack-item';
+    gridItem.dataset.widgetId = this.id;
+
+    const gridConfig = this.getGridConfig();
+    Object.entries(gridConfig).forEach(([key, value]) => {
+      gridItem.setAttribute(`gs-${key}`, String(value));
+    });
+
     const wrapper = document.createElement('div');
     wrapper.id = this.id;
-    wrapper.className = 'widget ' + (this.widgetClass || '');
+    wrapper.className = 'grid-stack-item-content widget ' + (this.widgetClass || '');
     wrapper.innerHTML = this.getMarkup();
-    container.appendChild(wrapper);
+    gridItem.appendChild(wrapper);
+    container.appendChild(gridItem);
 
+    this.gridItem = gridItem;
     this.container = wrapper;
     this.onMounted();
     this.start();
+  }
+
+  getGridConfig() {
+    if (this.grid) {
+      return this.grid;
+    }
+
+    const sizeClass = (this.widgetClass || '').split(' ').find(name =>
+      [ 'widget-sm', 'widget-md', 'widget-lg', 'widget-xl', 'widget-full' ].includes(name));
+
+    const defaults = {
+      'widget-sm': { w: 3, h: 3 },
+      'widget-md': { w: 4, h: 4 },
+      'widget-lg': { w: 6, h: 4 },
+      'widget-xl': { w: 8, h: 5 },
+      'widget-full': { w: 12, h: 4 }
+    };
+
+    return defaults[sizeClass] || { w: 4, h: 4 };
   }
 
   /**
