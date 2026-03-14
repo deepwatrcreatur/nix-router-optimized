@@ -1387,10 +1387,11 @@ def run_server():
     """Start the HTTP server"""
     handler = RouterAPIHandler
 
-    # Allow address reuse
-    socketserver.TCPServer.allow_reuse_address = True
+    class ThreadingHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
 
-    with socketserver.TCPServer((BIND, PORT), handler) as httpd:
+    with ThreadingHTTPServer((BIND, PORT), handler) as httpd:
         print(f"Router Dashboard serving on http://{BIND}:{PORT}")
         print(f"Static files from: {STATIC_DIR}")
         try:
