@@ -1101,7 +1101,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         for candidate in candidates:
             try:
                 result = subprocess.run(
-                    [systemctl, 'show', candidate, '--property=Id,ActiveState,LoadState', '--value'],
+                    [systemctl, 'show', candidate, '--property=Id,ActiveState,LoadState'],
                     capture_output=True, text=True, timeout=3,
                     env={**os.environ, 'DBUS_SESSION_BUS_ADDRESS': ''}
                 )
@@ -1109,11 +1109,19 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 if result.returncode != 0:
                     continue
 
-                values = result.stdout.strip().splitlines()
-                if len(values) < 3:
+                properties = {}
+                for line in result.stdout.strip().splitlines():
+                    if '=' not in line:
+                        continue
+                    key, value = line.split('=', 1)
+                    properties[key] = value
+
+                if not properties:
                     continue
 
-                unit_id, active_state, load_state = values[:3]
+                unit_id = properties.get('Id', candidate)
+                active_state = properties.get('ActiveState', 'unknown')
+                load_state = properties.get('LoadState', 'unknown')
                 if load_state == 'not-found':
                     continue
 
