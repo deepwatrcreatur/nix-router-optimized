@@ -83,7 +83,7 @@ class Dashboard {
       const widget = new InterfaceWidget({
         id: `iface-${iface.device}`,
         grid: { w: 3, h: 4 },
-        interface: iface.device,
+        interface: iface.role || iface.device,
         label: iface.label,
         role: iface.role,
         refreshInterval: 5000
