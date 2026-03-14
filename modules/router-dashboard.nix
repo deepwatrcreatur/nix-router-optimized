@@ -195,8 +195,8 @@ in {
         Restart = "always";
         RestartSec = "5s";
 
-        # Run as dynamic user for security
-        DynamicUser = true;
+        User = "root";
+        Group = "root";
         SupplementaryGroups = [ "systemd-journal" ];
 
         # Security hardening
@@ -211,7 +211,6 @@ in {
         AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
         CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
 
-        # Needed for ping to work with dynamic user
         PrivateUsers = false;
 
         # Read-only paths we need access to
