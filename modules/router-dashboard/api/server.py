@@ -373,7 +373,9 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
         config_valid = False
         config_message = 'caddy binary not found'
-        if caddy_bin:
+        if properties.get('ActiveState') == 'active':
+            config_valid, config_message = self.check_live_caddy_admin_config()
+        elif caddy_bin:
             try:
                 validate_env = dict(os.environ)
                 if env_present:
@@ -416,6 +418,16 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'message': message,
             'logs': logs[-12:]
         })
+
+    def check_live_caddy_admin_config(self):
+        """Use the local admin API as the source of truth for the running Caddy instance."""
+        try:
+            with urllib.request.urlopen('http://127.0.0.1:2019/config/', timeout=3) as response:
+                if response.status == 200:
+                    return True, 'Live Caddy admin config loaded successfully'
+                return False, f'Caddy admin API returned HTTP {response.status}'
+        except Exception as exc:
+            return False, f'Unable to read live Caddy admin config: {exc}'
 
     def validate_caddy_config(self, caddy_bin, validate_env):
         """Validate the live Caddy config without requiring writable runtime log targets"""
