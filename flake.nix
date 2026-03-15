@@ -21,6 +21,7 @@
       caddy-reverse-proxy = import ./modules/caddy-reverse-proxy.nix;
       dns = import ./modules/dns.nix;
       dns-zone = import ./modules/dns-zone.nix;
+      "dns-blocklists" = import ./modules/dns-blocklists.nix;
       monitoring = import ./modules/monitoring.nix;
     };
 

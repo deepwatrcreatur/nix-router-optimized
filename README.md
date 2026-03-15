@@ -12,6 +12,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **Router Dashboard**: Real-time web UI with traffic graphs, interface stats, WAN IP
 - **Grafana Integration**: Pre-configured dashboards for network monitoring
 - **Caddy Reverse Proxy**: Declarative HTTPS with automatic Let's Encrypt
+- **Technitium Block Lists**: Declarative DNS blocklist presets with additive custom URLs
 
 ## Quick Start
 
@@ -64,9 +65,50 @@ Flow offloading configuration for nftables to bypass connection tracking for est
 ### caddy-reverse-proxy
 Declarative Caddy configuration with automatic HTTPS for services.
 
+### dns-blocklists
+Declarative Technitium DNS blocklist management with curated presets and additive custom URLs.
+
 ## Configuration Examples
 
 See `examples/` directory for complete working configurations.
+
+## Technitium Block Lists
+
+The `dns-blocklists` module manages Technitium blocklist URLs declaratively through the Technitium HTTP API.
+
+Example:
+
+```nix
+{
+  imports = [
+    router-optimized.nixosModules."dns-blocklists"
+  ];
+
+  services.technitium-dns-server.enable = true;
+
+  services.router.dnsBlockLists = {
+    enable = true;
+    presets = [
+      "hagezi-normal"
+      "hagezi-nrd-14d"
+    ];
+    extraUrls = [
+      "https://example.com/custom-blocklist.txt"
+    ];
+    updateIntervalHours = 24;
+  };
+}
+```
+
+Available presets:
+- `stevenblack`
+- `oisd-big`
+- `hagezi-light`
+- `hagezi-normal`
+- `hagezi-pro`
+- `hagezi-pro-plus`
+- `hagezi-ultimate`
+- `hagezi-nrd-14d`
 
 ## Usage Notes
 
