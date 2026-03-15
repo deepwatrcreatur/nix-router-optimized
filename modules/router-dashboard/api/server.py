@@ -355,7 +355,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'ExecStartPre',
             'EnvironmentFiles',
             'ExecStart'
-        ])
+        ])        
         caddy_bin = self.find_executable([
             '/run/current-system/sw/bin/caddy',
             '/usr/bin/caddy',
@@ -364,31 +364,30 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         env_file = '/run/caddy/caddy.env'
         token_file = '/run/agenix/cloudflare-api-key'
         env_present = os.path.exists(env_file)
+        env_configured = '/run/caddy/caddy.env' in properties.get('EnvironmentFiles', '')
         token_exists = os.path.exists(token_file)
+        token_value = ''
+        if token_exists:
+            token_value = self.read_file(token_file).strip()
 
         config_valid = False
         config_message = 'caddy binary not found'
         if caddy_bin:
             try:
+                validate_env = dict(os.environ)
+                if env_present:
+                    validate_env.update(self.read_env_file(env_file))
+                elif token_value:
+                    validate_env['CLOUDFLARE_API_TOKEN'] = token_value
+
                 validate = subprocess.run(
                     [caddy_bin, 'validate', '--config', '/etc/caddy/caddy_config', '--adapter', 'caddyfile'],
-                    capture_output=True, text=True, timeout=10
+                    capture_output=True, text=True, timeout=10, env=validate_env
                 )
                 config_valid = validate.returncode == 0
                 config_message = (validate.stderr or validate.stdout).strip() or ('Config is valid' if config_valid else 'Validation failed')
             except Exception as exc:
                 config_message = str(exc)
-
-        token_readable = False
-        if token_exists:
-            try:
-                test_result = subprocess.run(
-                    ['su', '-s', '/bin/sh', 'caddy', '-c', f'test -r {token_file}'],
-                    capture_output=True, text=True, timeout=5
-                )
-                token_readable = test_result.returncode == 0
-            except Exception:
-                token_readable = False
 
         logs = self.read_service_logs('caddy', 25)
         latest_error = next((line for line in reversed(logs) if 'error' in line.lower() or 'fail' in line.lower() or 'permission denied' in line.lower()), '')
@@ -404,12 +403,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'configMessage': config_message,
             'environmentFile': {
                 'path': env_file,
+                'configured': env_configured,
                 'present': env_present
             },
             'cloudflareToken': {
                 'path': token_file,
                 'exists': token_exists,
-                'readableByService': token_readable
+                'usableForValidation': bool(token_value)
             },
             'message': latest_error or config_message,
             'logs': logs[-12:]
@@ -1317,6 +1317,21 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return [result.stderr.strip() or 'journalctl failed']
 
         return [line for line in result.stdout.splitlines() if line.strip()]
+
+    def read_env_file(self, path):
+        """Parse simple KEY=VALUE environment files"""
+        values = {}
+        try:
+            with open(path, 'r') as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line or line.startswith('#') or '=' not in line:
+                        continue
+                    key, value = line.split('=', 1)
+                    values[key] = value
+        except Exception:
+            return values
+        return values
 
     def extract_exec_path(self, systemd_exec_value):
         """Extract executable path from systemd show ExecStart output"""
