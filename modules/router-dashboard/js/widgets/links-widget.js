@@ -56,10 +56,11 @@ class LinksWidget extends BaseWidget {
         }
 
         try {
-          await navigator.clipboard.writeText(text);
+          await this.copyText(text);
           this.showFeedback(`Copied: ${text}`);
         } catch (_error) {
-          this.showFeedback('Clipboard copy failed');
+          this.showFeedback(`Copy failed. Use: ${text}`);
+          window.prompt('Copy this text:', text);
         }
       });
     });
@@ -89,6 +90,31 @@ class LinksWidget extends BaseWidget {
       .replaceAll('"', '&quot;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
+  }
+
+  async copyText(text) {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-1000px';
+    textarea.style.left = '-1000px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    try {
+      if (!document.execCommand('copy')) {
+        throw new Error('execCommand copy failed');
+      }
+    } finally {
+      document.body.removeChild(textarea);
+    }
   }
 }
 
