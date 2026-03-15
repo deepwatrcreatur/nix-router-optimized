@@ -65,8 +65,11 @@ class CaddyWidget extends BaseWidget {
       this.updateElement(`#${this.id}-unit-state`, `${data.activeState || '--'} / ${data.subState || '--'}`);
       this.updateElement(`#${this.id}-config-state`, data.configValid ? 'valid' : 'invalid');
       this.updateElement(`#${this.id}-env-state`, data.environmentFile?.present ? 'present' : 'missing');
-      this.updateElement(`#${this.id}-token-state`, data.cloudflareToken?.readableByService ? 'readable' : 'blocked');
-      this.updateElement(`#${this.id}-message`, data.message || 'No recent errors');
+      this.updateElement(
+        `#${this.id}-token-state`,
+        data.cloudflareToken?.usableForValidation ? 'available' : (data.cloudflareToken?.exists ? 'present' : 'missing')
+      );
+      this.updateElement(`#${this.id}-message`, data.message || 'No current errors');
 
       const logsEl = this.container?.querySelector(`#${this.id}-logs`);
       if (logsEl) {

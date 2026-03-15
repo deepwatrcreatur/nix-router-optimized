@@ -388,6 +388,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 config_message = str(exc)
 
         logs = self.read_service_logs('caddy', 25)
+        recent_logs = self.get_recent_caddy_logs(logs)
         latest_error = self.get_latest_caddy_error(logs)
         message = latest_error or config_message
         if properties.get('ActiveState') == 'active' and not latest_error:
@@ -416,7 +417,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'usableForValidation': bool(token_value)
             },
             'message': message,
-            'logs': logs[-12:]
+            'logs': recent_logs[-12:]
         })
 
     def check_live_caddy_admin_config(self):
@@ -489,17 +490,20 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
     def get_latest_caddy_error(self, logs):
         """Ignore stale errors that happened before the most recent successful start/reload."""
         success_markers = ('Started Caddy.', 'Reloaded Caddy.')
-        relevant_logs = logs
-        for index in range(len(logs) - 1, -1, -1):
-            if any(marker in logs[index] for marker in success_markers):
-                relevant_logs = logs[index + 1:]
-                break
+        relevant_logs = self.get_recent_caddy_logs(logs, success_markers)
 
         for line in reversed(relevant_logs):
             lowered = line.lower()
             if 'error' in lowered or 'fail' in lowered or 'permission denied' in lowered:
                 return line
         return ''
+
+    def get_recent_caddy_logs(self, logs, success_markers=('Started Caddy.', 'Reloaded Caddy.')):
+        """Return only log lines from the most recent successful start/reload onward."""
+        for index in range(len(logs) - 1, -1, -1):
+            if any(marker in logs[index] for marker in success_markers):
+                return logs[index:]
+        return logs
 
     def handle_service_logs(self, query):
         """Generic service journal endpoint for dashboard detail pages"""
