@@ -18,6 +18,7 @@ import urllib.error
 import threading
 import select
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from urllib.parse import urlparse, parse_qs, urlencode
 
 # Configuration from environment
@@ -363,8 +364,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         ], [ 'version' ]) or self.extract_exec_path(properties.get('ExecStart', ''))
         env_file = '/run/caddy/caddy.env'
         token_file = '/run/agenix/cloudflare-api-key'
-        env_present = os.path.exists(env_file)
         env_configured = '/run/caddy/caddy.env' in properties.get('EnvironmentFiles', '')
+        env_present = env_configured or os.path.exists(env_file)
         token_exists = os.path.exists(token_file)
         token_value = ''
         if token_exists:
@@ -380,17 +381,18 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 elif token_value:
                     validate_env['CLOUDFLARE_API_TOKEN'] = token_value
 
-                validate = subprocess.run(
-                    [caddy_bin, 'validate', '--config', '/etc/caddy/caddy_config', '--adapter', 'caddyfile'],
-                    capture_output=True, text=True, timeout=10, env=validate_env
-                )
-                config_valid = validate.returncode == 0
-                config_message = (validate.stderr or validate.stdout).strip() or ('Config is valid' if config_valid else 'Validation failed')
+                config_valid, config_message = self.validate_caddy_config(caddy_bin, validate_env)
             except Exception as exc:
                 config_message = str(exc)
 
         logs = self.read_service_logs('caddy', 25)
-        latest_error = next((line for line in reversed(logs) if 'error' in line.lower() or 'fail' in line.lower() or 'permission denied' in line.lower()), '')
+        latest_error = self.get_latest_caddy_error(logs)
+        message = latest_error or config_message
+        if properties.get('ActiveState') == 'active' and not latest_error:
+            if config_valid:
+                message = 'Caddy is running and the current config is healthy'
+            elif 'permission denied' in config_message.lower() and '/var/log/caddy/' in config_message:
+                message = 'Caddy is running; offline validation is blocked by log-file permissions'
 
         self.send_json({
             'available': True,
@@ -411,9 +413,81 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'exists': token_exists,
                 'usableForValidation': bool(token_value)
             },
-            'message': latest_error or config_message,
+            'message': message,
             'logs': logs[-12:]
         })
+
+    def validate_caddy_config(self, caddy_bin, validate_env):
+        """Validate the live Caddy config without requiring writable runtime log targets"""
+        config_path = '/etc/caddy/caddy_config'
+        adapt = subprocess.run(
+            [caddy_bin, 'adapt', '--config', config_path, '--adapter', 'caddyfile'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=validate_env
+        )
+        if adapt.returncode != 0:
+            message = (adapt.stderr or adapt.stdout).strip() or 'caddy adapt failed'
+            return False, message
+
+        adapted_json = (adapt.stdout or '').strip()
+        if not adapted_json:
+            return False, 'caddy adapt returned no JSON output'
+
+        try:
+            config = json.loads(adapted_json)
+        except json.JSONDecodeError as exc:
+            return False, f'Adapted JSON was invalid: {exc}'
+
+        logging_cfg = config.get('logging', {}).get('logs', {})
+        patched_logs = {}
+        for name, log_cfg in logging_cfg.items():
+            if isinstance(log_cfg, dict) and log_cfg.get('writer', {}).get('output') == 'file':
+                patched = dict(log_cfg)
+                patched['writer'] = {'output': 'discard'}
+                patched_logs[name] = patched
+            else:
+                patched_logs[name] = log_cfg
+        if logging_cfg:
+            config.setdefault('logging', {})['logs'] = patched_logs
+
+        with NamedTemporaryFile('w', delete=False, suffix='.json') as temp_config:
+            json.dump(config, temp_config)
+            temp_path = temp_config.name
+
+        try:
+            validate = subprocess.run(
+                [caddy_bin, 'validate', '--config', temp_path],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=validate_env
+            )
+        finally:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+        config_valid = validate.returncode == 0
+        message = (validate.stderr or validate.stdout).strip() or ('Config is valid' if config_valid else 'Validation failed')
+        return config_valid, message
+
+    def get_latest_caddy_error(self, logs):
+        """Ignore stale errors that happened before the most recent successful start/reload."""
+        success_markers = ('Started Caddy.', 'Reloaded Caddy.')
+        relevant_logs = logs
+        for index in range(len(logs) - 1, -1, -1):
+            if any(marker in logs[index] for marker in success_markers):
+                relevant_logs = logs[index + 1:]
+                break
+
+        for line in reversed(relevant_logs):
+            lowered = line.lower()
+            if 'error' in lowered or 'fail' in lowered or 'permission denied' in lowered:
+                return line
+        return ''
 
     def handle_service_logs(self, query):
         """Generic service journal endpoint for dashboard detail pages"""
