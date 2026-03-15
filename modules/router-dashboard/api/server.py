@@ -10,6 +10,7 @@ import subprocess
 import json
 import os
 import re
+import shlex
 import socket
 import time
 import urllib.request
@@ -332,12 +333,6 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
     def handle_caddy_status(self):
         """Detailed Caddy diagnostics"""
         systemctl = self.find_systemctl()
-        caddy_bin = self.find_executable([
-            '/run/current-system/sw/bin/caddy',
-            '/usr/bin/caddy',
-            'caddy'
-        ], [ 'version' ])
-
         if not systemctl:
             self.send_json({
                 'available': False,
@@ -352,8 +347,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'Result',
             'ExecMainStatus',
             'ExecStartPre',
-            'EnvironmentFiles'
+            'EnvironmentFiles',
+            'ExecStart'
         ])
+        caddy_bin = self.find_executable([
+            '/run/current-system/sw/bin/caddy',
+            '/usr/bin/caddy',
+            'caddy'
+        ], [ 'version' ]) or self.extract_exec_path(properties.get('ExecStart', ''))
         env_file = '/run/caddy/caddy.env'
         token_file = '/run/agenix/cloudflare-api-key'
         env_present = os.path.exists(env_file)
@@ -1310,6 +1311,21 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return [result.stderr.strip() or 'journalctl failed']
 
         return [line for line in result.stdout.splitlines() if line.strip()]
+
+    def extract_exec_path(self, systemd_exec_value):
+        """Extract executable path from systemd show ExecStart output"""
+        if not systemd_exec_value:
+            return None
+
+        match = re.search(r'path=([^ ;]+)', systemd_exec_value)
+        if match:
+            return match.group(1)
+
+        try:
+            parts = shlex.split(systemd_exec_value)
+            return parts[0] if parts else None
+        except Exception:
+            return None
 
     def read_firewall_logs(self, limit=30):
         """Read recent firewall logs from the kernel journal"""
