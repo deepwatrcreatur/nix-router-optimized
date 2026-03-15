@@ -36,6 +36,12 @@ except json.JSONDecodeError:
 # Rate tracking for interface stats
 RATE_CACHE = {}
 RATE_CACHE_TIME = {}
+CPU_CACHE = {
+    'idle': None,
+    'total': None,
+    'usage': 0.0,
+    'timestamp': 0.0
+}
 
 # Technitium DNS Server configuration
 TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
@@ -1473,17 +1479,38 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 total_time = sum(int(p) for p in parts[1:9])
                 return idle_time, total_time
 
-            idle_before, total_before = read_cpu_times()
-            time.sleep(0.2)
-            idle_after, total_after = read_cpu_times()
+            global CPU_CACHE
 
-            diff_idle = idle_after - idle_before
-            diff_total = total_after - total_before
+            idle_now, total_now = read_cpu_times()
+            now = time.time()
 
-            if diff_total <= 0:
-                return 0.0
+            if CPU_CACHE['idle'] is None or CPU_CACHE['total'] is None:
+                CPU_CACHE['idle'] = idle_now
+                CPU_CACHE['total'] = total_now
+                CPU_CACHE['timestamp'] = now
+                return CPU_CACHE['usage']
 
-            return (1.0 - diff_idle / diff_total) * 100
+            diff_idle = idle_now - CPU_CACHE['idle']
+            diff_total = total_now - CPU_CACHE['total']
+
+            if diff_total > 0:
+                current_usage = (1.0 - diff_idle / diff_total) * 100
+                elapsed = max(now - CPU_CACHE['timestamp'], 0.0)
+
+                # Exponential smoothing to avoid bursty 1-tick spikes.
+                if elapsed <= 0:
+                    alpha = 0.25
+                else:
+                    alpha = min(max(elapsed / 5.0, 0.15), 0.5)
+
+                CPU_CACHE['usage'] = (
+                    CPU_CACHE['usage'] * (1.0 - alpha) + current_usage * alpha
+                )
+
+            CPU_CACHE['idle'] = idle_now
+            CPU_CACHE['total'] = total_now
+            CPU_CACHE['timestamp'] = now
+            return CPU_CACHE['usage']
         except:
             return 0.0
 
