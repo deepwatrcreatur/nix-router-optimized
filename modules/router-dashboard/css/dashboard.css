@@ -452,6 +452,57 @@ header h1 {
   font-size: 0.8rem;
 }
 
+.caddy-dns-summary {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.caddy-dns-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.caddy-dns-row {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.caddy-dns-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.caddy-dns-name {
+  color: var(--text-primary);
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.caddy-dns-state {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.caddy-dns-records,
+.caddy-dns-empty {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
 .log-page .widget {
   margin-top: 20px;
 }
@@ -600,6 +651,11 @@ header h1 {
 .status-dot.status-down {
   background: var(--accent-red);
   box-shadow: 0 0 8px var(--accent-red);
+}
+
+.status-dot.status-warning {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
 }
 
 /* Connections table */

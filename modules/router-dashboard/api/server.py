@@ -43,6 +43,10 @@ CPU_CACHE = {
     'usage': 0.0,
     'timestamp': 0.0
 }
+CADDY_DNS_CACHE = {
+    'data': None,
+    'timestamp': 0.0
+}
 
 # Technitium DNS Server configuration
 TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
@@ -370,11 +374,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         token_value = ''
         if token_exists:
             token_value = self.read_file(token_file).strip()
+        live_config = None
 
         config_valid = False
         config_message = 'caddy binary not found'
         if properties.get('ActiveState') == 'active':
             config_valid, config_message = self.check_live_caddy_admin_config()
+            live_config = self.fetch_live_caddy_admin_config()
         elif caddy_bin:
             try:
                 validate_env = dict(os.environ)
@@ -391,6 +397,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         recent_logs = self.get_recent_caddy_logs(logs)
         latest_error = self.get_latest_caddy_error(logs)
         message = latest_error or config_message
+        dns_status = self.get_caddy_dns_status(live_config, token_value)
         if properties.get('ActiveState') == 'active' and not latest_error:
             if config_valid:
                 message = 'Caddy is running and the current config is healthy'
@@ -416,6 +423,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'exists': token_exists,
                 'usableForValidation': bool(token_value)
             },
+            'dnsStatus': dns_status,
             'message': message,
             'logs': recent_logs[-12:]
         })
@@ -429,6 +437,156 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 return False, f'Caddy admin API returned HTTP {response.status}'
         except Exception as exc:
             return False, f'Unable to read live Caddy admin config: {exc}'
+
+    def fetch_live_caddy_admin_config(self):
+        """Fetch the live Caddy admin config JSON."""
+        try:
+            with urllib.request.urlopen('http://127.0.0.1:2019/config/', timeout=3) as response:
+                if response.status != 200:
+                    return None
+                return json.loads(response.read().decode())
+        except Exception:
+            return None
+
+    def get_caddy_dns_status(self, live_config, token_value):
+        """Compare managed Cloudflare records with the current WAN IPs."""
+        cache_age = time.time() - CADDY_DNS_CACHE['timestamp']
+        if CADDY_DNS_CACHE['data'] is not None and cache_age < 60:
+            return CADDY_DNS_CACHE['data']
+
+        if not live_config:
+            data = {
+                'available': False,
+                'message': 'Live Caddy admin config unavailable',
+                'domains': []
+            }
+            CADDY_DNS_CACHE['data'] = data
+            CADDY_DNS_CACHE['timestamp'] = time.time()
+            return data
+
+        dynamic_dns = ((live_config.get('apps') or {}).get('dynamic_dns') or {})
+        domains_by_zone = dynamic_dns.get('domains') or {}
+        if not domains_by_zone:
+            data = {
+                'available': False,
+                'message': 'Caddy dynamic DNS is not configured',
+                'domains': []
+            }
+            CADDY_DNS_CACHE['data'] = data
+            CADDY_DNS_CACHE['timestamp'] = time.time()
+            return data
+
+        if not token_value:
+            data = {
+                'available': False,
+                'message': 'Cloudflare API token unavailable to dashboard',
+                'domains': []
+            }
+            CADDY_DNS_CACHE['data'] = data
+            CADDY_DNS_CACHE['timestamp'] = time.time()
+            return data
+
+        wan_iface = self.get_default_route_interface()
+        wan_ipv4 = self.get_ipv4(wan_iface) if wan_iface else ''
+        wan_ipv6 = self.get_ipv6(wan_iface) if wan_iface else []
+
+        all_domains = []
+        for zone_name, labels in domains_by_zone.items():
+            zone_id = self.get_cloudflare_zone_id(token_value, zone_name)
+            if not zone_id:
+                for label in labels:
+                    fqdn = zone_name if label == '@' else f'{label}.{zone_name}'
+                    all_domains.append({
+                        'name': fqdn,
+                        'status': 'zone-missing',
+                        'records': [],
+                        'expectedIpv4': wan_ipv4,
+                        'expectedIpv6': wan_ipv6
+                    })
+                continue
+
+            records = self.get_cloudflare_zone_records(token_value, zone_id)
+            by_name = {}
+            for record in records:
+                by_name.setdefault(record.get('name', ''), []).append(record)
+
+            for label in labels:
+                fqdn = zone_name if label == '@' else f'{label}.{zone_name}'
+                domain_records = by_name.get(fqdn, [])
+                ipv4_records = [r.get('content') for r in domain_records if r.get('type') == 'A']
+                ipv6_records = [r.get('content') for r in domain_records if r.get('type') == 'AAAA']
+
+                status = 'current'
+                if not domain_records:
+                    status = 'missing'
+                else:
+                    ipv4_ok = (not wan_ipv4) or (wan_ipv4 in ipv4_records)
+                    ipv6_ok = (not wan_ipv6) or all(ip in ipv6_records for ip in wan_ipv6)
+                    if not ipv4_ok and not ipv6_ok:
+                        status = 'stale'
+                    elif not ipv4_ok or not ipv6_ok:
+                        status = 'partial'
+
+                all_domains.append({
+                    'name': fqdn,
+                    'status': status,
+                    'records': [
+                        {
+                            'type': record.get('type'),
+                            'content': record.get('content'),
+                            'proxied': record.get('proxied', False)
+                        }
+                        for record in domain_records
+                    ],
+                    'expectedIpv4': wan_ipv4,
+                    'expectedIpv6': wan_ipv6
+                })
+
+        data = {
+            'available': True,
+            'message': 'Managed Cloudflare records compared with current WAN IPs',
+            'wanIpv4': wan_ipv4,
+            'wanIpv6': wan_ipv6,
+            'domains': all_domains
+        }
+        CADDY_DNS_CACHE['data'] = data
+        CADDY_DNS_CACHE['timestamp'] = time.time()
+        return data
+
+    def get_cloudflare_zone_id(self, token, zone_name):
+        response = self.cloudflare_api_get(token, f'/zones?name={urlencode({"name": zone_name}).split("=", 1)[1]}')
+        results = response.get('result') or []
+        return results[0].get('id') if results else None
+
+    def get_cloudflare_zone_records(self, token, zone_id):
+        response = self.cloudflare_api_get(token, f'/zones/{zone_id}/dns_records?per_page=200')
+        return response.get('result') or []
+
+    def cloudflare_api_get(self, token, path):
+        request = urllib.request.Request(
+            f'https://api.cloudflare.com/client/v4{path}',
+            headers={
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json'
+            }
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return json.loads(response.read().decode())
+
+    def get_default_route_interface(self):
+        try:
+            result = subprocess.run(
+                ['ip', 'route', 'show', 'default'],
+                capture_output=True, text=True, timeout=3
+            )
+            if result.returncode != 0:
+                return ''
+            parts = result.stdout.split()
+            if 'dev' in parts:
+                return parts[parts.index('dev') + 1]
+        except Exception:
+            pass
+        return ''
 
     def validate_caddy_config(self, caddy_bin, validate_env):
         """Validate the live Caddy config without requiring writable runtime log targets"""

@@ -35,6 +35,10 @@ class CaddyWidget extends BaseWidget {
           </div>
         </div>
 
+        <div class="metric-label" style="margin-top: 12px;">Dynamic DNS</div>
+        <div class="caddy-dns-summary" id="${this.id}-dns-summary">Loading...</div>
+        <div class="caddy-dns-list" id="${this.id}-dns-list">Loading...</div>
+
         <div class="metric-label" style="margin-top: 12px;">Last Error</div>
         <div class="diagnostic-message" id="${this.id}-message">Loading...</div>
 
@@ -70,6 +74,7 @@ class CaddyWidget extends BaseWidget {
         data.cloudflareToken?.usableForValidation ? 'available' : (data.cloudflareToken?.exists ? 'present' : 'missing')
       );
       this.updateElement(`#${this.id}-message`, data.message || 'No current errors');
+      this.renderDnsStatus(data.dnsStatus);
 
       const logsEl = this.container?.querySelector(`#${this.id}-logs`);
       if (logsEl) {
@@ -80,6 +85,57 @@ class CaddyWidget extends BaseWidget {
     } catch (error) {
       console.error('Caddy widget error:', error);
       this.showError(error.message);
+    }
+  }
+
+  renderDnsStatus(dnsStatus) {
+    const summaryEl = this.container?.querySelector(`#${this.id}-dns-summary`);
+    const listEl = this.container?.querySelector(`#${this.id}-dns-list`);
+    if (!summaryEl || !listEl) {
+      return;
+    }
+
+    if (!dnsStatus?.available) {
+      summaryEl.textContent = dnsStatus?.message || 'Dynamic DNS unavailable';
+      listEl.innerHTML = '';
+      return;
+    }
+
+    const wanIpv4 = dnsStatus.wanIpv4 || '--';
+    const wanIpv6 = (dnsStatus.wanIpv6 || []).slice(0, 2).join(', ') || '--';
+    summaryEl.innerHTML = `
+      <div><strong>WAN IPv4:</strong> ${wanIpv4}</div>
+      <div><strong>WAN IPv6:</strong> ${wanIpv6}</div>
+    `;
+
+    listEl.innerHTML = (dnsStatus.domains || []).map(domain => {
+      const statusClass = this.getDnsStatusClass(domain.status);
+      const records = (domain.records || []).map(record => `${record.type} ${record.content}`).join(' | ') || 'No records';
+      return `
+        <div class="caddy-dns-row">
+          <div class="caddy-dns-row-main">
+            <span class="status-dot ${statusClass}"></span>
+            <span class="caddy-dns-name">${domain.name}</span>
+            <span class="caddy-dns-state">${domain.status}</span>
+          </div>
+          <div class="caddy-dns-records">${records}</div>
+        </div>
+      `;
+    }).join('') || '<div class="caddy-dns-empty">No managed domains</div>';
+  }
+
+  getDnsStatusClass(status) {
+    switch (status) {
+      case 'current':
+        return 'status-up';
+      case 'partial':
+        return 'status-warning';
+      case 'stale':
+      case 'missing':
+      case 'zone-missing':
+        return 'status-down';
+      default:
+        return '';
     }
   }
 }
