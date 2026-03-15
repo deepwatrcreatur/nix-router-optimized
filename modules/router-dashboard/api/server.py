@@ -45,7 +45,8 @@ CPU_CACHE = {
 }
 CADDY_DNS_CACHE = {
     'data': None,
-    'timestamp': 0.0
+    'timestamp': 0.0,
+    'signature': None
 }
 
 # Technitium DNS Server configuration
@@ -450,8 +451,15 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def get_caddy_dns_status(self, live_config, token_value):
         """Compare managed Cloudflare records with the current WAN IPs."""
+        dynamic_dns = ((live_config.get('apps') or {}).get('dynamic_dns') or {}) if live_config else {}
+        domains_by_zone = dynamic_dns.get('domains') or {}
+        cache_signature = json.dumps(domains_by_zone, sort_keys=True)
         cache_age = time.time() - CADDY_DNS_CACHE['timestamp']
-        if CADDY_DNS_CACHE['data'] is not None and cache_age < 60:
+        if (
+            CADDY_DNS_CACHE['data'] is not None
+            and cache_age < 60
+            and CADDY_DNS_CACHE['signature'] == cache_signature
+        ):
             return CADDY_DNS_CACHE['data']
 
         if not live_config:
@@ -462,10 +470,9 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             }
             CADDY_DNS_CACHE['data'] = data
             CADDY_DNS_CACHE['timestamp'] = time.time()
+            CADDY_DNS_CACHE['signature'] = cache_signature
             return data
 
-        dynamic_dns = ((live_config.get('apps') or {}).get('dynamic_dns') or {})
-        domains_by_zone = dynamic_dns.get('domains') or {}
         if not domains_by_zone:
             data = {
                 'available': False,
@@ -474,6 +481,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             }
             CADDY_DNS_CACHE['data'] = data
             CADDY_DNS_CACHE['timestamp'] = time.time()
+            CADDY_DNS_CACHE['signature'] = cache_signature
             return data
 
         if not token_value:
@@ -484,6 +492,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             }
             CADDY_DNS_CACHE['data'] = data
             CADDY_DNS_CACHE['timestamp'] = time.time()
+            CADDY_DNS_CACHE['signature'] = cache_signature
             return data
 
         wan_iface = self.get_default_route_interface()
@@ -544,6 +553,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         }
         CADDY_DNS_CACHE['data'] = data
         CADDY_DNS_CACHE['timestamp'] = time.time()
+        CADDY_DNS_CACHE['signature'] = cache_signature
         return data
 
     def evaluate_cloudflare_record_status(self, name, by_name, wan_ipv4, wan_ipv6, seen=None):
