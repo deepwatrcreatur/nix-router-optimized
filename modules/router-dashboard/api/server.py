@@ -87,6 +87,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_connections_top(query)
         elif path == '/api/services/status':
             self.handle_services_status()
+        elif path == '/api/caddy/status':
+            self.handle_caddy_status()
+        elif path == '/api/service/logs':
+            self.handle_service_logs(query)
         elif path == '/api/firewall/stats':
             self.handle_firewall_stats()
         elif path == '/api/firewall/logs/recent':
@@ -324,6 +328,99 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             results.append(self.get_service_status(systemctl, service))
 
         self.send_json({'services': results})
+
+    def handle_caddy_status(self):
+        """Detailed Caddy diagnostics"""
+        systemctl = self.find_systemctl()
+        caddy_bin = self.find_executable([
+            '/run/current-system/sw/bin/caddy',
+            '/usr/bin/caddy',
+            'caddy'
+        ], [ 'version' ])
+
+        if not systemctl:
+            self.send_json({
+                'available': False,
+                'message': 'systemctl not found'
+            })
+            return
+
+        properties = self.get_unit_properties(systemctl, 'caddy', [
+            'Id',
+            'ActiveState',
+            'SubState',
+            'Result',
+            'ExecMainStatus',
+            'ExecStartPre',
+            'EnvironmentFiles'
+        ])
+        env_file = '/run/caddy/caddy.env'
+        token_file = '/run/agenix/cloudflare-api-key'
+        env_present = os.path.exists(env_file)
+        token_exists = os.path.exists(token_file)
+
+        config_valid = False
+        config_message = 'caddy binary not found'
+        if caddy_bin:
+            try:
+                validate = subprocess.run(
+                    [caddy_bin, 'validate', '--config', '/etc/caddy/caddy_config', '--adapter', 'caddyfile'],
+                    capture_output=True, text=True, timeout=10
+                )
+                config_valid = validate.returncode == 0
+                config_message = (validate.stderr or validate.stdout).strip() or ('Config is valid' if config_valid else 'Validation failed')
+            except Exception as exc:
+                config_message = str(exc)
+
+        token_readable = False
+        if token_exists:
+            try:
+                test_result = subprocess.run(
+                    ['su', '-s', '/bin/sh', 'caddy', '-c', f'test -r {token_file}'],
+                    capture_output=True, text=True, timeout=5
+                )
+                token_readable = test_result.returncode == 0
+            except Exception:
+                token_readable = False
+
+        logs = self.read_service_logs('caddy', 25)
+        latest_error = next((line for line in reversed(logs) if 'error' in line.lower() or 'fail' in line.lower() or 'permission denied' in line.lower()), '')
+
+        self.send_json({
+            'available': True,
+            'unit': properties.get('Id', 'caddy.service'),
+            'activeState': properties.get('ActiveState', 'unknown'),
+            'subState': properties.get('SubState', 'unknown'),
+            'result': properties.get('Result', 'unknown'),
+            'active': properties.get('ActiveState') == 'active',
+            'configValid': config_valid,
+            'configMessage': config_message,
+            'environmentFile': {
+                'path': env_file,
+                'present': env_present
+            },
+            'cloudflareToken': {
+                'path': token_file,
+                'exists': token_exists,
+                'readableByService': token_readable
+            },
+            'message': latest_error or config_message,
+            'logs': logs[-12:]
+        })
+
+    def handle_service_logs(self, query):
+        """Generic service journal endpoint for dashboard detail pages"""
+        unit = (query.get('unit') or [''])[0].strip()
+        if not unit:
+            self.send_error_json(400, 'Missing unit')
+            return
+
+        lines = self.parse_positive_int((query.get('lines') or [50])[0], default=50, minimum=1, maximum=500)
+        logs = self.read_service_logs(unit, lines)
+        self.send_json({
+            'unit': unit,
+            'logs': logs
+        })
 
     def handle_firewall_stats(self):
         """nftables statistics"""
@@ -1129,47 +1226,71 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 total += value
         return total
 
-    def get_service_status(self, systemctl, service):
-        """Resolve and return status for a systemd unit name"""
+    def find_executable(self, candidates, version_args=None):
+        """Find first runnable executable from candidate paths"""
+        for path in candidates:
+            try:
+                cmd = [path] + (version_args or [])
+                result = subprocess.run(cmd, capture_output=True, timeout=2)
+                if result.returncode == 0:
+                    return path
+            except Exception:
+                continue
+        return None
+
+    def find_systemctl(self):
+        """Find a working systemctl binary"""
+        return self.find_executable(
+            ['/run/current-system/sw/bin/systemctl', '/usr/bin/systemctl', 'systemctl'],
+            ['--version']
+        )
+
+    def get_unit_properties(self, systemctl, service, properties):
+        """Return selected systemd properties for a unit"""
         candidates = [service]
         if not service.endswith('.service'):
             candidates.append(f'{service}.service')
 
+        property_arg = '--property=' + ','.join(properties)
         for candidate in candidates:
             try:
                 result = subprocess.run(
-                    [systemctl, 'show', candidate, '--property=Id,ActiveState,LoadState'],
+                    [systemctl, 'show', candidate, property_arg],
                     capture_output=True, text=True, timeout=3,
                     env={**os.environ, 'DBUS_SESSION_BUS_ADDRESS': ''}
                 )
-
                 if result.returncode != 0:
                     continue
 
-                properties = {}
+                parsed = {}
                 for line in result.stdout.strip().splitlines():
                     if '=' not in line:
                         continue
                     key, value = line.split('=', 1)
-                    properties[key] = value
+                    parsed[key] = value
 
-                if not properties:
+                if parsed.get('LoadState') == 'not-found':
                     continue
 
-                unit_id = properties.get('Id', candidate)
-                active_state = properties.get('ActiveState', 'unknown')
-                load_state = properties.get('LoadState', 'unknown')
-                if load_state == 'not-found':
-                    continue
-
-                return {
-                    'name': service,
-                    'unit': unit_id or candidate,
-                    'status': active_state or 'unknown',
-                    'active': active_state == 'active'
-                }
+                if parsed:
+                    return parsed
             except Exception:
                 continue
+
+        return {}
+
+    def get_service_status(self, systemctl, service):
+        """Resolve and return status for a systemd unit name"""
+        properties = self.get_unit_properties(systemctl, service, ['Id', 'ActiveState', 'LoadState'])
+        if properties:
+            unit_id = properties.get('Id', service)
+            active_state = properties.get('ActiveState', 'unknown')
+            return {
+                'name': service,
+                'unit': unit_id or service,
+                'status': active_state or 'unknown',
+                'active': active_state == 'active'
+            }
 
         return {
             'name': service,
@@ -1177,6 +1298,18 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'status': 'not-found',
             'active': False
         }
+
+    def read_service_logs(self, unit, lines=50):
+        """Read recent logs for a systemd unit"""
+        result = subprocess.run(
+            ['journalctl', '-u', unit, '-n', str(lines), '-o', 'short-iso', '--no-pager'],
+            capture_output=True, text=True, timeout=8
+        )
+
+        if result.returncode != 0:
+            return [result.stderr.strip() or 'journalctl failed']
+
+        return [line for line in result.stdout.splitlines() if line.strip()]
 
     def read_firewall_logs(self, limit=30):
         """Read recent firewall logs from the kernel journal"""
@@ -1316,28 +1449,22 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
     def get_cpu_usage(self):
         """Calculate CPU usage percentage"""
         try:
-            # Read current stats
-            with open('/proc/stat', 'r') as f:
-                line = f.readline()
+            def read_cpu_times():
+                with open('/proc/stat', 'r') as f:
+                    parts = f.readline().split()
 
-            parts = line.split()
-            # user, nice, system, idle, iowait, irq, softirq, steal
-            idle = int(parts[4])
-            total = sum(int(p) for p in parts[1:8])
+                idle_time = int(parts[4]) + int(parts[5])
+                total_time = sum(int(p) for p in parts[1:9])
+                return idle_time, total_time
 
-            # Get previous values
-            prev_idle = getattr(self, '_prev_cpu_idle', idle)
-            prev_total = getattr(self, '_prev_cpu_total', total)
+            idle_before, total_before = read_cpu_times()
+            time.sleep(0.2)
+            idle_after, total_after = read_cpu_times()
 
-            # Calculate
-            diff_idle = idle - prev_idle
-            diff_total = total - prev_total
+            diff_idle = idle_after - idle_before
+            diff_total = total_after - total_before
 
-            # Store for next time
-            self._prev_cpu_idle = idle
-            self._prev_cpu_total = total
-
-            if diff_total == 0:
+            if diff_total <= 0:
                 return 0.0
 
             return (1.0 - diff_idle / diff_total) * 100

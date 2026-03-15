@@ -406,6 +406,61 @@ header h1 {
   box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
 }
 
+.link-btn-copy {
+  border: 0;
+  cursor: pointer;
+}
+
+.quick-links-feedback {
+  min-height: 1.2rem;
+  margin-top: 10px;
+  color: var(--accent-green);
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.quick-links-feedback.visible {
+  opacity: 1;
+}
+
+.diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric-value-sm {
+  font-size: 1rem;
+}
+
+.diagnostic-message,
+.diagnostic-log {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diagnostic-log {
+  max-height: 240px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+
+.log-page .widget {
+  margin-top: 20px;
+}
+
+.page-log {
+  max-height: none;
+  min-height: 320px;
+}
+
 /* Services table */
 .services-table {
   width: 100%;

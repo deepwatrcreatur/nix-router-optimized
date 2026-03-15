@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fail2ban Status</title>
+  <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+  <div class="container log-page">
+    <header>
+      <h1>Fail2ban Status</h1>
+      <div class="header-info">
+        <a href="/" class="header-btn">Back to Dashboard</a>
+      </div>
+    </header>
+    <div class="widget">
+      <div class="widget-header">
+        <h2>Jails</h2>
+        <span class="status-badge" id="status">Loading</span>
+      </div>
+      <div class="widget-body">
+        <div class="diagnostic-grid">
+          <div class="metric">
+            <div class="metric-label">Active Jails</div>
+            <div class="metric-value" id="jails">--</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Currently Banned</div>
+            <div class="metric-value" id="banned">--</div>
+          </div>
+        </div>
+        <div class="metric-label" style="margin-top: 12px;">Details</div>
+        <pre class="diagnostic-log page-log" id="details">Loading...</pre>
+      </div>
+    </div>
+  </div>
+  <script>
+    async function refresh() {
+      const response = await fetch('/api/fail2ban/status');
+      const data = await response.json();
+      const status = document.getElementById('status');
+
+      if (!data.available) {
+        status.className = 'status-badge status-down';
+        status.textContent = 'OFFLINE';
+        document.getElementById('details').textContent = data.message || 'Fail2ban unavailable';
+        return;
+      }
+
+      status.className = (data.totalCurrentlyBanned || 0) > 0 ? 'status-badge status-warning' : 'status-badge status-up';
+      status.textContent = (data.totalCurrentlyBanned || 0) > 0 ? 'BANS ACTIVE' : 'ACTIVE';
+      document.getElementById('jails').textContent = String((data.jails || []).length);
+      document.getElementById('banned').textContent = String(data.totalCurrentlyBanned || 0);
+      document.getElementById('details').textContent = JSON.stringify(data, null, 2);
+    }
+
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>

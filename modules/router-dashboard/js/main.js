@@ -153,6 +153,14 @@ class Dashboard {
     firewallLogs.render(container);
     this.widgets.push(firewallLogs);
 
+    const caddy = new CaddyWidget({
+      id: 'caddy',
+      grid: { w: 4, h: 5 },
+      refreshInterval: 30000
+    });
+    caddy.render(container);
+    this.widgets.push(caddy);
+
     // DNS Statistics widget
     const dns = new DnsWidget({
       id: 'dns',

@@ -24,7 +24,13 @@ let
           label = iface.label;
           role = iface.role;
         }) cfg.interfaces)},
-        links: ${builtins.toJSON cfg.links},
+        links: ${builtins.toJSON (map (link: {
+          label = link.label;
+          kind = link.kind;
+          url = link.url;
+          copyText = link.copyText;
+          icon = link.icon;
+        }) cfg.links)},
         services: ${builtins.toJSON cfg.services},
         wolDevices: ${builtins.toJSON (map (device: {
           name = device.name;
@@ -91,9 +97,20 @@ in {
             type = types.str;
             description = "Link button label";
           };
+          kind = mkOption {
+            type = types.enum [ "link" "copy" ];
+            default = "link";
+            description = "Whether the quick link opens a URL or copies text to the clipboard.";
+          };
           url = mkOption {
             type = types.str;
+            default = "";
             description = "URL to link to";
+          };
+          copyText = mkOption {
+            type = types.str;
+            default = "";
+            description = "Text copied to the clipboard when kind = copy.";
           };
           icon = mkOption {
             type = types.str;

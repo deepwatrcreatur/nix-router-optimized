@@ -18,11 +18,21 @@ class LinksWidget extends BaseWidget {
   }
 
   getMarkup() {
-    const linksHtml = this.links.map(link => `
-      <a href="${link.url}" class="link-btn" target="_blank" rel="noopener">
-        ${link.icon || ''} ${link.label}
-      </a>
-    `).join('');
+    const linksHtml = this.links.map(link => {
+      if (link.kind === 'copy') {
+        return `
+          <button type="button" class="link-btn link-btn-copy" data-copy-text="${this.escapeAttr(link.copyText || '')}">
+            ${link.icon || ''} ${link.label}
+          </button>
+        `;
+      }
+
+      return `
+        <a href="${link.url}" class="link-btn" target="_blank" rel="noopener">
+          ${link.icon || ''} ${link.label}
+        </a>
+      `;
+    }).join('');
 
     return `
       <div class="widget-header">
@@ -32,12 +42,53 @@ class LinksWidget extends BaseWidget {
         <div class="quick-links">
           ${linksHtml}
         </div>
+        <div class="quick-links-feedback" id="${this.id}-feedback"></div>
       </div>
     `;
   }
 
+  onMounted() {
+    this.container?.querySelectorAll('.link-btn-copy').forEach(button => {
+      button.addEventListener('click', async () => {
+        const text = button.dataset.copyText || '';
+        if (!text) {
+          return;
+        }
+
+        try {
+          await navigator.clipboard.writeText(text);
+          this.showFeedback(`Copied: ${text}`);
+        } catch (_error) {
+          this.showFeedback('Clipboard copy failed');
+        }
+      });
+    });
+  }
+
   async onTick() {
     // No refresh needed for static links
+  }
+
+  showFeedback(message) {
+    const feedback = this.container?.querySelector(`#${this.id}-feedback`);
+    if (!feedback) {
+      return;
+    }
+
+    feedback.textContent = message;
+    feedback.classList.add('visible');
+    window.clearTimeout(this.feedbackTimer);
+    this.feedbackTimer = window.setTimeout(() => {
+      feedback.classList.remove('visible');
+    }, 2500);
+  }
+
+  escapeAttr(value) {
+    return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
   }
 }
 
