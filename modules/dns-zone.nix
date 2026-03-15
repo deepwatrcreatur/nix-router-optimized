@@ -164,8 +164,7 @@ let
           hostCommands = concatStringsSep "\n" (
             mapAttrsToList (name: value: ''
               echo "Adding DNS record: ${name}.${zoneName} -> ${value.ipAddress}"
-              ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add" \
-                -H "Authorization: Bearer $TOKEN" \
+              ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                 -d "zone=${zoneName}" \
                 -d "domain=${name}" \
                 -d "type=A" \
@@ -175,8 +174,7 @@ let
 
               ${concatMapStringsSep "\n" (alias: ''
                 echo "Adding alias: ${alias}.${zoneName} -> ${name}.${zoneName}"
-                ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add" \
-                  -H "Authorization: Bearer $TOKEN" \
+                ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                   -d "zone=${zoneName}" \
                   -d "domain=${alias}" \
                   -d "type=CNAME" \
@@ -190,8 +188,7 @@ let
           aliasCommands = concatStringsSep "\n" (
             mapAttrsToList (alias: target: ''
               echo "Adding zone alias: ${alias}.${zoneName} -> ${target}.${zoneName}"
-              ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add" \
-                -H "Authorization: Bearer $TOKEN" \
+              ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                 -d "zone=${zoneName}" \
                 -d "domain=${alias}" \
                 -d "type=CNAME" \
@@ -203,8 +200,7 @@ let
         in
         ''
           echo "Ensuring DNS zone exists: ${zoneName}"
-          ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/create" \
-            -H "Authorization: Bearer $TOKEN" \
+          ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/create?token=$TOKEN" \
             -d "zone=${zoneName}" \
             -d "type=Primary" || true
 
