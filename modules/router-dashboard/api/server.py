@@ -43,6 +43,10 @@ CPU_CACHE = {
     'usage': 0.0,
     'timestamp': 0.0
 }
+SYSTEM_INFO_CACHE = {
+    'data': None,
+    'timestamp': 0.0
+}
 CADDY_DNS_CACHE = {
     'data': None,
     'timestamp': 0.0,
@@ -92,6 +96,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_system_status()
         elif path == '/api/system/resources':
             self.handle_system_resources()
+        elif path == '/api/system/info':
+            self.handle_system_info()
         elif path == '/api/interfaces/stats':
             self.handle_interface_stats()
         elif path == '/api/connections/summary':
@@ -267,6 +273,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 }
 
             self.send_json(interfaces)
+        except Exception as e:
+            self.send_error_json(500, str(e))
+
+    def handle_system_info(self):
+        """Static-ish host information for the system info widget"""
+        try:
+            self.send_json(self.get_system_info())
         except Exception as e:
             self.send_error_json(500, str(e))
 
@@ -638,6 +651,48 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             pass
         return ''
+
+    def get_system_info(self):
+        """Return cached system identity information."""
+        global SYSTEM_INFO_CACHE
+
+        now = time.time()
+        if SYSTEM_INFO_CACHE['data'] is not None and (now - SYSTEM_INFO_CACHE['timestamp']) < 300:
+            return SYSTEM_INFO_CACHE['data']
+
+        hostname = self.read_file('/proc/sys/kernel/hostname').strip() or 'unknown'
+        os_release = self.parse_os_release()
+        meminfo = self.parse_meminfo()
+        default_iface = self.get_default_route_interface()
+        generation = self.get_current_generation()
+        root_total = self.get_disk_usage_detailed('/')[2]
+
+        data = {
+            'hostname': hostname,
+            'os': os_release.get('PRETTY_NAME') or os_release.get('NAME') or 'NixOS',
+            'kernel': self.read_file('/proc/sys/kernel/osrelease').strip() or 'unknown',
+            'uptime': self.get_uptime(),
+            'virtualization': self.detect_virtualization(),
+            'cpuModel': self.get_cpu_model(),
+            'cpuCores': os.cpu_count() or 0,
+            'memoryTotal': meminfo.get('MemTotal', 0),
+            'memoryTotalHuman': self.format_bytes(meminfo.get('MemTotal', 0)),
+            'swapTotal': meminfo.get('SwapTotal', 0),
+            'swapTotalHuman': self.format_bytes(meminfo.get('SwapTotal', 0)),
+            'rootTotal': root_total,
+            'rootTotalHuman': self.format_bytes(root_total),
+            'defaultInterface': default_iface,
+            'defaultIpv4': self.get_ipv4(default_iface) if default_iface else 'N/A',
+            'defaultIpv6': self.get_ipv6(default_iface) if default_iface else [],
+            'nixosVersion': self.get_nixos_version(),
+            'systemGeneration': generation.get('label', 'unknown'),
+            'systemPath': generation.get('path', ''),
+            'bootedAt': self.get_boot_time_iso()
+        }
+
+        SYSTEM_INFO_CACHE['data'] = data
+        SYSTEM_INFO_CACHE['timestamp'] = now
+        return data
 
     def validate_caddy_config(self, caddy_bin, validate_env):
         """Validate the live Caddy config without requiring writable runtime log targets"""
@@ -1757,6 +1812,15 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         except:
             return ''
 
+    def parse_os_release(self):
+        result = {}
+        for line in self.read_file('/etc/os-release').splitlines():
+            if '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            result[key] = value.strip().strip('"')
+        return result
+
     def get_uptime(self):
         """Get human-readable uptime"""
         try:
@@ -1767,6 +1831,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return f"up {days}d {hours}h {minutes}m"
         except:
             return 'unknown'
+
+    def get_boot_time_iso(self):
+        try:
+            uptime_secs = float(self.read_file('/proc/uptime').split()[0])
+            boot_ts = time.time() - uptime_secs
+            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(boot_ts))
+        except:
+            return ''
 
     def parse_meminfo(self):
         """Parse /proc/meminfo into dict"""
@@ -1887,6 +1959,54 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return addresses if addresses else []
         except:
             return []
+
+    def get_cpu_model(self):
+        try:
+            for line in self.read_file('/proc/cpuinfo').splitlines():
+                if line.startswith('model name'):
+                    return line.split(':', 1)[1].strip()
+        except:
+            pass
+        return 'unknown'
+
+    def detect_virtualization(self):
+        try:
+            result = subprocess.run(
+                ['systemd-detect-virt'],
+                capture_output=True, text=True, timeout=2
+            )
+            if result.returncode == 0:
+                return result.stdout.strip() or 'virtualized'
+        except Exception:
+            pass
+        return 'bare-metal'
+
+    def get_nixos_version(self):
+        try:
+            result = subprocess.run(
+                ['nixos-version'],
+                capture_output=True, text=True, timeout=3
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+
+        os_release = self.parse_os_release()
+        return os_release.get('VERSION', 'unknown')
+
+    def get_current_generation(self):
+        path = ''
+        label = 'unknown'
+        try:
+            path = os.path.realpath('/run/current-system')
+            label = os.path.basename(path)
+        except Exception:
+            pass
+        return {
+            'path': path,
+            'label': label
+        }
 
     def calculate_rates(self, interface, rx_bytes, tx_bytes):
         """Calculate RX/TX rates based on previous readings"""

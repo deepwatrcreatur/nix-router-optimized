@@ -1425,6 +1425,61 @@ header h1 {
   font-size: 0.78rem;
 }
 
+.system-info-summary {
+  margin-bottom: 16px;
+}
+
+.system-info-host {
+  color: var(--text-primary);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.system-info-os {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.system-info-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.system-info-item {
+  background: rgba(15, 23, 42, 0.38);
+  border: 1px solid rgba(51, 65, 85, 0.75);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.system-info-item-wide {
+  grid-column: 1 / -1;
+}
+
+.system-info-label {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.system-info-value {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.system-info-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
 @media (max-width: 1200px) {
   .speedtest-widget {
     grid-column: span 6;
@@ -1456,5 +1511,9 @@ header h1 {
   .firewall-log-toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .system-info-grid {
+    grid-template-columns: 1fr;
   }
 }

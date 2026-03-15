@@ -62,6 +62,14 @@ class Dashboard {
     system.render(container);
     this.widgets.push(system);
 
+    const systemInfo = new SystemInfoWidget({
+      id: 'system-info',
+      grid: { w: 4, h: 5 },
+      refreshInterval: 120000
+    });
+    systemInfo.render(container);
+    this.widgets.push(systemInfo);
+
     // Traffic Graph widget
     const traffic = new TrafficWidget({
       id: 'traffic',
