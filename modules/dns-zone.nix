@@ -166,7 +166,7 @@ let
               echo "Adding DNS record: ${name}.${zoneName} -> ${value.ipAddress}"
               ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                 -d "zone=${zoneName}" \
-                -d "domain=${name}" \
+                -d "domain=${if name == "@" then zoneName else "${name}.${zoneName}"}" \
                 -d "type=A" \
                 -d "ttl=${toString value.ttl}" \
                 -d "ipAddress=${value.ipAddress}" \
@@ -176,10 +176,10 @@ let
                 echo "Adding alias: ${alias}.${zoneName} -> ${name}.${zoneName}"
                 ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                   -d "zone=${zoneName}" \
-                  -d "domain=${alias}" \
+                  -d "domain=${if alias == "@" then zoneName else "${alias}.${zoneName}"}" \
                   -d "type=CNAME" \
                   -d "ttl=${toString value.ttl}" \
-                  -d "cname=${name}.${zoneName}" \
+                  -d "cname=${if name == "@" then zoneName else "${name}.${zoneName}"}" \
                   -d "overwrite=true" || echo "Failed to add alias ${alias}.${zoneName}"
               '') value.aliases}
             '') zone.staticHosts
@@ -190,10 +190,10 @@ let
               echo "Adding zone alias: ${alias}.${zoneName} -> ${target}.${zoneName}"
               ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                 -d "zone=${zoneName}" \
-                -d "domain=${alias}" \
+                -d "domain=${if alias == "@" then zoneName else "${alias}.${zoneName}"}" \
                 -d "type=CNAME" \
                 -d "ttl=3600" \
-                -d "cname=${target}.${zoneName}" \
+                -d "cname=${if target == "@" then zoneName else "${target}.${zoneName}"}" \
                 -d "overwrite=true" || echo "Failed to add zone alias ${alias}.${zoneName}"
             '') zone.aliases
           );
