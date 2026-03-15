@@ -513,19 +513,12 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             for label in labels:
                 fqdn = zone_name if label == '@' else f'{label}.{zone_name}'
                 domain_records = by_name.get(fqdn, [])
-                ipv4_records = [r.get('content') for r in domain_records if r.get('type') == 'A']
-                ipv6_records = [r.get('content') for r in domain_records if r.get('type') == 'AAAA']
-
-                status = 'current'
-                if not domain_records:
-                    status = 'missing'
-                else:
-                    ipv4_ok = (not wan_ipv4) or (wan_ipv4 in ipv4_records)
-                    ipv6_ok = (not wan_ipv6) or all(ip in ipv6_records for ip in wan_ipv6)
-                    if not ipv4_ok and not ipv6_ok:
-                        status = 'stale'
-                    elif not ipv4_ok or not ipv6_ok:
-                        status = 'partial'
+                ipv4_ok, ipv6_ok, status = self.evaluate_cloudflare_record_status(
+                    fqdn,
+                    by_name,
+                    wan_ipv4,
+                    wan_ipv6
+                )
 
                 all_domains.append({
                     'name': fqdn,
@@ -552,6 +545,54 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         CADDY_DNS_CACHE['data'] = data
         CADDY_DNS_CACHE['timestamp'] = time.time()
         return data
+
+    def evaluate_cloudflare_record_status(self, name, by_name, wan_ipv4, wan_ipv6, seen=None):
+        if seen is None:
+            seen = set()
+
+        normalized_name = name.rstrip('.')
+        if normalized_name in seen:
+            return False, False, 'stale'
+        seen.add(normalized_name)
+
+        records = by_name.get(normalized_name, [])
+        if not records:
+            return False, False, 'missing'
+
+        ipv4_records = [r.get('content') for r in records if r.get('type') == 'A']
+        ipv6_records = [r.get('content') for r in records if r.get('type') == 'AAAA']
+
+        ipv4_ok = (not wan_ipv4) or (wan_ipv4 in ipv4_records)
+        ipv6_ok = (not wan_ipv6) or all(ip in ipv6_records for ip in wan_ipv6)
+
+        if ipv4_records or ipv6_records:
+            if ipv4_ok and ipv6_ok:
+                return ipv4_ok, ipv6_ok, 'current'
+            if ipv4_ok or ipv6_ok:
+                return ipv4_ok, ipv6_ok, 'partial'
+            return ipv4_ok, ipv6_ok, 'stale'
+
+        cname_records = [r.get('content', '').rstrip('.') for r in records if r.get('type') == 'CNAME']
+        if cname_records:
+            best_status = 'stale'
+            best_ipv4 = False
+            best_ipv6 = False
+            rank = {'current': 3, 'partial': 2, 'stale': 1, 'missing': 0}
+            for target in cname_records:
+                target_ipv4_ok, target_ipv6_ok, target_status = self.evaluate_cloudflare_record_status(
+                    target,
+                    by_name,
+                    wan_ipv4,
+                    wan_ipv6,
+                    seen.copy()
+                )
+                if rank.get(target_status, -1) > rank.get(best_status, -1):
+                    best_status = target_status
+                    best_ipv4 = target_ipv4_ok
+                    best_ipv6 = target_ipv6_ok
+            return best_ipv4, best_ipv6, best_status
+
+        return False, False, 'stale'
 
     def get_cloudflare_zone_id(self, token, zone_name):
         response = self.cloudflare_api_get(token, f'/zones?name={urlencode({"name": zone_name}).split("=", 1)[1]}')
