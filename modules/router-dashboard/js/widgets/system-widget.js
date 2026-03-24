@@ -1,24 +1,22 @@
 /**
  * System Resources Widget
- * Displays CPU, Memory, and optionally Disk usage as gauges
+ * Displays CPU, Memory, and optionally Disk usage as CSS progress rings
  */
 class SystemWidget extends BaseWidget {
   constructor(config = {}) {
     super(config);
     this.title = config.title || 'System Resources';
     this.widgetClass = 'widget-md';
-    this.cpuChart = null;
-    this.memChart = null;
     this.showDisk = config.showDisk || false;
-    this.diskChart = null;
   }
 
   getMarkup() {
     const diskGauge = this.showDisk ? `
       <div class="gauge-item">
-        <canvas id="${this.id}-disk-gauge"></canvas>
+        <div class="progress-ring" id="${this.id}-disk-ring" style="--progress: 0; --ring-color: var(--gauge-disk);">
+          <span class="progress-ring-value" id="${this.id}-disk-value">--%</span>
+        </div>
         <div class="gauge-label">Disk</div>
-        <div class="gauge-value" id="${this.id}-disk-value">--%</div>
       </div>
     ` : '';
 
@@ -29,14 +27,16 @@ class SystemWidget extends BaseWidget {
       <div class="widget-body">
         <div class="gauge-container">
           <div class="gauge-item">
-            <canvas id="${this.id}-cpu-gauge"></canvas>
+            <div class="progress-ring" id="${this.id}-cpu-ring" style="--progress: 0; --ring-color: var(--gauge-cpu);">
+              <span class="progress-ring-value" id="${this.id}-cpu-value">--%</span>
+            </div>
             <div class="gauge-label">CPU</div>
-            <div class="gauge-value" id="${this.id}-cpu-value">--%</div>
           </div>
           <div class="gauge-item">
-            <canvas id="${this.id}-mem-gauge"></canvas>
+            <div class="progress-ring" id="${this.id}-mem-ring" style="--progress: 0; --ring-color: var(--gauge-mem);">
+              <span class="progress-ring-value" id="${this.id}-mem-value">--%</span>
+            </div>
             <div class="gauge-label">Memory</div>
-            <div class="gauge-value" id="${this.id}-mem-value">--%</div>
           </div>
           ${diskGauge}
         </div>
@@ -54,60 +54,24 @@ class SystemWidget extends BaseWidget {
     `;
   }
 
-  createGauge(elementId, color) {
-    const ctx = document.getElementById(elementId);
-    if (!ctx) return null;
+  updateRing(id, value) {
+    const ring = document.getElementById(id);
+    if (!ring) return;
 
-    return new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        datasets: [{
-          data: [0, 100],
-          backgroundColor: [color, '#1e293b'],
-          borderWidth: 0,
-          cutout: '75%',
-          circumference: 180,
-          rotation: 270
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false }
-        },
-        animation: {
-          duration: 300
-        }
-      }
-    });
-  }
-
-  onMounted() {
-    this.cpuChart = this.createGauge(`${this.id}-cpu-gauge`, '#3b82f6');
-    this.memChart = this.createGauge(`${this.id}-mem-gauge`, '#10b981');
-    if (this.showDisk) {
-      this.diskChart = this.createGauge(`${this.id}-disk-gauge`, '#f59e0b');
-    }
-  }
-
-  updateGauge(chart, value) {
-    if (!chart) return;
     const clamped = Math.min(100, Math.max(0, value));
-    chart.data.datasets[0].data = [clamped, 100 - clamped];
 
-    // Change color based on value
-    let color = '#3b82f6'; // blue
+    // Color based on value threshold
+    let color = '#f97316'; // orange (default)
     if (clamped > 90) {
       color = '#ef4444'; // red
     } else if (clamped > 70) {
-      color = '#f59e0b'; // yellow
+      color = '#eab308'; // yellow
     } else if (clamped > 50) {
-      color = '#10b981'; // green
+      color = '#22c55e'; // green
     }
-    chart.data.datasets[0].backgroundColor[0] = color;
-    chart.update('none');
+
+    ring.style.setProperty('--progress', clamped);
+    ring.style.setProperty('--ring-color', color);
   }
 
   async onTick() {
@@ -116,17 +80,17 @@ class SystemWidget extends BaseWidget {
 
       // Update CPU
       const cpu = data.cpu || 0;
-      this.updateGauge(this.cpuChart, cpu);
+      this.updateRing(`${this.id}-cpu-ring`, cpu);
       this.updateElement(`#${this.id}-cpu-value`, this.formatPercent(cpu));
 
       // Update Memory
       const memory = data.memory || 0;
-      this.updateGauge(this.memChart, memory);
+      this.updateRing(`${this.id}-mem-ring`, memory);
       this.updateElement(`#${this.id}-mem-value`, this.formatPercent(memory));
 
       // Update Disk if enabled
       if (this.showDisk && data.disk !== undefined) {
-        this.updateGauge(this.diskChart, data.disk);
+        this.updateRing(`${this.id}-disk-ring`, data.disk);
         this.updateElement(`#${this.id}-disk-value`, this.formatPercent(data.disk));
       }
 
@@ -144,22 +108,6 @@ class SystemWidget extends BaseWidget {
       this.hideLoading();
     } catch (error) {
       console.error('System widget error:', error);
-    }
-  }
-
-  onDestroy() {
-    super.onDestroy();
-    if (this.cpuChart) {
-      this.cpuChart.destroy();
-      this.cpuChart = null;
-    }
-    if (this.memChart) {
-      this.memChart.destroy();
-      this.memChart = null;
-    }
-    if (this.diskChart) {
-      this.diskChart.destroy();
-      this.diskChart = null;
     }
   }
 }

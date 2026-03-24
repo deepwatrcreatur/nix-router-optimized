@@ -64,7 +64,7 @@ class Dashboard {
 
     const systemInfo = new SystemInfoWidget({
       id: 'system-info',
-      grid: { w: 4, h: 5 },
+      grid: { w: 4, h: 4 },
       refreshInterval: 120000
     });
     systemInfo.render(container);
@@ -138,7 +138,7 @@ class Dashboard {
     // Top connections widget
     const topConns = new TopConnectionsWidget({
       id: 'top-connections',
-      grid: { w: 6, h: 5 },
+      grid: { w: 6, h: 4 },
       refreshInterval: 10000,
       limit: 15
     });
@@ -156,14 +156,14 @@ class Dashboard {
 
     const firewallLogs = new FirewallLogsWidget({
       id: 'firewall-logs',
-      grid: { w: 6, h: 5 }
+      grid: { w: 6, h: 4 }
     });
     firewallLogs.render(container);
     this.widgets.push(firewallLogs);
 
     const caddy = new CaddyWidget({
       id: 'caddy',
-      grid: { w: 4, h: 5 },
+      grid: { w: 4, h: 4 },
       refreshInterval: 30000
     });
     caddy.render(container);
@@ -181,7 +181,7 @@ class Dashboard {
     // DHCP Leases widget
     const dhcp = new DhcpWidget({
       id: 'dhcp',
-      grid: { w: 6, h: 5 },
+      grid: { w: 6, h: 4 },
       refreshInterval: 60000
     });
     dhcp.render(container);
@@ -229,7 +229,7 @@ class Dashboard {
     this.grid = GridStack.init({
       column: 12,
       cellHeight: 96,
-      margin: 10,
+      margin: 8,
       float: true,
       handle: '.widget-header'
     }, container);

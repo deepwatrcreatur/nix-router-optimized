@@ -24,6 +24,7 @@ class DhcpWidget extends BaseWidget {
         </div>
         <div class="dhcp-content" id="${this.id}-content">
           <div class="dhcp-scopes" id="${this.id}-scopes" style="margin-bottom: 15px;"></div>
+          <div class="dhcp-sections" id="${this.id}-sections" style="display: none;"></div>
           <div class="dhcp-table-container" style="max-height: 300px; overflow-y: auto;">
             <table class="data-table">
               <thead>
@@ -86,18 +87,59 @@ class DhcpWidget extends BaseWidget {
 
       // Update leases table
       const leasesEl = this.container?.querySelector(`#${this.id}-leases`);
-      if (leasesEl && data.leases) {
+      const sectionsEl = this.container?.querySelector(`#${this.id}-sections`);
+      const hasMultipleSections = (data.sections || []).length > 1;
+
+      if (sectionsEl) {
+        if (hasMultipleSections) {
+          sectionsEl.style.display = 'grid';
+          sectionsEl.innerHTML = data.sections.map(section => `
+            <div class="dhcp-section">
+              <div class="dhcp-section-header">
+                <div>
+                  <div class="dhcp-section-title">${section.title}</div>
+                  <div class="dhcp-section-meta">
+                    Scope: ${section.scope}
+                    ${section.startAddress && section.endAddress ? ` • ${section.startAddress} - ${section.endAddress}` : ''}
+                  </div>
+                </div>
+                <span class="scope-count">${section.leaseCount} leases</span>
+              </div>
+              <div class="dhcp-table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>IP Address</th>
+                      <th>Hostname</th>
+                      <th>MAC Address</th>
+                      <th>Expires</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${section.leases.length === 0
+                      ? '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No active leases</td></tr>'
+                      : section.leases.map(lease => this.renderLeaseRow(lease)).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `).join('');
+        } else {
+          sectionsEl.style.display = 'none';
+          sectionsEl.innerHTML = '';
+        }
+      }
+
+      const tableContainer = this.container?.querySelector('.dhcp-content > .dhcp-table-container');
+      if (tableContainer) {
+        tableContainer.style.display = hasMultipleSections ? 'none' : 'block';
+      }
+
+      if (leasesEl && data.leases && !hasMultipleSections) {
         if (data.leases.length === 0) {
           leasesEl.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No active leases</td></tr>';
         } else {
-          leasesEl.innerHTML = data.leases.map(lease => `
-            <tr>
-              <td><code>${lease.address}</code></td>
-              <td>${lease.hostname || '<em style="color: var(--text-muted);">unknown</em>'}</td>
-              <td><code style="font-size: 0.85em;">${this.formatMac(lease.hardwareAddress)}</code></td>
-              <td>${this.formatExpiry(lease.leaseExpires)}</td>
-            </tr>
-          `).join('');
+          leasesEl.innerHTML = data.leases.map(lease => this.renderLeaseRow(lease)).join('');
         }
       }
 
@@ -133,6 +175,17 @@ class DhcpWidget extends BaseWidget {
     } catch {
       return expiry;
     }
+  }
+
+  renderLeaseRow(lease) {
+    return `
+      <tr>
+        <td><code>${lease.address}</code></td>
+        <td>${lease.hostname || '<em style="color: var(--text-muted);">unknown</em>'}</td>
+        <td><code style="font-size: 0.85em;">${this.formatMac(lease.hardwareAddress)}</code></td>
+        <td>${this.formatExpiry(lease.leaseExpires)}</td>
+      </tr>
+    `;
   }
 }
 
