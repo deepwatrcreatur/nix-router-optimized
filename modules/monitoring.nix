@@ -13,9 +13,10 @@ let
     set -eu
 
     addr="$1"
+    addr_pattern=$(printf '%s\n' "$addr" | ${pkgs.gnused}/bin/sed 's/\./\\./g')
 
     for _ in $(seq 1 ${toString cfg.waitForListenAddressTimeout}); do
-      if ${pkgs.iproute2}/bin/ip -o -4 addr show | ${pkgs.gnugrep}/bin/grep -Fq " $addr/"; then
+      if ${pkgs.gnugrep}/bin/grep -Eq "[[:space:]]$addr_pattern(/32)?([[:space:]]|$)" /proc/net/fib_trie; then
         exit 0
       fi
       sleep 1
