@@ -5,6 +5,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 ## Features
 
 - **FastTrack/FastPath**: Connection tracking bypass for established connections
+- **Router Networking**: Reusable systemd-networkd WAN plus routed-LAN/prefix-delegation module
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
 - **Advanced Queuing**: fq_codel, CAKE, BQL for optimal latency
 - **XDP/eBPF**: Early packet filtering at driver level
@@ -31,14 +32,27 @@ Add to your `flake.nix`:
     nixosConfigurations.gateway = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
+        router-optimized.nixosModules.router-networking
         router-optimized.nixosModules.router-optimizations
         router-optimized.nixosModules.router-dashboard
         {
-          # Your configuration
+          services.router-networking = {
+            enable = true;
+            wan.device = "ens17";
+            routedInterfaces.lan = {
+              device = "ens16";
+              ipv4Address = "192.168.1.1/24";
+              dns = [ "192.168.1.1" ];
+              requiredForOnline = "routable";
+            };
+          };
+
           services.router-optimizations = {
             enable = true;
-            wan-interface = "ens17";
-            lan-interface = "ens16";
+            interfaces = {
+              wan = { device = "ens17"; role = "wan"; label = "WAN"; bandwidth = "1Gbit"; };
+              lan = { device = "ens16"; role = "lan"; label = "LAN"; };
+            };
           };
         }
       ];
@@ -48,6 +62,13 @@ Add to your `flake.nix`:
 ```
 
 ## Modules
+
+### router-networking
+Reusable router-oriented `systemd-networkd` configuration for:
+- DHCP/RA/DHCPv6-PD on WAN
+- Routed downstream segments with IPv4 addresses
+- IPv6 router advertisements and prefix delegation on LAN/management networks
+- Stable router-facing IPv6 identities by default
 
 ### router-optimizations
 Core performance optimizations including kernel tuning, hardware offloads, and queue management.

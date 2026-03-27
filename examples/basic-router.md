@@ -13,77 +13,58 @@ This is a simple home router configuration with:
 {
   imports = [
     ./hardware-configuration.nix
+    router-optimized.nixosModules.router-networking
+    router-optimized.nixosModules.router-optimizations
+    router-optimized.nixosModules.router-dashboard
   ];
 
-  # Enable router optimizations
-  router = {
-    # FastTrack firewall
+  services = {
+    router-networking = {
+      enable = true;
+      wan.device = "eth0";
+      routedInterfaces.lan = {
+        device = "eth1";
+        ipv4Address = "192.168.1.1/24";
+        dns = [ "192.168.1.1" ];
+        requiredForOnline = "routable";
+      };
+    };
+
     nftables-fasttrack = {
       enable = true;
-      wan = "eth0";
-      lan = [ "eth1" ];
-      allowedTCPPorts = [ 22 ];  # SSH only
-      enableFlowOffload = true;
+      wan-interface = "eth0";
+      lan-interface = "eth1";
+      trusted-ports = [ 22 ];
     };
 
-    # Performance optimizations
-    optimizations = {
+    router-optimizations = {
       enable = true;
-      enableHardwareOffload = true;
-      queueDiscipline = "fq_codel";
-      interfaces = [ "eth0" "eth1" ];
-    };
-
-    # DNS resolver
-    dns = {
-      enable = true;
-      provider = "unbound";
-      listenAddresses = [ "192.168.1.1" ];
-      upstreamServers = [ "1.1.1.1" "8.8.8.8" ];
-      localZones = {
-        "router.home" = "192.168.1.1";
-      };
-    };
-
-    # Monitoring
-    monitoring = {
-      enable = true;
-      interfaces = [ "eth0" "eth1" ];
-      listenAddress = "192.168.1.1";
-    };
-
-    # Simple dashboard
-    dashboard = {
-      enable = true;
-      port = 8888;
       interfaces = {
-        wan = "eth0";
-        lan = [ "eth1" ];
+        wan = {
+          device = "eth0";
+          role = "wan";
+          label = "WAN";
+          bandwidth = "1Gbit";
+        };
+        lan = {
+          device = "eth1";
+          role = "lan";
+          label = "LAN";
+        };
       };
     };
-  };
 
-  # Network configuration
-  networking = {
-    hostName = "router";
-    useDHCP = false;
-    nameservers = [ "127.0.0.1" ];
-
-    interfaces = {
-      eth0.useDHCP = true;  # WAN gets IP from ISP
-      
-      eth1.ipv4.addresses = [{
-        address = "192.168.1.1";
-        prefixLength = 24;
-      }];
+    router-dashboard = {
+      enable = true;
+      interfaces = [
+        { device = "eth0"; label = "WAN"; role = "wan"; }
+        { device = "eth1"; label = "LAN"; role = "lan"; }
+      ];
     };
   };
 
-  # Enable IP forwarding
-  boot.kernel.sysctl = {
-    "net.ipv4.ip_forward" = 1;
-    "net.ipv6.conf.all.forwarding" = 1;
-  };
+  networking.hostName = "router";
+  networking.nameservers = [ "127.0.0.1" ];
 
   # DHCP server for LAN
   services.kea.dhcp4 = {

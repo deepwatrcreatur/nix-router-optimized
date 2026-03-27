@@ -9,12 +9,14 @@
     nixosModules = {
       default = {
         imports = [
+          self.nixosModules.router-networking
           self.nixosModules.router-optimizations
           self.nixosModules.router-dashboard
           self.nixosModules.nftables-fasttrack
         ];
       };
       
+      router-networking = import ./modules/router-networking.nix;
       router-optimizations = import ./modules/router-optimizations.nix;
       router-dashboard = import ./modules/router-dashboard.nix;
       nftables-fasttrack = import ./modules/nftables-fasttrack.nix;
@@ -29,6 +31,7 @@
     nixosConfigurations.router-example = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
+        self.nixosModules.router-networking
         self.nixosModules.router-optimizations
         self.nixosModules.router-dashboard
         {
@@ -41,6 +44,17 @@
           };
           boot.loader.grub.devices = [ "nodev" ];
           
+          services.router-networking = {
+            enable = true;
+            wan.device = "eth0";
+            routedInterfaces.lan = {
+              device = "eth1";
+              ipv4Address = "192.168.1.1/24";
+              dns = [ "192.168.1.1" ];
+              requiredForOnline = "routable";
+            };
+          };
+
           # Example router configuration
           services.router-optimizations = {
             enable = true;
