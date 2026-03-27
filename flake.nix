@@ -14,6 +14,7 @@
           self.nixosModules.router-firewall
           self.nixosModules.router-pppoe
           self.nixosModules.router-homelab
+          self.nixosModules.router-technitium
           self.nixosModules.router-optimizations
           self.nixosModules.router-dashboard
           self.nixosModules.nftables-fasttrack
@@ -25,6 +26,7 @@
       router-firewall = import ./modules/router-firewall.nix;
       router-pppoe = import ./modules/router-pppoe.nix;
       router-homelab = import ./modules/router-homelab.nix;
+      router-technitium = import ./modules/router-technitium.nix;
       router-optimizations = import ./modules/router-optimizations.nix;
       router-dashboard = import ./modules/router-dashboard.nix;
       nftables-fasttrack = import ./modules/nftables-fasttrack.nix;

@@ -10,6 +10,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **Router Firewall**: Role-aware nftables policy derived from router interface definitions
 - **Router PPPoE**: Composable PPPoE uplink module that can coexist with router-networking
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
+- **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
 - **Advanced Queuing**: fq_codel, CAKE, BQL for optimal latency
 - **XDP/eBPF**: Early packet filtering at driver level
@@ -41,6 +42,7 @@ Add to your `flake.nix`:
         router-optimized.nixosModules.router-firewall
         router-optimized.nixosModules.router-pppoe
         router-optimized.nixosModules.router-homelab
+        router-optimized.nixosModules.router-technitium
         router-optimized.nixosModules.router-optimizations
         {
           services.router-networking = {
@@ -72,6 +74,11 @@ Add to your `flake.nix`:
           services.router-homelab = {
             enable = true;
             sshTarget = "ssh router.example.com";
+          };
+
+          services.router-technitium = {
+            enable = true;
+            blockListPresets = [ "hagezi-normal" ];
           };
         }
       ];
@@ -116,6 +123,12 @@ Opt-in service bundle for a small homelab router:
 - enables Netdata on the primary LAN address
 - adds common trusted firewall ports for dashboard, Grafana, Prometheus, and Technitium when present
 - adds convenient dashboard quick links such as SSH, DNS admin, Grafana, and Netdata
+
+### router-technitium
+Opt-in Technitium DNS service bundle:
+- enables `services.technitium-dns-server`
+- optionally exports `TECHNITIUM_API_KEY_FILE` from an age secret
+- wires declarative blocklist presets through `services.router.dnsBlockLists`
 
 ### router-optimizations
 Core performance optimizations including kernel tuning, hardware offloads, and queue management.
