@@ -5,7 +5,7 @@ This is a simple home router configuration with:
 - 1 LAN interface (static IP)
 - Basic firewall with FastTrack
 - Unbound DNS resolver
-- Monitoring dashboard
+- Monitoring dashboard and homelab service bundle
 
 ```nix
 { config, pkgs, ... }:
@@ -15,8 +15,8 @@ This is a simple home router configuration with:
     ./hardware-configuration.nix
     router-optimized.nixosModules.router-networking
     router-optimized.nixosModules.router-firewall
+    router-optimized.nixosModules.router-homelab
     router-optimized.nixosModules.router-optimizations
-    router-optimized.nixosModules.router-dashboard
   ];
 
   services = {
@@ -36,6 +36,11 @@ This is a simple home router configuration with:
       wanTcpPorts = [ 22 ];
     };
 
+    router-homelab = {
+      enable = true;
+      sshTarget = "ssh admin@192.168.1.1";
+    };
+
     router-optimizations = {
       enable = true;
       interfaces = {
@@ -53,13 +58,6 @@ This is a simple home router configuration with:
       };
     };
 
-    router-dashboard = {
-      enable = true;
-      interfaces = [
-        { device = "eth0"; label = "WAN"; role = "wan"; }
-        { device = "eth1"; label = "LAN"; role = "lan"; }
-      ];
-    };
   };
 
   networking.hostName = "router";

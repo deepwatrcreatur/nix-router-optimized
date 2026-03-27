@@ -7,6 +7,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **FastTrack/FastPath**: Connection tracking bypass for established connections
 - **Router Networking**: Reusable systemd-networkd WAN plus routed-LAN/prefix-delegation module
 - **Router Firewall**: Role-aware nftables policy derived from router interface definitions
+- **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
 - **Advanced Queuing**: fq_codel, CAKE, BQL for optimal latency
 - **XDP/eBPF**: Early packet filtering at driver level
@@ -35,6 +36,7 @@ Add to your `flake.nix`:
       modules = [
         router-optimized.nixosModules.router-networking
         router-optimized.nixosModules.router-firewall
+        router-optimized.nixosModules.router-homelab
         router-optimized.nixosModules.router-optimizations
         router-optimized.nixosModules.router-dashboard
         {
@@ -61,6 +63,11 @@ Add to your `flake.nix`:
             enable = true;
             wanTcpPorts = [ 80 443 ];
           };
+
+          services.router-homelab = {
+            enable = true;
+            sshTarget = "ssh router.example.com";
+          };
         }
       ];
     };
@@ -82,6 +89,14 @@ Role-aware nftables policy for routed routers:
 - derives WAN/LAN/management interfaces from `services.router-optimizations.interfaces`
 - exposes router services on trusted segments without hard-coding device names
 - supports Tailscale, WAN service ports, routed forwarding, and flowtable setup
+
+### router-homelab
+Opt-in service bundle for a small homelab router:
+- enables router dashboard defaults
+- enables Prometheus/Grafana monitoring defaults
+- enables Netdata on the primary LAN address
+- adds common trusted firewall ports for dashboard, Grafana, Prometheus, and Technitium when present
+- adds convenient dashboard quick links such as SSH, DNS admin, Grafana, and Netdata
 
 ### router-optimizations
 Core performance optimizations including kernel tuning, hardware offloads, and queue management.

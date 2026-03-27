@@ -11,6 +11,7 @@
         imports = [
           self.nixosModules.router-networking
           self.nixosModules.router-firewall
+          self.nixosModules.router-homelab
           self.nixosModules.router-optimizations
           self.nixosModules.router-dashboard
           self.nixosModules.nftables-fasttrack
@@ -19,6 +20,7 @@
       
       router-networking = import ./modules/router-networking.nix;
       router-firewall = import ./modules/router-firewall.nix;
+      router-homelab = import ./modules/router-homelab.nix;
       router-optimizations = import ./modules/router-optimizations.nix;
       router-dashboard = import ./modules/router-dashboard.nix;
       nftables-fasttrack = import ./modules/nftables-fasttrack.nix;
