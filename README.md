@@ -190,6 +190,11 @@ Declarative Technitium DNS blocklist management with curated presets and additiv
 
 See `examples/` directory for complete working configurations.
 
+Additional docs:
+- `docs/troubleshooting.md` for common operational failures
+- `docs/IMPLEMENTATION-STATUS.md` for current module maturity
+- `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
+
 ## PPPoE Example
 
 ```nix

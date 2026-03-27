@@ -10,6 +10,7 @@ let
     options = {
       destination = mkOption {
         type = types.str;
+        example = "10.10.0.0/16";
         description = "Route destination, for example 10.10.0.0/16.";
       };
 
@@ -78,6 +79,11 @@ let
       extraRoutes = mkOption {
         type = types.listOf routeModule;
         default = [ ];
+        example = [
+          {
+            destination = "10.42.0.0/16";
+          }
+        ];
         description = "Additional connected routes to install on the interface.";
       };
 
@@ -274,6 +280,7 @@ in
     wan = {
       device = mkOption {
         type = types.str;
+        example = "ens17";
         description = "WAN interface device name.";
       };
 
@@ -376,6 +383,12 @@ in
       extraRoutes = mkOption {
         type = types.listOf routeModule;
         default = [ ];
+        example = [
+          {
+            destination = "172.16.0.0/12";
+            scope = "link";
+          }
+        ];
         description = "Additional static routes installed on the WAN interface.";
       };
 
