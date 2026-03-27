@@ -144,7 +144,10 @@ Web dashboard on port 8888 showing:
 Flow offloading configuration for nftables to bypass connection tracking for established flows.
 
 ### caddy-reverse-proxy
-Declarative Caddy configuration with automatic HTTPS for services.
+Declarative Caddy configuration with automatic HTTPS for services:
+- public or trusted-only service exposure
+- root-domain redirects
+- per-site reverse proxy or redirect targets
 
 ### dns-blocklists
 Declarative Technitium DNS blocklist management with curated presets and additive custom URLs.
@@ -181,6 +184,36 @@ See `examples/` directory for complete working configurations.
     interfaceName = "ppp0";
     username = "isp-login";
     credentialsFile = "/run/secrets/pppoe-peer.conf";
+  };
+}
+```
+
+## Caddy Example
+
+```nix
+{
+  imports = [
+    router-optimized.nixosModules.caddy-reverse-proxy
+  ];
+
+  services.caddy-router = {
+    enable = true;
+    domain = "example.com";
+    email = "admin@example.com";
+    rootRedirect = "https://status.example.com";
+
+    services = {
+      grafana = {
+        subdomain = "grafana";
+        upstream = "http://10.10.10.1:3001";
+      };
+
+      homelab = {
+        subdomain = "homelab";
+        upstream = "http://10.10.10.1:8888";
+        access = "trusted";
+      };
+    };
   };
 }
 ```
