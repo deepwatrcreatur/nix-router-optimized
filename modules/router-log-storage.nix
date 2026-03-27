@@ -4,6 +4,7 @@ with lib;
 
 let
   cfg = config.services.router-log-storage;
+  mountUnitName = "${replaceStrings [ "/" ] [ "-" ] (removePrefix "/" (removeSuffix "/" cfg.mountPoint))}.mount";
 
   logDirectories =
     [
@@ -151,8 +152,8 @@ in
 
     systemd.services.${cfg.serviceName} = {
       description = "Prepare router log directories on secondary storage";
-      after = [ "${escapeSystemdPath cfg.mountPoint}.mount" ];
-      wants = [ "${escapeSystemdPath cfg.mountPoint}.mount" ];
+      after = [ mountUnitName ];
+      wants = [ mountUnitName ];
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {

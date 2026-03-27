@@ -131,6 +131,12 @@ Persistent log-storage layout for small router systems:
 - can bind-mount `/var/log/journal` onto that volume
 - creates per-service log directories with tmpfiles and a setup service
 
+### monitoring storage placement
+The monitoring module can also place state on secondary storage:
+- `router.monitoring.grafanaDataDir` moves Grafana's state directory
+- `router.monitoring.prometheusStateDir` changes the `/var/lib/...` state directory name Prometheus uses
+- `router.monitoring.prometheusBindMountPath` bind-mounts that Prometheus state directory onto another filesystem
+
 ### router-pppoe
 Composable PPPoE uplink wrapper:
 - uses `services.pppd` as the PPPoE client
@@ -284,6 +290,29 @@ See `examples/` directory for complete working configurations.
         group = "grafana";
       }
     ];
+  };
+}
+```
+
+## Monitoring On Secondary Storage
+
+```nix
+{
+  services.router-log-storage = {
+    enable = true;
+    device = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
+    mountPoint = "/var/log/router";
+    extraDirectories = [
+      { name = "grafana"; user = "grafana"; group = "grafana"; }
+      { name = "prometheus"; user = "prometheus"; group = "prometheus"; }
+    ];
+  };
+
+  router.monitoring = {
+    enable = true;
+    grafanaDataDir = "/var/log/router/grafana";
+    prometheusStateDir = "router-prometheus";
+    prometheusBindMountPath = "/var/log/router/prometheus";
   };
 }
 ```

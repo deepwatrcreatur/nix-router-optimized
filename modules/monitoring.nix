@@ -5,6 +5,9 @@ with lib;
 let
   cfg = config.router.monitoring;
   optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+  grafanaDashboardsDir =
+    if cfg.grafanaDashboardsDir != null then cfg.grafanaDashboardsDir else "${cfg.grafanaDataDir}/dashboards";
+  prometheusStatePath = "/var/lib/${cfg.prometheusStateDir}";
 
   effectiveInterfaces =
     if cfg.interfaces != [ ] || !cfg.autoInterfacesFromOptimizations then
@@ -57,6 +60,36 @@ in
       default = "0.0.0.0";
       description = "IP address to bind monitoring services to";
     };
+
+    grafanaDataDir = mkOption {
+      type = types.str;
+      default = "/var/lib/grafana";
+      description = "Grafana data directory. Set this to move Grafana state onto secondary storage.";
+    };
+
+    grafanaDashboardsDir = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Directory where provisioned Grafana dashboards are copied. Defaults to <grafanaDataDir>/dashboards.";
+    };
+
+    prometheusStateDir = mkOption {
+      type = types.str;
+      default = "prometheus";
+      description = ''
+        Prometheus state directory name under /var/lib. Change this when you
+        want a dedicated bind mount for Prometheus data.
+      '';
+    };
+
+    prometheusBindMountPath = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        Optional absolute path bound onto /var/lib/<prometheusStateDir> so
+        Prometheus TSDB data can live on secondary storage.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -65,6 +98,7 @@ in
       enable = true;
       port = cfg.prometheusPort;
       listenAddress = cfg.listenAddress;
+      stateDir = cfg.prometheusStateDir;
 
       exporters = {
         node = {
@@ -90,6 +124,7 @@ in
     # Grafana for visualization
     services.grafana = {
       enable = true;
+      dataDir = cfg.grafanaDataDir;
       settings = {
         server = {
           http_port = cfg.grafanaPort;
@@ -114,7 +149,7 @@ in
 
         dashboards.settings.providers = [{
           name = "Router Dashboards";
-          options.path = "/var/lib/grafana/dashboards";
+          options.path = grafanaDashboardsDir;
         }];
       };
     };
@@ -128,9 +163,16 @@ in
       chmod 600 /run/grafana/admin-password
     '';
 
+    fileSystems.${prometheusStatePath} = mkIf (cfg.prometheusBindMountPath != null) {
+      device = cfg.prometheusBindMountPath;
+      fsType = "none";
+      options = [ "bind" "nofail" "x-systemd.automount" ];
+      depends = [ (builtins.dirOf cfg.prometheusBindMountPath) ];
+    };
+
     # Install pre-built router dashboards
     systemd.tmpfiles.rules = [
-      "d /var/lib/grafana/dashboards 0755 grafana grafana"
+      "d ${grafanaDashboardsDir} 0755 grafana grafana -"
     ];
 
     environment.etc."grafana-dashboards/router-overview.json" = {
@@ -252,9 +294,9 @@ in
         RemainAfterExit = true;
       };
       script = ''
-        mkdir -p /var/lib/grafana/dashboards
-        cp /etc/grafana-dashboards/*.json /var/lib/grafana/dashboards/ || true
-        chown -R grafana:grafana /var/lib/grafana/dashboards
+        mkdir -p ${grafanaDashboardsDir}
+        cp /etc/grafana-dashboards/*.json ${grafanaDashboardsDir}/ || true
+        chown -R grafana:grafana ${grafanaDashboardsDir}
       '';
     };
   };
