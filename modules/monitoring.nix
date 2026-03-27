@@ -8,12 +8,281 @@ let
   grafanaDashboardsDir =
     if cfg.grafanaDashboardsDir != null then cfg.grafanaDashboardsDir else "${cfg.grafanaDataDir}/dashboards";
   prometheusStatePath = "/var/lib/${cfg.prometheusStateDir}";
+  interfaceRegex = concatStringsSep "|" effectiveInterfaces;
+  waitForListenAddressScript = pkgs.writeShellScript "wait-for-router-monitoring-address" ''
+    set -eu
+
+    addr="$1"
+
+    for _ in $(seq 1 ${toString cfg.waitForListenAddressTimeout}); do
+      if ${pkgs.iproute2}/bin/ip -o -4 addr show | ${pkgs.gnugrep}/bin/grep -Fq " $addr/"; then
+        exit 0
+      fi
+      sleep 1
+    done
+
+    echo "Timed out waiting for IPv4 address $addr" >&2
+    exit 1
+  '';
 
   effectiveInterfaces =
     if cfg.interfaces != [ ] || !cfg.autoInterfacesFromOptimizations then
       cfg.interfaces
     else
       mapAttrsToList (_name: iface: iface.device) optimizationInterfaces;
+
+  overviewDashboard = {
+    dashboard = {
+      title = "Router Overview";
+      timezone = "browser";
+      schemaVersion = 16;
+      version = 1;
+      refresh = "5s";
+
+      panels = [
+        {
+          id = 1;
+          title = "Aggregate Network Traffic";
+          type = "graph";
+          gridPos = { x = 0; y = 0; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "sum(rate(node_network_receive_bytes_total{device=~\"${interfaceRegex}\"}[1m])) * 8";
+              legendFormat = "RX";
+            }
+            {
+              expr = "sum(rate(node_network_transmit_bytes_total{device=~\"${interfaceRegex}\"}[1m])) * 8";
+              legendFormat = "TX";
+            }
+          ];
+          yaxes = [
+            { format = "bps"; }
+            { format = "short"; }
+          ];
+        }
+        {
+          id = 2;
+          title = "Active Connections";
+          type = "stat";
+          gridPos = { x = 12; y = 0; w = 4; h = 4; };
+          targets = [{
+            expr = "node_nf_conntrack_entries";
+          }];
+        }
+        {
+          id = 3;
+          title = "Conntrack Utilization";
+          type = "gauge";
+          gridPos = { x = 16; y = 0; w = 4; h = 4; };
+          targets = [{
+            expr = "100 * (node_nf_conntrack_entries / node_nf_conntrack_entries_limit)";
+          }];
+        }
+        {
+          id = 4;
+          title = "CPU Usage";
+          type = "gauge";
+          gridPos = { x = 20; y = 0; w = 4; h = 4; };
+          targets = [{
+            expr = "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)";
+          }];
+        }
+        {
+          id = 5;
+          title = "Memory Usage";
+          type = "gauge";
+          gridPos = { x = 12; y = 4; w = 4; h = 4; };
+          targets = [{
+            expr = "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))";
+          }];
+        }
+        {
+          id = 6;
+          title = "Root Filesystem Usage";
+          type = "gauge";
+          gridPos = { x = 16; y = 4; w = 4; h = 4; };
+          targets = [{
+            expr = "100 * (1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}))";
+          }];
+        }
+        {
+          id = 7;
+          title = "System Uptime";
+          type = "stat";
+          gridPos = { x = 20; y = 4; w = 4; h = 4; };
+          targets = [{
+            expr = "node_time_seconds - node_boot_time_seconds";
+          }];
+          fieldConfig = {
+            defaults = {
+              unit = "s";
+            };
+          };
+        }
+        {
+          id = 8;
+          title = "Packet Errors";
+          type = "graph";
+          gridPos = { x = 0; y = 8; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "sum(rate(node_network_receive_errs_total{device=~\"${interfaceRegex}\"}[5m]))";
+              legendFormat = "RX errors";
+            }
+            {
+              expr = "sum(rate(node_network_transmit_errs_total{device=~\"${interfaceRegex}\"}[5m]))";
+              legendFormat = "TX errors";
+            }
+          ];
+        }
+        {
+          id = 9;
+          title = "Packet Drops";
+          type = "graph";
+          gridPos = { x = 12; y = 8; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "sum(rate(node_network_receive_drop_total{device=~\"${interfaceRegex}\"}[5m]))";
+              legendFormat = "RX drops";
+            }
+            {
+              expr = "sum(rate(node_network_transmit_drop_total{device=~\"${interfaceRegex}\"}[5m]))";
+              legendFormat = "TX drops";
+            }
+          ];
+        }
+      ];
+    };
+  };
+
+  interfaceDashboard = {
+    dashboard = {
+      title = "Router Interfaces";
+      timezone = "browser";
+      schemaVersion = 16;
+      version = 1;
+      refresh = "5s";
+
+      panels = [
+        {
+          id = 11;
+          title = "Per-Interface Throughput";
+          type = "graph";
+          gridPos = { x = 0; y = 0; w = 24; h = 9; };
+          targets = [
+            {
+              expr = "rate(node_network_receive_bytes_total{device=~\"${interfaceRegex}\"}[1m]) * 8";
+              legendFormat = "{{device}} RX";
+            }
+            {
+              expr = "rate(node_network_transmit_bytes_total{device=~\"${interfaceRegex}\"}[1m]) * 8";
+              legendFormat = "{{device}} TX";
+            }
+          ];
+          yaxes = [
+            { format = "bps"; }
+            { format = "short"; }
+          ];
+        }
+        {
+          id = 12;
+          title = "Per-Interface Packet Rate";
+          type = "graph";
+          gridPos = { x = 0; y = 9; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "rate(node_network_receive_packets_total{device=~\"${interfaceRegex}\"}[1m])";
+              legendFormat = "{{device}} RX packets";
+            }
+            {
+              expr = "rate(node_network_transmit_packets_total{device=~\"${interfaceRegex}\"}[1m])";
+              legendFormat = "{{device}} TX packets";
+            }
+          ];
+        }
+        {
+          id = 13;
+          title = "Per-Interface Errors and Drops";
+          type = "graph";
+          gridPos = { x = 12; y = 9; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "rate(node_network_receive_errs_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} RX errors";
+            }
+            {
+              expr = "rate(node_network_transmit_errs_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} TX errors";
+            }
+            {
+              expr = "rate(node_network_receive_drop_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} RX drops";
+            }
+            {
+              expr = "rate(node_network_transmit_drop_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} TX drops";
+            }
+          ];
+        }
+        {
+          id = 14;
+          title = "Load Average";
+          type = "graph";
+          gridPos = { x = 0; y = 17; w = 8; h = 6; };
+          targets = [
+            {
+              expr = "node_load1";
+              legendFormat = "1m";
+            }
+            {
+              expr = "node_load5";
+              legendFormat = "5m";
+            }
+            {
+              expr = "node_load15";
+              legendFormat = "15m";
+            }
+          ];
+        }
+        {
+          id = 15;
+          title = "CPU Mode Split";
+          type = "graph";
+          gridPos = { x = 8; y = 17; w = 8; h = 6; };
+          targets = [
+            {
+              expr = "avg(rate(node_cpu_seconds_total{mode=\"system\"}[5m])) * 100";
+              legendFormat = "system";
+            }
+            {
+              expr = "avg(rate(node_cpu_seconds_total{mode=\"user\"}[5m])) * 100";
+              legendFormat = "user";
+            }
+            {
+              expr = "avg(rate(node_cpu_seconds_total{mode=\"iowait\"}[5m])) * 100";
+              legendFormat = "iowait";
+            }
+          ];
+        }
+        {
+          id = 16;
+          title = "Memory Pressure";
+          type = "graph";
+          gridPos = { x = 16; y = 17; w = 8; h = 6; };
+          targets = [
+            {
+              expr = "node_memory_MemAvailable_bytes";
+              legendFormat = "available";
+            }
+            {
+              expr = "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes";
+              legendFormat = "used";
+            }
+          ];
+        }
+      ];
+    };
+  };
 in
 {
   options.router.monitoring = {
@@ -59,6 +328,22 @@ in
       type = types.str;
       default = "0.0.0.0";
       description = "IP address to bind monitoring services to";
+    };
+
+    waitForListenAddress = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Wait until listenAddress is present on the host before starting
+        Prometheus and Grafana. Useful when services bind to a specific LAN
+        address that may appear after network-online.target.
+      '';
+    };
+
+    waitForListenAddressTimeout = mkOption {
+      type = types.int;
+      default = 60;
+      description = "Maximum number of seconds to wait for listenAddress.";
     };
 
     grafanaDataDir = mkOption {
@@ -161,7 +446,15 @@ in
         echo "admin" > /run/grafana/admin-password
       fi
       chmod 600 /run/grafana/admin-password
+    '' + optionalString (cfg.waitForListenAddress && cfg.listenAddress != "0.0.0.0") ''
+      ${waitForListenAddressScript} ${escapeShellArg cfg.listenAddress}
     '';
+
+    systemd.services.prometheus = mkIf (cfg.waitForListenAddress && cfg.listenAddress != "0.0.0.0") {
+      preStart = mkBefore ''
+        ${waitForListenAddressScript} ${escapeShellArg cfg.listenAddress}
+      '';
+    };
 
     fileSystems.${prometheusStatePath} = mkIf (cfg.prometheusBindMountPath != null) {
       device = cfg.prometheusBindMountPath;
@@ -177,111 +470,12 @@ in
 
     environment.etc."grafana-dashboards/router-overview.json" = {
       mode = "0644";
-      text = builtins.toJSON {
-        dashboard = {
-          title = "Router Overview";
-          timezone = "browser";
-          schemaVersion = 16;
-          version = 0;
-          refresh = "5s";
+      text = builtins.toJSON overviewDashboard;
+    };
 
-          panels = [
-            {
-              id = 1;
-              title = "Network Traffic";
-              type = "graph";
-              gridPos = { x = 0; y = 0; w = 12; h = 8; };
-              targets = [
-                {
-                  expr = "rate(node_network_receive_bytes_total{device=~\"${concatStringsSep "|" effectiveInterfaces}\"}[1m]) * 8";
-                  legendFormat = "{{device}} RX";
-                }
-                {
-                  expr = "rate(node_network_transmit_bytes_total{device=~\"${concatStringsSep "|" effectiveInterfaces}\"}[1m]) * 8";
-                  legendFormat = "{{device}} TX";
-                }
-              ];
-              yaxes = [
-                { format = "bps"; }
-                { format = "short"; }
-              ];
-            }
-            {
-              id = 2;
-              title = "Active Connections";
-              type = "stat";
-              gridPos = { x = 12; y = 0; w = 6; h = 4; };
-              targets = [{
-                expr = "node_nf_conntrack_entries";
-              }];
-            }
-            {
-              id = 3;
-              title = "CPU Usage";
-              type = "gauge";
-              gridPos = { x = 18; y = 0; w = 6; h = 4; };
-              targets = [{
-                expr = "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)";
-              }];
-            }
-            {
-              id = 4;
-              title = "Memory Usage";
-              type = "gauge";
-              gridPos = { x = 12; y = 4; w = 6; h = 4; };
-              targets = [{
-                expr = "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))";
-              }];
-            }
-            {
-              id = 5;
-              title = "System Uptime";
-              type = "stat";
-              gridPos = { x = 18; y = 4; w = 6; h = 4; };
-              targets = [{
-                expr = "node_time_seconds - node_boot_time_seconds";
-              }];
-              fieldConfig = {
-                defaults = {
-                  unit = "s";
-                };
-              };
-            }
-            {
-              id = 6;
-              title = "Packet Errors";
-              type = "graph";
-              gridPos = { x = 0; y = 8; w = 12; h = 8; };
-              targets = [
-                {
-                  expr = "rate(node_network_receive_errs_total{device=~\"${concatStringsSep "|" effectiveInterfaces}\"}[1m])";
-                  legendFormat = "{{device}} RX errors";
-                }
-                {
-                  expr = "rate(node_network_transmit_errs_total{device=~\"${concatStringsSep "|" effectiveInterfaces}\"}[1m])";
-                  legendFormat = "{{device}} TX errors";
-                }
-              ];
-            }
-            {
-              id = 7;
-              title = "Conntrack Table Usage";
-              type = "graph";
-              gridPos = { x = 12; y = 8; w = 12; h = 8; };
-              targets = [
-                {
-                  expr = "node_nf_conntrack_entries";
-                  legendFormat = "Current connections";
-                }
-                {
-                  expr = "node_nf_conntrack_entries_limit";
-                  legendFormat = "Max connections";
-                }
-              ];
-            }
-          ];
-        };
-      };
+    environment.etc."grafana-dashboards/router-interfaces.json" = {
+      mode = "0644";
+      text = builtins.toJSON interfaceDashboard;
     };
 
     # Copy dashboard to Grafana

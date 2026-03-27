@@ -143,6 +143,8 @@ The monitoring module can also place state on secondary storage:
 - `router.monitoring.grafanaDataDir` moves Grafana's state directory
 - `router.monitoring.prometheusStateDir` changes the `/var/lib/...` state directory name Prometheus uses
 - `router.monitoring.prometheusBindMountPath` bind-mounts that Prometheus state directory onto another filesystem
+- `router.monitoring.waitForListenAddress = true` delays Prometheus and Grafana
+  until a specific `listenAddress` exists on the host
 
 ### router-pppoe
 Composable PPPoE uplink wrapper:
@@ -155,6 +157,8 @@ Opt-in service bundle for a small homelab router:
 - enables router dashboard defaults
 - enables Prometheus/Grafana monitoring defaults
 - enables Netdata on the primary LAN address
+- can delay LAN-bound monitoring services until the chosen listen address is
+  actually present with `services.router-homelab.waitForListenAddress = true`
 - adds common trusted firewall ports for dashboard, Grafana, Prometheus, and Technitium when present
 - adds convenient dashboard quick links such as SSH, DNS admin, Grafana, and Netdata
 

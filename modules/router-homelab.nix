@@ -5,6 +5,21 @@ with lib;
 let
   cfg = config.services.router-homelab;
   routedIfaces = config.services.router-networking.routedInterfaces or { };
+  waitForListenAddressScript = pkgs.writeShellScript "wait-for-router-homelab-address" ''
+    set -eu
+
+    addr="$1"
+
+    for _ in $(seq 1 ${toString cfg.waitForListenAddressTimeout}); do
+      if ${pkgs.iproute2}/bin/ip -o -4 addr show | ${pkgs.gnugrep}/bin/grep -Fq " $addr/"; then
+        exit 0
+      fi
+      sleep 1
+    done
+
+    echo "Timed out waiting for IPv4 address $addr" >&2
+    exit 1
+  '';
 
   stripCidr = addr: builtins.head (splitString "/" addr);
 
@@ -118,6 +133,22 @@ in
       default = "10.0.*";
       description = "Netdata allow-list expression for browser access.";
     };
+
+    waitForListenAddress = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Wait until the derived listenAddress exists before starting LAN-bound
+        monitoring services in this profile. This helps when the router binds
+        services to a specific interface address instead of 0.0.0.0.
+      '';
+    };
+
+    waitForListenAddressTimeout = mkOption {
+      type = types.int;
+      default = 60;
+      description = "Maximum number of seconds to wait for the homelab listen address.";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -129,6 +160,8 @@ in
     router.monitoring = mkIf cfg.enableMonitoring {
       enable = mkDefault true;
       listenAddress = mkDefault defaultListenAddress;
+      waitForListenAddress = mkDefault cfg.waitForListenAddress;
+      waitForListenAddressTimeout = mkDefault cfg.waitForListenAddressTimeout;
       prometheusPort = mkDefault cfg.prometheusPort;
       grafanaPort = mkDefault cfg.grafanaPort;
     };
@@ -146,6 +179,14 @@ in
           "allow dashboard from" = cfg.netdataAllowConnectionsFrom;
         };
       };
+    };
+
+    systemd.services.netdata = mkIf (cfg.enableNetdata && cfg.waitForListenAddress && defaultListenAddress != "0.0.0.0") {
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      preStart = mkBefore ''
+        ${waitForListenAddressScript} ${escapeShellArg defaultListenAddress}
+      '';
     };
 
     services.router-firewall.trustedTcpPorts = mkAfter commonTrustedTcpPorts;
