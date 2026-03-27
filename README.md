@@ -9,6 +9,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **Router DHCP**: Optional DHCP server defaults derived from routed interface definitions
 - **Router DNS Service**: Provider-aware local resolver defaults for Technitium, Unbound, or Dnsmasq
 - **Router Firewall**: Role-aware nftables policy derived from router interface definitions
+- **Router Log Storage**: Optional persistent log/journal layout on secondary storage
 - **Router PPPoE**: Composable PPPoE uplink module that can coexist with router-networking
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
 - **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
@@ -123,6 +124,12 @@ Role-aware nftables policy for routed routers:
 - derives WAN/LAN/management interfaces from `services.router-optimizations.interfaces`
 - exposes router services on trusted segments without hard-coding device names
 - supports Tailscale, WAN service ports, routed forwarding, flowtable setup, MSS clamping, and hairpin NAT
+
+### router-log-storage
+Persistent log-storage layout for small router systems:
+- mounts a secondary filesystem for logs
+- can bind-mount `/var/log/journal` onto that volume
+- creates per-service log directories with tmpfiles and a setup service
 
 ### router-pppoe
 Composable PPPoE uplink wrapper:
@@ -249,6 +256,34 @@ See `examples/` directory for complete working configurations.
       "router.lan.local" = "10.20.0.1";
       "nas.lan.local" = "10.20.0.10";
     };
+  };
+}
+```
+
+## Log Storage Example
+
+```nix
+{
+  imports = [
+    router-optimized.nixosModules.router-log-storage
+  ];
+
+  services.router-log-storage = {
+    enable = true;
+    device = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
+    mountPoint = "/var/log/router";
+    extraDirectories = [
+      {
+        name = "prometheus";
+        user = "prometheus";
+        group = "prometheus";
+      }
+      {
+        name = "grafana";
+        user = "grafana";
+        group = "grafana";
+      }
+    ];
   };
 }
 ```

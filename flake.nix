@@ -13,6 +13,7 @@
           self.nixosModules.router-dhcp
           self.nixosModules.router-dns-service
           self.nixosModules.router-firewall
+          self.nixosModules.router-log-storage
           self.nixosModules.router-pppoe
           self.nixosModules.router-homelab
           self.nixosModules.router-technitium
@@ -26,6 +27,7 @@
       router-dhcp = import ./modules/router-dhcp.nix;
       router-dns-service = import ./modules/router-dns-service.nix;
       router-firewall = import ./modules/router-firewall.nix;
+      router-log-storage = import ./modules/router-log-storage.nix;
       router-pppoe = import ./modules/router-pppoe.nix;
       router-homelab = import ./modules/router-homelab.nix;
       router-technitium = import ./modules/router-technitium.nix;
