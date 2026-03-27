@@ -101,7 +101,7 @@ Small DHCP server layer for routed routers:
 Role-aware nftables policy for routed routers:
 - derives WAN/LAN/management interfaces from `services.router-optimizations.interfaces`
 - exposes router services on trusted segments without hard-coding device names
-- supports Tailscale, WAN service ports, routed forwarding, and flowtable setup
+- supports Tailscale, WAN service ports, routed forwarding, flowtable setup, MSS clamping, and hairpin NAT
 
 ### router-pppoe
 Composable PPPoE uplink wrapper:
@@ -168,6 +168,23 @@ See `examples/` directory for complete working configurations.
     interfaceName = "ppp0";
     username = "isp-login";
     credentialsFile = "/run/secrets/pppoe-peer.conf";
+  };
+}
+```
+
+## Common WAN Policy Example
+
+```nix
+{
+  services.router-firewall = {
+    enable = true;
+
+    # Useful for PPPoE and other reduced-MTU uplinks.
+    tcpMssClamp.enable = true;
+
+    # Useful when LAN clients access an internally hosted service via the
+    # router's external address or a public DNS record.
+    hairpinNat.enable = true;
   };
 }
 ```

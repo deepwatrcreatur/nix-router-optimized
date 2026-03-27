@@ -5,6 +5,7 @@ with lib;
 let
   cfg = config.services.router-firewall;
   optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+  routedIfaces = config.services.router-networking.routedInterfaces or { };
 
   interfaceByRole = role:
     mapAttrsToList (_name: iface: iface.device) (
@@ -22,10 +23,16 @@ let
 
   trustedInterfaces = unique (cfg.extraTrustedInterfaces ++ lanInterfaces ++ managementInterfaces);
   allRouterInterfaces = unique (wanInterfaces ++ trustedInterfaces);
+  effectiveHairpinCidrs =
+    if cfg.hairpinNat.ipv4Cidrs != [ ] then
+      cfg.hairpinNat.ipv4Cidrs
+    else
+      mapAttrsToList (_name: iface: iface.ipv4Address) routedIfaces;
 
   quotedSet = ifaces: concatStringsSep ", " (map (iface: "\"${iface}\"") ifaces);
   maybeSet = ifaces: if ifaces == [ ] then "" else "{${quotedSet ifaces}}";
   tcpPortSet = ports: concatStringsSep ", " (map toString ports);
+  cidrSet = cidrs: concatStringsSep ", " cidrs;
 
   mkInputRule = ifaces: rule:
     optionalString (ifaces != [ ]) ''
@@ -185,6 +192,28 @@ in
       description = "Masquerade IPv4 traffic exiting WAN interfaces.";
     };
 
+    hairpinNat.enable = mkEnableOption "IPv4 hairpin NAT for trusted segments";
+
+    hairpinNat.ipv4Cidrs = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = ''
+        IPv4 CIDRs eligible for trusted-to-trusted hairpin masquerading. When
+        left empty, routed interface IPv4 CIDRs from router-networking are used.
+      '';
+    };
+
+    tcpMssClamp.enable = mkEnableOption "TCP MSS clamping on forwarded WAN traffic";
+
+    tcpMssClamp.value = mkOption {
+      type = types.oneOf [ types.str types.int ];
+      default = "rt mtu";
+      description = ''
+        MSS clamp value. Use `"rt mtu"` for path-MTU-aware clamping, or an
+        explicit MSS integer such as `1452`.
+      '';
+    };
+
     flowtable.enable = mkEnableOption "nftables flowtable acceleration" // {
       default = true;
     };
@@ -208,6 +237,17 @@ in
     networking.firewall.enable = false;
 
     networking.nftables.ruleset = ''
+      table inet mangle {
+        chain forward {
+          type filter hook forward priority mangle; policy accept;
+
+          ${optionalString (cfg.tcpMssClamp.enable && trustedInterfaces != [ ] && wanInterfaces != [ ]) ''
+            iifname ${maybeSet trustedInterfaces} oifname ${maybeSet wanInterfaces} tcp flags syn tcp option maxseg size set ${toString cfg.tcpMssClamp.value}
+            iifname ${maybeSet wanInterfaces} oifname ${maybeSet trustedInterfaces} tcp flags syn tcp option maxseg size set ${toString cfg.tcpMssClamp.value}
+          ''}
+        }
+      }
+
       table inet filter {
         chain input {
           type filter hook input priority 0; policy drop;
@@ -301,6 +341,9 @@ in
           type nat hook postrouting priority 100; policy accept;
           ${optionalString cfg.enableIpv4Masquerade ''
             oifname ${maybeSet wanInterfaces} masquerade
+          ''}
+          ${optionalString (cfg.hairpinNat.enable && trustedInterfaces != [ ] && effectiveHairpinCidrs != [ ]) ''
+            iifname ${maybeSet trustedInterfaces} oifname ${maybeSet trustedInterfaces} ip daddr { ${cidrSet effectiveHairpinCidrs} } masquerade
           ''}
         }
       }
