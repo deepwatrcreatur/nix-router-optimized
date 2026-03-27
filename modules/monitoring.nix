@@ -4,6 +4,13 @@ with lib;
 
 let
   cfg = config.router.monitoring;
+  optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+
+  effectiveInterfaces =
+    if cfg.interfaces != [ ] || !cfg.autoInterfacesFromOptimizations then
+      cfg.interfaces
+    else
+      mapAttrsToList (_name: iface: iface.device) optimizationInterfaces;
 in
 {
   options.router.monitoring = {
@@ -26,6 +33,16 @@ in
       default = [];
       example = [ "eth0" "eth1" ];
       description = "Network interfaces to monitor";
+    };
+
+    autoInterfacesFromOptimizations = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        When true, derive monitored interface devices from
+        services.router-optimizations.interfaces if no explicit interface list
+        is set here.
+      '';
     };
 
     grafanaDomain = mkOption {
@@ -134,11 +151,11 @@ in
               gridPos = { x = 0; y = 0; w = 12; h = 8; };
               targets = [
                 {
-                  expr = "rate(node_network_receive_bytes_total{device=~\"${concatStringsSep "|" cfg.interfaces}\"}[1m]) * 8";
+                  expr = "rate(node_network_receive_bytes_total{device=~\"${concatStringsSep "|" effectiveInterfaces}\"}[1m]) * 8";
                   legendFormat = "{{device}} RX";
                 }
                 {
-                  expr = "rate(node_network_transmit_bytes_total{device=~\"${concatStringsSep "|" cfg.interfaces}\"}[1m]) * 8";
+                  expr = "rate(node_network_transmit_bytes_total{device=~\"${concatStringsSep "|" effectiveInterfaces}\"}[1m]) * 8";
                   legendFormat = "{{device}} TX";
                 }
               ];
@@ -195,11 +212,11 @@ in
               gridPos = { x = 0; y = 8; w = 12; h = 8; };
               targets = [
                 {
-                  expr = "rate(node_network_receive_errs_total{device=~\"${concatStringsSep "|" cfg.interfaces}\"}[1m])";
+                  expr = "rate(node_network_receive_errs_total{device=~\"${concatStringsSep "|" effectiveInterfaces}\"}[1m])";
                   legendFormat = "{{device}} RX errors";
                 }
                 {
-                  expr = "rate(node_network_transmit_errs_total{device=~\"${concatStringsSep "|" cfg.interfaces}\"}[1m])";
+                  expr = "rate(node_network_transmit_errs_total{device=~\"${concatStringsSep "|" effectiveInterfaces}\"}[1m])";
                   legendFormat = "{{device}} TX errors";
                 }
               ];

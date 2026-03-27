@@ -6,6 +6,23 @@ with lib;
 
 let
   cfg = config.services.router-dashboard;
+  optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+
+  normalizeRole = role:
+    if role == "management" then
+      "mgmt"
+    else
+      role;
+
+  effectiveInterfaces =
+    if cfg.interfaces != [ ] || !cfg.autoInterfacesFromOptimizations then
+      cfg.interfaces
+    else
+      mapAttrsToList (_name: iface: {
+        device = iface.device;
+        label = iface.label;
+        role = normalizeRole iface.role;
+      }) optimizationInterfaces;
 
   # Package all dashboard static files
   dashboardStatic = pkgs.stdenv.mkDerivation {
@@ -23,7 +40,7 @@ let
           device = iface.device;
           label = iface.label;
           role = iface.role;
-        }) cfg.interfaces)},
+        }) effectiveInterfaces)},
         links: ${builtins.toJSON (map (link: {
           label = link.label;
           kind = link.kind;
@@ -88,6 +105,16 @@ in {
         { device = "ens18"; label = "Management"; role = "mgmt"; }
       ];
       description = "Network interfaces to monitor with labels";
+    };
+
+    autoInterfacesFromOptimizations = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        When true, derive dashboard interfaces from
+        services.router-optimizations.interfaces if no explicit interface list
+        is set here.
+      '';
     };
 
     links = mkOption {
