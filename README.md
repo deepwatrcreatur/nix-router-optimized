@@ -6,7 +6,9 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 
 - **FastTrack/FastPath**: Connection tracking bypass for established connections
 - **Router Networking**: Reusable systemd-networkd WAN plus routed-LAN/prefix-delegation module
+- **Router DHCP**: Optional DHCP server defaults derived from routed interface definitions
 - **Router Firewall**: Role-aware nftables policy derived from router interface definitions
+- **Router PPPoE**: Composable PPPoE uplink module that can coexist with router-networking
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
 - **Advanced Queuing**: fq_codel, CAKE, BQL for optimal latency
@@ -35,10 +37,11 @@ Add to your `flake.nix`:
       system = "x86_64-linux";
       modules = [
         router-optimized.nixosModules.router-networking
+        router-optimized.nixosModules.router-dhcp
         router-optimized.nixosModules.router-firewall
+        router-optimized.nixosModules.router-pppoe
         router-optimized.nixosModules.router-homelab
         router-optimized.nixosModules.router-optimizations
-        router-optimized.nixosModules.router-dashboard
         {
           services.router-networking = {
             enable = true;
@@ -64,6 +67,8 @@ Add to your `flake.nix`:
             wanTcpPorts = [ 80 443 ];
           };
 
+          services.router-dhcp.enable = true;
+
           services.router-homelab = {
             enable = true;
             sshTarget = "ssh router.example.com";
@@ -80,15 +85,29 @@ Add to your `flake.nix`:
 ### router-networking
 Reusable router-oriented `systemd-networkd` configuration for:
 - DHCP/RA/DHCPv6-PD on WAN
+- Static IPv4 WANs when DHCP is not available
 - Routed downstream segments with IPv4 addresses
+- VLAN-backed WAN or downstream interfaces
 - IPv6 router advertisements and prefix delegation on LAN/management networks
 - Stable router-facing IPv6 identities by default
+
+### router-dhcp
+Small DHCP server layer for routed routers:
+- derives served segments from `services.router-networking.routedInterfaces`
+- uses `systemd-networkd` DHCPServer instead of forcing a separate daemon
+- supports per-segment pool sizing and static leases
 
 ### router-firewall
 Role-aware nftables policy for routed routers:
 - derives WAN/LAN/management interfaces from `services.router-optimizations.interfaces`
 - exposes router services on trusted segments without hard-coding device names
 - supports Tailscale, WAN service ports, routed forwarding, and flowtable setup
+
+### router-pppoe
+Composable PPPoE uplink wrapper:
+- uses `services.pppd` as the PPPoE client
+- keeps WAN secrets out of the Nix store by referencing a runtime credentials file
+- can disable direct WAN networkd management while still using `router-networking` for downstream segments
 
 ### router-homelab
 Opt-in service bundle for a small homelab router:
@@ -120,6 +139,38 @@ Declarative Technitium DNS blocklist management with curated presets and additiv
 ## Configuration Examples
 
 See `examples/` directory for complete working configurations.
+
+## PPPoE Example
+
+```nix
+{
+  imports = [
+    router-optimized.nixosModules.router-networking
+    router-optimized.nixosModules.router-pppoe
+    router-optimized.nixosModules.router-firewall
+  ];
+
+  services.router-networking = {
+    enable = true;
+    wan.device = "ppp0";
+    routedInterfaces.lan = {
+      device = "lan.20";
+      parentDevice = "enp2s0";
+      vlanId = 20;
+      ipv4Address = "10.20.0.1/24";
+      dns = [ "10.20.0.1" ];
+    };
+  };
+
+  services.router-pppoe = {
+    enable = true;
+    physicalDevice = "enp1s0";
+    interfaceName = "ppp0";
+    username = "isp-login";
+    credentialsFile = "/run/secrets/pppoe-peer.conf";
+  };
+}
+```
 
 ## Technitium Block Lists
 

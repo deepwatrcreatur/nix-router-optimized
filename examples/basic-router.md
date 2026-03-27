@@ -14,6 +14,7 @@ This is a simple home router configuration with:
   imports = [
     ./hardware-configuration.nix
     router-optimized.nixosModules.router-networking
+    router-optimized.nixosModules.router-dhcp
     router-optimized.nixosModules.router-firewall
     router-optimized.nixosModules.router-homelab
     router-optimized.nixosModules.router-optimizations
@@ -35,6 +36,8 @@ This is a simple home router configuration with:
       enable = true;
       wanTcpPorts = [ 22 ];
     };
+
+    router-dhcp.enable = true;
 
     router-homelab = {
       enable = true;
@@ -62,32 +65,6 @@ This is a simple home router configuration with:
 
   networking.hostName = "router";
   networking.nameservers = [ "127.0.0.1" ];
-
-  # DHCP server for LAN
-  services.kea.dhcp4 = {
-    enable = true;
-    settings = {
-      interfaces-config = {
-        interfaces = [ "eth1" ];
-      };
-      subnet4 = [{
-        subnet = "192.168.1.0/24";
-        pools = [{
-          pool = "192.168.1.100 - 192.168.1.250";
-        }];
-        option-data = [
-          {
-            name = "routers";
-            data = "192.168.1.1";
-          }
-          {
-            name = "domain-name-servers";
-            data = "192.168.1.1";
-          }
-        ];
-      }];
-    };
-  };
 
   # Basic services
   services.openssh = {

@@ -10,7 +10,9 @@
       default = {
         imports = [
           self.nixosModules.router-networking
+          self.nixosModules.router-dhcp
           self.nixosModules.router-firewall
+          self.nixosModules.router-pppoe
           self.nixosModules.router-homelab
           self.nixosModules.router-optimizations
           self.nixosModules.router-dashboard
@@ -19,7 +21,9 @@
       };
       
       router-networking = import ./modules/router-networking.nix;
+      router-dhcp = import ./modules/router-dhcp.nix;
       router-firewall = import ./modules/router-firewall.nix;
+      router-pppoe = import ./modules/router-pppoe.nix;
       router-homelab = import ./modules/router-homelab.nix;
       router-optimizations = import ./modules/router-optimizations.nix;
       router-dashboard = import ./modules/router-dashboard.nix;
@@ -36,9 +40,10 @@
       system = "x86_64-linux";
       modules = [
         self.nixosModules.router-networking
+        self.nixosModules.router-dhcp
         self.nixosModules.router-firewall
         self.nixosModules.router-optimizations
-        self.nixosModules.router-dashboard
+        self.nixosModules.router-homelab
         {
           # Minimal example configuration
           networking.hostName = "router-example";
@@ -59,6 +64,8 @@
               requiredForOnline = "routable";
             };
           };
+
+          services.router-dhcp.enable = true;
 
           # Example router configuration
           services.router-optimizations = {
