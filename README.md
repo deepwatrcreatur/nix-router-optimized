@@ -6,6 +6,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 
 - **FastTrack/FastPath**: Connection tracking bypass for established connections
 - **Router Networking**: Reusable systemd-networkd WAN plus routed-LAN/prefix-delegation module
+- **Router Firewall**: Role-aware nftables policy derived from router interface definitions
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
 - **Advanced Queuing**: fq_codel, CAKE, BQL for optimal latency
 - **XDP/eBPF**: Early packet filtering at driver level
@@ -33,6 +34,7 @@ Add to your `flake.nix`:
       system = "x86_64-linux";
       modules = [
         router-optimized.nixosModules.router-networking
+        router-optimized.nixosModules.router-firewall
         router-optimized.nixosModules.router-optimizations
         router-optimized.nixosModules.router-dashboard
         {
@@ -54,6 +56,11 @@ Add to your `flake.nix`:
               lan = { device = "ens16"; role = "lan"; label = "LAN"; };
             };
           };
+
+          services.router-firewall = {
+            enable = true;
+            wanTcpPorts = [ 80 443 ];
+          };
         }
       ];
     };
@@ -69,6 +76,12 @@ Reusable router-oriented `systemd-networkd` configuration for:
 - Routed downstream segments with IPv4 addresses
 - IPv6 router advertisements and prefix delegation on LAN/management networks
 - Stable router-facing IPv6 identities by default
+
+### router-firewall
+Role-aware nftables policy for routed routers:
+- derives WAN/LAN/management interfaces from `services.router-optimizations.interfaces`
+- exposes router services on trusted segments without hard-coding device names
+- supports Tailscale, WAN service ports, routed forwarding, and flowtable setup
 
 ### router-optimizations
 Core performance optimizations including kernel tuning, hardware offloads, and queue management.

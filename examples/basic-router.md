@@ -14,6 +14,7 @@ This is a simple home router configuration with:
   imports = [
     ./hardware-configuration.nix
     router-optimized.nixosModules.router-networking
+    router-optimized.nixosModules.router-firewall
     router-optimized.nixosModules.router-optimizations
     router-optimized.nixosModules.router-dashboard
   ];
@@ -30,11 +31,9 @@ This is a simple home router configuration with:
       };
     };
 
-    nftables-fasttrack = {
+    router-firewall = {
       enable = true;
-      wan-interface = "eth0";
-      lan-interface = "eth1";
-      trusted-ports = [ 22 ];
+      wanTcpPorts = [ 22 ];
     };
 
     router-optimizations = {
