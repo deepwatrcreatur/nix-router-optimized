@@ -109,10 +109,26 @@ in
         description = "Journald SystemMaxUse value when journal persistence is enabled.";
       };
 
+      systemKeepFree = mkOption {
+        type = types.str;
+        default = "1G";
+        description = ''
+          Journald SystemKeepFree value when journal persistence is enabled.
+          This keeps headroom on smaller secondary log volumes and forces
+          earlier log rotation under pressure.
+        '';
+      };
+
       runtimeMaxUse = mkOption {
         type = types.str;
         default = "100M";
         description = "Journald RuntimeMaxUse value when journal persistence is enabled.";
+      };
+
+      runtimeKeepFree = mkOption {
+        type = types.str;
+        default = "100M";
+        description = "Journald RuntimeKeepFree value when journal persistence is enabled.";
       };
 
       bindMountPath = mkOption {
@@ -140,7 +156,9 @@ in
     services.journald.extraConfig = mkIf cfg.journal.enable ''
       Storage=persistent
       SystemMaxUse=${cfg.journal.systemMaxUse}
+      SystemKeepFree=${cfg.journal.systemKeepFree}
       RuntimeMaxUse=${cfg.journal.runtimeMaxUse}
+      RuntimeKeepFree=${cfg.journal.runtimeKeepFree}
     '';
 
     fileSystems.${cfg.journal.bindMountPath} = mkIf cfg.journal.enable {

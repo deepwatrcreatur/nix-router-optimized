@@ -137,12 +137,16 @@ Persistent log-storage layout for small router systems:
 - mounts a secondary filesystem for logs
 - can bind-mount `/var/log/journal` onto that volume
 - creates per-service log directories with tmpfiles and a setup service
+- supports `journal.systemKeepFree` and `journal.runtimeKeepFree` so journal
+  rotation starts before the secondary volume is truly full
 
 ### monitoring storage placement
 The monitoring module can also place state on secondary storage:
 - `router.monitoring.grafanaDataDir` moves Grafana's state directory
 - `router.monitoring.prometheusStateDir` changes the `/var/lib/...` state directory name Prometheus uses
 - `router.monitoring.prometheusBindMountPath` bind-mounts that Prometheus state directory onto another filesystem
+- `router.monitoring.prometheusRetentionSize` adds a size cap to Prometheus TSDB
+  so smaller log/state volumes do not grow without bound
 - `router.monitoring.waitForListenAddress = true` delays Prometheus and Grafana
   until a specific `listenAddress` exists on the host
 

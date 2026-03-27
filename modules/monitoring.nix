@@ -301,6 +301,27 @@ in
       description = "Port for Prometheus web interface";
     };
 
+    prometheusRetentionTime = mkOption {
+      type = types.str;
+      default = "30d";
+      example = "14d";
+      description = ''
+        Time-based retention for Prometheus TSDB data. Prometheus deletes old
+        blocks when this age is exceeded.
+      '';
+    };
+
+    prometheusRetentionSize = mkOption {
+      type = types.nullOr types.str;
+      default = "5GB";
+      example = "20GB";
+      description = ''
+        Optional size-based retention limit for Prometheus TSDB data. This is
+        the main safeguard against secondary log volumes filling up on smaller
+        router systems.
+      '';
+    };
+
     interfaces = mkOption {
       type = types.listOf types.str;
       default = [];
@@ -404,7 +425,8 @@ in
       ];
 
       # Retention settings
-      retentionTime = "30d";
+      retentionTime = cfg.prometheusRetentionTime;
+      extraFlags = optional (cfg.prometheusRetentionSize != null) "--storage.tsdb.retention.size=${cfg.prometheusRetentionSize}";
     };
 
     # Grafana for visualization
