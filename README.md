@@ -7,6 +7,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **FastTrack/FastPath**: Connection tracking bypass for established connections
 - **Router Networking**: Reusable systemd-networkd WAN plus routed-LAN/prefix-delegation module
 - **Router DHCP**: Optional DHCP server defaults derived from routed interface definitions
+- **Router DNS Service**: Provider-aware local resolver defaults for Technitium, Unbound, or Dnsmasq
 - **Router Firewall**: Role-aware nftables policy derived from router interface definitions
 - **Router PPPoE**: Composable PPPoE uplink module that can coexist with router-networking
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
@@ -39,6 +40,7 @@ Add to your `flake.nix`:
       modules = [
         router-optimized.nixosModules.router-networking
         router-optimized.nixosModules.router-dhcp
+        router-optimized.nixosModules.router-dns-service
         router-optimized.nixosModules.router-firewall
         router-optimized.nixosModules.router-pppoe
         router-optimized.nixosModules.router-homelab
@@ -70,6 +72,12 @@ Add to your `flake.nix`:
           };
 
           services.router-dhcp.enable = true;
+
+          services.router-dns-service = {
+            enable = true;
+            provider = "technitium";
+            searchDomains = [ "example.com" ];
+          };
 
           services.router-homelab = {
             enable = true;
@@ -103,6 +111,12 @@ Small DHCP server layer for routed routers:
 - derives served segments from `services.router-networking.routedInterfaces`
 - uses `systemd-networkd` DHCPServer instead of forcing a separate daemon
 - supports per-segment pool sizing and static leases
+
+### router-dns-service
+Provider-aware local resolver layer:
+- chooses between `technitium`, `unbound`, and `dnsmasq`
+- can disable `systemd-resolved` and write a static `/etc/resolv.conf`
+- integrates with `router-technitium` for blocklists and API-key export when using Technitium
 
 ### router-firewall
 Role-aware nftables policy for routed routers:
@@ -213,6 +227,27 @@ See `examples/` directory for complete working configurations.
         upstream = "http://10.10.10.1:8888";
         access = "trusted";
       };
+    };
+  };
+}
+```
+
+## DNS Service Example
+
+```nix
+{
+  imports = [
+    router-optimized.nixosModules.router-dns-service
+  ];
+
+  services.router-dns-service = {
+    enable = true;
+    provider = "unbound";
+    listenAddresses = [ "10.20.0.1" "127.0.0.1" ];
+    searchDomains = [ "lan.local" ];
+    localZones = {
+      "router.lan.local" = "10.20.0.1";
+      "nas.lan.local" = "10.20.0.10";
     };
   };
 }

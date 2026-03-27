@@ -11,6 +11,7 @@
         imports = [
           self.nixosModules.router-networking
           self.nixosModules.router-dhcp
+          self.nixosModules.router-dns-service
           self.nixosModules.router-firewall
           self.nixosModules.router-pppoe
           self.nixosModules.router-homelab
@@ -23,6 +24,7 @@
       
       router-networking = import ./modules/router-networking.nix;
       router-dhcp = import ./modules/router-dhcp.nix;
+      router-dns-service = import ./modules/router-dns-service.nix;
       router-firewall = import ./modules/router-firewall.nix;
       router-pppoe = import ./modules/router-pppoe.nix;
       router-homelab = import ./modules/router-homelab.nix;
@@ -43,6 +45,7 @@
       modules = [
         self.nixosModules.router-networking
         self.nixosModules.router-dhcp
+        self.nixosModules.router-dns-service
         self.nixosModules.router-firewall
         self.nixosModules.router-optimizations
         self.nixosModules.router-homelab
@@ -68,6 +71,12 @@
           };
 
           services.router-dhcp.enable = true;
+          services.router-dns-service = {
+            enable = true;
+            provider = "unbound";
+            listenAddresses = [ "192.168.1.1" "127.0.0.1" ];
+            searchDomains = [ "lan.local" ];
+          };
 
           # Example router configuration
           services.router-optimizations = {
