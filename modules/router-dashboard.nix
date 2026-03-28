@@ -258,7 +258,8 @@ in {
         ProtectKernelTunables = true;
         ProtectControlGroups = true;
         RestrictSUIDSGID = true;
-        PrivateUsers = true;
+        # PrivateUsers omitted: conflicts with AmbientCapabilities on non-root users.
+        # The dedicated service user + CapabilityBoundingSet already provide isolation.
 
         # Network capabilities: CAP_NET_ADMIN for interface stats, CAP_NET_RAW for ping
         AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
