@@ -77,15 +77,15 @@ let
         existing_ip="$(${pkgs.jq}/bin/jq -r '.address // ""' <<<"$existing")"
         existing_host="$(${pkgs.jq}/bin/jq -r '.hostName // ""' <<<"$existing")"
         if [ "$existing_ip" = "$ip" ] && [ "$existing_host" = "$hostname" ]; then
-          echo "DHCP reservation ${name} already present (${mac} -> ${ip})"
+          echo "DHCP reservation $name already present ($mac -> $ip)"
           continue
         fi
 
-        echo "DHCP reservation ${name} already exists with different values (${mac} -> ${existing_ip}); leaving it unchanged" >&2
+        echo "DHCP reservation $name already exists with different values ($mac -> $existing_ip); leaving it unchanged" >&2
         continue
       fi
 
-      echo "Adding DHCP reservation ${name}: ${mac} -> ${ip} in scope ${scope}"
+      echo "Adding DHCP reservation $name: $mac -> $ip in scope $scope"
       ${pkgs.curl}/bin/curl -fsS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
         --data-urlencode "token=$TOKEN" \
