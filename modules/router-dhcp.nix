@@ -17,6 +17,12 @@ let
         type = types.str;
         description = "Static lease IPv4 address.";
       };
+
+      hostname = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Optional hostname for this lease. When set, systemd-networkd registers the name in its internal DNS, making the host reachable by name on the segment.";
+      };
     };
   };
 
@@ -123,10 +129,10 @@ let
           DNS = effectiveDns;
         }
         // ifaceCfg.extraDhcpServerConfig;
-      dhcpServerStaticLeases = map (lease: {
-        MACAddress = lease.macAddress;
-        Address = lease.address;
-      }) ifaceCfg.staticLeases;
+      dhcpServerStaticLeases = map (lease:
+        { MACAddress = lease.macAddress; Address = lease.address; }
+        // optionalAttrs (lease.hostname != null) { Hostname = lease.hostname; }
+      ) ifaceCfg.staticLeases;
     };
 in
 {

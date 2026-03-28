@@ -232,7 +232,7 @@ let
       };
     networkConfig =
       {
-        DHCPServer = false;
+        DHCPServer = mkDefault false;
         IPv6SendRA = true;
         DHCPPrefixDelegation = true;
         IPv6PrivacyExtensions = if iface.privacyExtensions then "kernel" else "no";
@@ -430,7 +430,7 @@ in
     networking.useNetworkd = mkIf cfg.useNetworkd true;
     networking.useDHCP = mkIf cfg.useNetworkd false;
     systemd.network.enable = mkIf cfg.useNetworkd true;
-    systemd.network.wait-online.enable = mkIf cfg.waitOnline true;
+    systemd.network.wait-online.enable = cfg.waitOnline;
 
     systemd.network.netdevs =
       listToAttrs (

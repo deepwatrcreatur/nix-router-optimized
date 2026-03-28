@@ -213,6 +213,15 @@ in {
   };
 
   config = mkIf cfg.enable {
+    users.users.router-dashboard = {
+      isSystemUser = true;
+      group = "router-dashboard";
+      description = "Router dashboard service user";
+      extraGroups = [ "systemd-journal" ];
+    };
+
+    users.groups.router-dashboard = { };
+
     # Router dashboard service
     systemd.services.router-dashboard = {
       description = "Enhanced Router Dashboard HTTP Server";
@@ -239,9 +248,8 @@ in {
         Restart = "always";
         RestartSec = "5s";
 
-        User = "root";
-        Group = "root";
-        SupplementaryGroups = [ "systemd-journal" ];
+        User = "router-dashboard";
+        Group = "router-dashboard";
 
         # Security hardening
         ProtectSystem = "strict";
@@ -250,12 +258,11 @@ in {
         ProtectKernelTunables = true;
         ProtectControlGroups = true;
         RestrictSUIDSGID = true;
+        PrivateUsers = true;
 
-        # Allow reading network stats and ping
+        # Network capabilities: CAP_NET_ADMIN for interface stats, CAP_NET_RAW for ping
         AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
         CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
-
-        PrivateUsers = false;
 
         # Read-only paths we need access to
         ReadOnlyPaths = [
@@ -280,15 +287,18 @@ in {
       ];
     };
 
-    # Allow any user to run fail2ban-client status (read-only) via sudo without password
-    # This is safe since 'status' is a read-only command
-    # Use the symlink path which is stable across rebuilds
+    # Allow the dashboard service user to run fail2ban-client status (read-only) without password
     security.sudo.extraConfig = ''
-      ALL ALL=(ALL) NOPASSWD: /run/current-system/sw/bin/fail2ban-client status
-      ALL ALL=(ALL) NOPASSWD: /run/current-system/sw/bin/fail2ban-client status *
+      router-dashboard ALL=(ALL) NOPASSWD: ${pkgs.fail2ban}/bin/fail2ban-client status
+      router-dashboard ALL=(ALL) NOPASSWD: ${pkgs.fail2ban}/bin/fail2ban-client status *
     '';
 
-    # Allow dashboard port in firewall
+    # Allow dashboard port in NixOS firewall when it is active.
+    # NOTE: when router-firewall is enabled instead, add the dashboard port via:
+    #   services.router-firewall.trustedTcpPorts = [ cfg.port ];
     networking.firewall.allowedTCPPorts = mkIf config.networking.firewall.enable [ cfg.port ];
+
+    # Auto-open dashboard port in router-firewall when both are enabled
+    services.router-firewall.trustedTcpPorts = mkIf (config.services.router-firewall.enable or false) [ cfg.port ];
   };
 }

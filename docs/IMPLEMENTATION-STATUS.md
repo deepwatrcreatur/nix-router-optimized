@@ -101,7 +101,6 @@ modules/
 │   │       └── links-widget.js
 │   └── api/
 │       └── server.py             # Python API server
-└── dashboard.html                # Legacy (can be removed)
 ```
 
 ## Phase 2: Network Monitoring - COMPLETE

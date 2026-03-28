@@ -71,7 +71,6 @@ modules/
       services-widget.js         # Systemd services table
       links-widget.js            # Quick links
     api/server.py                # Python HTTP + REST API
-  dashboard.html                 # Legacy file (can be removed)
 ```
 
 ### Testing

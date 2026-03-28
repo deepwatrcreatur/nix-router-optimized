@@ -223,6 +223,27 @@ in
       default = [ ];
       description = "Interfaces used by the nftables flowtable. Defaults to all router interfaces.";
     };
+
+    loggingRateLimit = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Rate-limit drop logging to prevent log flooding under port scans or attacks.";
+      };
+
+      rate = mkOption {
+        type = types.str;
+        default = "5/second";
+        example = "10/minute";
+        description = "nftables rate expression for log lines (e.g., \"5/second\", \"10/minute\").";
+      };
+
+      burst = mkOption {
+        type = types.int;
+        default = 10;
+        description = "Burst allowance above the rate limit before logs are suppressed.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -230,6 +251,10 @@ in
       {
         assertion = !cfg.autoInterfacesFromOptimizations || wanInterfaces != [ ];
         message = "router-firewall needs at least one WAN interface, either explicit or derived from router-optimizations.";
+      }
+      {
+        assertion = !(config.services.nftables-fasttrack.enable or false);
+        message = "router-firewall and nftables-fasttrack cannot both be enabled. Disable nftables-fasttrack when using router-firewall.";
       }
     ];
 
@@ -297,7 +322,11 @@ in
 
           ${cfg.extraInputRules}
 
-          log prefix "${cfg.inputLogPrefix}" level info flags all
+          ${if cfg.loggingRateLimit.enable then ''
+            limit rate ${cfg.loggingRateLimit.rate} burst ${toString cfg.loggingRateLimit.burst} packets log prefix "${cfg.inputLogPrefix}" level info flags all
+          '' else ''
+            log prefix "${cfg.inputLogPrefix}" level info flags all
+          ''}
           drop
         }
 
@@ -327,7 +356,11 @@ in
 
           ${cfg.extraForwardRules}
 
-          log prefix "${cfg.forwardLogPrefix}" level info flags all
+          ${if cfg.loggingRateLimit.enable then ''
+            limit rate ${cfg.loggingRateLimit.rate} burst ${toString cfg.loggingRateLimit.burst} packets log prefix "${cfg.forwardLogPrefix}" level info flags all
+          '' else ''
+            log prefix "${cfg.forwardLogPrefix}" level info flags all
+          ''}
           drop
         }
 

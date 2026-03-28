@@ -53,6 +53,13 @@ in {
   };
 
   config = mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = !(config.services.router-firewall.enable or false);
+        message = "nftables-fasttrack and router-firewall cannot both be enabled. nftables-fasttrack is a legacy module; prefer router-firewall for full role-aware policy.";
+      }
+    ];
+
     networking.nftables.enable = true;
     networking.firewall.enable = false; # Use nftables directly
 

@@ -397,6 +397,26 @@ in
         Prometheus TSDB data can live on secondary storage.
       '';
     };
+
+    alerting = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable built-in Prometheus alerting rules for common router health conditions.";
+      };
+
+      conntrackThreshold = mkOption {
+        type = types.float;
+        default = 0.8;
+        description = "Conntrack utilization fraction (0.0–1.0) above which an alert fires.";
+      };
+
+      memoryThreshold = mkOption {
+        type = types.float;
+        default = 0.9;
+        description = "Memory utilization fraction (0.0–1.0) above which an alert fires.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -427,6 +447,46 @@ in
       # Retention settings
       retentionTime = cfg.prometheusRetentionTime;
       extraFlags = optional (cfg.prometheusRetentionSize != null) "--storage.tsdb.retention.size=${cfg.prometheusRetentionSize}";
+
+      rules = mkIf cfg.alerting.enable [
+        (builtins.toJSON {
+          groups = [{
+            name = "router";
+            rules = [
+              {
+                alert = "ConntrackSaturation";
+                expr = "node_nf_conntrack_entries / node_nf_conntrack_entries_limit > ${toString cfg.alerting.conntrackThreshold}";
+                for = "2m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "Conntrack table near capacity";
+                  description = "Conntrack utilization is {{ humanizePercentage $value }} (threshold: ${toString (cfg.alerting.conntrackThreshold * 100)}%).";
+                };
+              }
+              {
+                alert = "HighMemoryUsage";
+                expr = "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > ${toString cfg.alerting.memoryThreshold}";
+                for = "5m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "High memory usage";
+                  description = "Memory utilization is {{ humanizePercentage $value }} (threshold: ${toString (cfg.alerting.memoryThreshold * 100)}%).";
+                };
+              }
+              {
+                alert = "NetworkInterfaceErrors";
+                expr = "rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) > 10";
+                for = "5m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "Network interface errors on {{ $labels.device }}";
+                  description = "Interface {{ $labels.device }} is experiencing {{ $value | humanize }} errors/s.";
+                };
+              }
+            ];
+          }];
+        })
+      ];
     };
 
     # Grafana for visualization
@@ -441,7 +501,8 @@ in
         };
         security = {
           admin_user = "admin";
-          admin_password = "$__file{/run/grafana/admin-password}";
+          # Password stored in persistent state dir so it survives reboots
+          admin_password = "$__file{${cfg.grafanaDataDir}/.admin-password}";
         };
         analytics.reporting_enabled = false;
       };
@@ -457,18 +518,22 @@ in
 
         dashboards.settings.providers = [{
           name = "Router Dashboards";
-          options.path = grafanaDashboardsDir;
+          # Point directly at the environment.etc path so dashboards are
+          # available before Grafana starts, eliminating the provisioning race.
+          options.path = "/etc/grafana-dashboards";
         }];
       };
     };
 
-    # Create admin password file
+    # Generate a random admin password on first boot and store it persistently.
+    # The file survives reboots in grafanaDataDir (/var/lib/grafana by default).
+    # To rotate: delete the file and restart grafana.
     systemd.services.grafana.preStart = ''
-      mkdir -p /run/grafana
-      if [ ! -f /run/grafana/admin-password ]; then
-        echo "admin" > /run/grafana/admin-password
+      if [ ! -f "${cfg.grafanaDataDir}/.admin-password" ]; then
+        ${pkgs.openssl}/bin/openssl rand -base64 24 > "${cfg.grafanaDataDir}/.admin-password"
+        chmod 600 "${cfg.grafanaDataDir}/.admin-password"
+        echo "Generated new Grafana admin password in ${cfg.grafanaDataDir}/.admin-password"
       fi
-      chmod 600 /run/grafana/admin-password
     '' + optionalString (cfg.waitForListenAddress && cfg.listenAddress != "0.0.0.0") ''
       ${waitForListenAddressScript} ${escapeShellArg cfg.listenAddress}
     '';
@@ -486,11 +551,6 @@ in
       depends = [ (builtins.dirOf cfg.prometheusBindMountPath) ];
     };
 
-    # Install pre-built router dashboards
-    systemd.tmpfiles.rules = [
-      "d ${grafanaDashboardsDir} 0755 grafana grafana -"
-    ];
-
     environment.etc."grafana-dashboards/router-overview.json" = {
       mode = "0644";
       text = builtins.toJSON overviewDashboard;
@@ -501,20 +561,5 @@ in
       text = builtins.toJSON interfaceDashboard;
     };
 
-    # Copy dashboard to Grafana
-    systemd.services.grafana-setup-dashboards = {
-      description = "Copy Grafana dashboards";
-      after = [ "grafana.service" ];
-      wantedBy = [ "multi-user.target" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      script = ''
-        mkdir -p ${grafanaDashboardsDir}
-        cp /etc/grafana-dashboards/*.json ${grafanaDashboardsDir}/ || true
-        chown -R grafana:grafana ${grafanaDashboardsDir}
-      '';
-    };
   };
 }

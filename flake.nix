@@ -20,6 +20,12 @@
           self.nixosModules.router-optimizations
           self.nixosModules.router-dashboard
           self.nixosModules.nftables-fasttrack
+          # Opt-in extras: all use mkEnableOption so they are safe to include
+          self.nixosModules.caddy-reverse-proxy
+          self.nixosModules.dns
+          self.nixosModules.dns-zone
+          self.nixosModules.dns-blocklists
+          self.nixosModules.monitoring
         ];
       };
       

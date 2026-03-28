@@ -54,9 +54,32 @@ in {
       default = 262144;
       description = "Maximum number of connection tracking entries";
     };
+
+    conntrack-hashsize = mkOption {
+      type = types.nullOr types.int;
+      default = null;
+      description = ''
+        Hash table size for the conntrack module. Defaults to conntrack-max / 4.
+        Larger values reduce hash chain length and improve lookup performance at
+        the cost of memory (~8 bytes per bucket). Set via the nf_conntrack kernel
+        module parameter, which must be configured before the module loads.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.conntrack-hashsize == null || cfg.conntrack-hashsize <= cfg.conntrack-max;
+        message = "router-optimizations.conntrack-hashsize must not exceed conntrack-max (${toString cfg.conntrack-max}).";
+      }
+    ];
+
+    # Set conntrack hash table size via module parameter (must be set before module loads)
+    boot.extraModprobeConfig = let
+      hashsize = if cfg.conntrack-hashsize != null then cfg.conntrack-hashsize else cfg.conntrack-max / 4;
+    in "options nf_conntrack hashsize=${toString hashsize}";
+
     # Kernel modules for advanced networking
     boot.kernelModules = [ 
       "tcp_bbr"           # Better congestion control
@@ -173,7 +196,6 @@ in {
           ${pkgs.ethtool}/bin/ethtool -K $iface tso on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface gso on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface gro on 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface ufo on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface lro on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface sg on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface tx on 2>/dev/null || true
@@ -199,9 +221,6 @@ in {
           echo "Configured $iface (Role: $role)"
         }
         
-        # Wait for interfaces to be available
-        sleep 2
-        
         ${concatStringsSep "\n" (mapAttrsToList (name: iface: ''
           configure_interface ${iface.device} ${iface.role} ${if iface.bandwidth != null then iface.bandwidth else ""}
         '') cfg.interfaces)}
@@ -210,23 +229,5 @@ in {
       '';
     };
 
-    # XDP packet filtering placeholder
-    systemd.services.xdp-firewall = {
-      description = "XDP-based early packet filtering";
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
-      
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      
-      script = ''
-        # Placeholder for XDP programs
-        # XDP can drop packets at the NIC level before they reach the kernel
-        echo "XDP firewall ready (custom programs can be added)"
-      '';
-    };
   };
 }

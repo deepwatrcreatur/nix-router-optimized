@@ -373,6 +373,11 @@ in
           TOKEN=$(cat "${apiToken}")
         fi
 
+        if [ -z "$TOKEN" ]; then
+          echo "Technitium API token is empty or file not found at ${apiToken}; cannot sync DNS records" >&2
+          exit 1
+        fi
+
         ${zoneSyncScript}
 
         echo "Static DNS records synchronized"

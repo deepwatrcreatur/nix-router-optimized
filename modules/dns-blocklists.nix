@@ -72,11 +72,12 @@ let
 
     ENABLE_BLOCKING="$(${pkgs.jq}/bin/jq -r '.response.enableBlocking // true' <<<"$SETTINGS")"
     ALLOW_TXT_BLOCKING_REPORT="$(${pkgs.jq}/bin/jq -r '.response.allowTxtBlockingReport // true' <<<"$SETTINGS")"
-    BLOCKING_BYPASS_LIST="$(${pkgs.jq}/bin/jq -r '(.response.blockingBypassList // []) | join(",")' <<<"$SETTINGS")"
     BLOCKING_TYPE="$(${pkgs.jq}/bin/jq -r '.response.blockingType // "NxDomain"' <<<"$SETTINGS")"
     CUSTOM_BLOCKING_ADDRESSES="$(${pkgs.jq}/bin/jq -r '(.response.customBlockingAddresses // []) | join(",")' <<<"$SETTINGS")"
     BLOCKING_ANSWER_TTL="$(${pkgs.jq}/bin/jq -r '.response.blockingAnswerTtl // 30' <<<"$SETTINGS")"
     BLOCK_LIST_URLS="$(${pkgs.jq}/bin/jq -rn --argjson urls '${builtins.toJSON selectedUrls}' '$urls | join(",")')"
+    # Use declarative allowlist — this is authoritative and overwrites any UI additions
+    BLOCKING_BYPASS_LIST="${concatStringsSep "," cfg.allowlistDomains}"
 
     ${pkgs.curl}/bin/curl -fsS -X POST \
       --data-urlencode "token=$TOKEN" \
@@ -131,6 +132,17 @@ in
       default = true;
       description = "Force an immediate block list refresh when the sync service runs.";
     };
+
+    allowlistDomains = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "example.com" "ads.internalapp.local" ];
+      description = ''
+        Domains that should bypass blocking (Technitium's blockingBypassList).
+        This list is authoritative — any domains added through the Technitium UI
+        will be overwritten on the next rebuild and activation.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -138,10 +150,6 @@ in
       {
         assertion = config.services.technitium-dns-server.enable or false;
         message = "services.router.dnsBlockLists requires services.technitium-dns-server.enable = true;";
-      }
-      {
-        assertion = config.age.secrets ? technitium-api-key;
-        message = "services.router.dnsBlockLists requires age.secrets.technitium-api-key to be defined;";
       }
       {
         assertion = selectedUrls != [ ];
