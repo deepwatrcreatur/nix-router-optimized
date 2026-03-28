@@ -13,6 +13,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **Router PPPoE**: Composable PPPoE uplink module that can coexist with router-networking
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
 - **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
+- **Technitium DHCP Reservations**: Declarative reserved leases for DHCP-managed hosts
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
 - **Advanced Queuing**: fq_codel, CAKE, BQL for optimal latency
 - **XDP/eBPF**: Early packet filtering at driver level
@@ -171,6 +172,26 @@ Opt-in Technitium DNS service bundle:
 - enables `services.technitium-dns-server`
 - optionally exports `TECHNITIUM_API_KEY_FILE` from an age secret
 - wires declarative blocklist presets through `services.router.dnsBlockLists`
+- can add declarative DHCP reservations through `services.router-technitium.dhcpReservations`
+
+Example:
+
+```nix
+services.router-technitium = {
+  enable = true;
+  dhcpReservations.authentik-host = {
+    scope = "LAN";
+    macAddress = "BC:24:11:A4:01:6F";
+    ipAddress = "10.10.11.70";
+    hostName = "authentik-host";
+    comments = "Dedicated Authentik identity host";
+  };
+};
+```
+
+The current reservation sync is intentionally conservative:
+- missing reservations are created automatically
+- existing conflicting reservations are left unchanged and logged instead of being mutated blindly
 
 ### router-optimizations
 Core performance optimizations including kernel tuning, hardware offloads, and queue management.
