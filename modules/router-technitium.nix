@@ -40,6 +40,48 @@ let
       };
     };
   };
+  ntpSyncScript = pkgs.writeShellScript "technitium-sync-ntp-option" ''
+    set -euo pipefail
+
+    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}" ]; then
+      echo "Technitium API token file not found; cannot sync NTP option 42" >&2
+      exit 1
+    fi
+
+    for i in {1..30}; do
+      if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:5380/api/dns/status >/dev/null 2>&1; then
+        break
+      fi
+      echo "Waiting for Technitium DNS Server to start..."
+      sleep 2
+    done
+
+    TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
+    NTP_SERVERS="${concatStringsSep "," cfg.ntpServers}"
+
+    SCOPES="$(${pkgs.curl}/bin/curl -fsS \
+      "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN" \
+      | ${pkgs.jq}/bin/jq -r '.response.scopes[].name // empty')"
+
+    if [ -z "$SCOPES" ]; then
+      echo "No Technitium DHCP scopes found; skipping NTP option 42 sync"
+      exit 0
+    fi
+
+    while IFS= read -r scope; do
+      echo "Setting DHCP option 42 (NTP=$NTP_SERVERS) on scope '$scope'"
+      ${pkgs.curl}/bin/curl -fsS -X POST \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data-urlencode "token=$TOKEN" \
+        --data-urlencode "name=$scope" \
+        --data-urlencode "ntpServers=$NTP_SERVERS" \
+        "http://127.0.0.1:5380/api/dhcp/scopes/set" \
+        >/dev/null
+    done <<< "$SCOPES"
+
+    echo "Technitium NTP option 42 synchronized"
+  '';
+
   dhcpReservationsJson = pkgs.writeText "technitium-dhcp-reservations.json" (
     builtins.toJSON (mapAttrsToList (name: reservation: reservation // { inherit name; }) cfg.dhcpReservations)
   );
@@ -150,6 +192,21 @@ in
       description = "Whether to force an immediate block list refresh during activation.";
     };
 
+    ntpServers = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "10.10.10.1" ];
+      description = ''
+        NTP server addresses to advertise via DHCP option 42 on every
+        managed Technitium scope.  When non-empty, a oneshot systemd
+        service syncs the value into each scope via the Technitium API on
+        activation.  Requires an API token secret.
+
+        Note: this overwrites any option 42 value previously set through
+        the Technitium web UI.  Leave empty to skip the sync entirely.
+      '';
+    };
+
     dhcpReservations = mkOption {
       type = types.attrsOf reservationModule;
       default = { };
@@ -180,6 +237,10 @@ in
         assertion = cfg.dhcpReservations == { } || hasApiSecret;
         message = "services.router-technitium.dhcpReservations requires a Technitium API token secret.";
       }
+      {
+        assertion = cfg.ntpServers == [ ] || hasApiSecret;
+        message = "services.router-technitium.ntpServers requires a Technitium API token secret.";
+      }
     ];
 
     services.technitium-dns-server.enable = true;
@@ -199,6 +260,26 @@ in
     environment.etc."technitium/dhcp-reservations.json" = mkIf (cfg.dhcpReservations != { }) {
       source = dhcpReservationsJson;
       mode = "0644";
+    };
+
+    systemd.services.technitium-sync-ntp-option = mkIf (cfg.ntpServers != [ ] && hasApiSecret) {
+      description = "Sync NTP server list to Technitium DHCP option 42";
+      after = [
+        "technitium-dns-server.service"
+        "agenix.service"
+        "technitium-sync-dhcp-reservations.service"
+      ];
+      wants = [ "technitium-dns-server.service" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+
+      script = ''
+        ${ntpSyncScript}
+      '';
     };
 
     systemd.services.technitium-sync-dhcp-reservations = mkIf (cfg.dhcpReservations != { }) {

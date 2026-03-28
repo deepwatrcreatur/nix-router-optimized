@@ -109,6 +109,17 @@ in
         description = "Force a block list refresh when the Technitium sync service runs.";
       };
     };
+
+    ntpServers = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "10.10.10.1" ];
+      description = ''
+        NTP server addresses to advertise via DHCP option 42.
+        Passed through to services.router-technitium.ntpServers when
+        provider = "technitium".
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -136,6 +147,7 @@ in
       extraBlockListUrls = cfg.technitium.extraBlockListUrls;
       blockListUpdateIntervalHours = cfg.technitium.blockListUpdateIntervalHours;
       forceBlockListUpdateOnActivation = cfg.technitium.forceBlockListUpdateOnActivation;
+      ntpServers = cfg.ntpServers;
     };
   };
 }
