@@ -35,3 +35,7 @@ Example:
   };
 }
 ```
+
+The router-firewall integration is optional. If `router-firewall` is imported,
+the module can expose WAN ports and add trusted/forwarding rules; otherwise it
+only manages the OpenVPN instances themselves.

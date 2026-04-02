@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  options,
   ...
 }:
 
@@ -8,11 +9,20 @@ with lib;
 
 let
   cfg = config.services.router-openvpn;
+  hasRouterOption = path: hasAttrByPath path options;
   optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+  firewallWanInterfaces =
+    if hasRouterOption [ "services" "router-firewall" "wanInterfaces" ] then
+      config.services.router-firewall.wanInterfaces or [ ]
+    else
+      [ ];
   wanInterfaces =
-    mapAttrsToList (_name: iface: iface.device) (
-      filterAttrs (_name: iface: iface.role == "wan") optimizationInterfaces
-    );
+    if firewallWanInterfaces != [ ] then
+      firewallWanInterfaces
+    else
+      mapAttrsToList (_name: iface: iface.device) (
+        filterAttrs (_name: iface: iface.role == "wan") optimizationInterfaces
+      );
   mkWanRule = iface: optionalString (iface.routeToWan && wanInterfaces != [ ]) ''
     iifname "${iface.interfaceName}" oifname { ${concatStringsSep ", " (map (dev: "\"${dev}\"") wanInterfaces)} } accept
   '';
@@ -85,13 +95,13 @@ in
 
           trustedInterface = mkOption {
             type = types.bool;
-            default = true;
+            default = false;
             description = "Treat this OpenVPN tunnel as a trusted router interface.";
           };
 
           routeToWan = mkOption {
             type = types.bool;
-            default = true;
+            default = false;
             description = "Allow traffic arriving from this OpenVPN interface to forward to WAN.";
           };
 
@@ -116,7 +126,7 @@ in
       inherit (instance) config up down autoStart updateResolvConf authUserPass;
     }) cfg.instances;
 
-    services.router-firewall = {
+    services.router-firewall = mkIf (hasRouterOption [ "services" "router-firewall" "enable" ]) {
       extraTrustedInterfaces = trustedInterfaces;
       wanUdpPorts = wanUdpPorts;
       wanTcpPorts = wanTcpPorts;

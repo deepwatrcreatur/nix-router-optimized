@@ -200,6 +200,10 @@ services.router-openvpn.instances.roadwarrior = {
 };
 ```
 
+`trustedInterface` and `routeToWan` are opt-in. When `router-firewall` is not
+imported, the module still configures OpenVPN instances but skips the router
+firewall integration.
+
 ### router-technitium
 Opt-in Technitium DNS service bundle:
 - enables `services.technitium-dns-server`
