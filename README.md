@@ -202,6 +202,10 @@ services.router-wireguard = {
 };
 ```
 
+`trustedInterface` and `routeToWan` are opt-in. When `router-firewall` is not
+imported, the module still configures WireGuard itself but skips the router
+firewall wiring.
+
 ### router-technitium
 Opt-in Technitium DNS service bundle:
 - enables `services.technitium-dns-server`

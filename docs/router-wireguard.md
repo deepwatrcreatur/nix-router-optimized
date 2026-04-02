@@ -28,3 +28,7 @@ Example:
   };
 }
 ```
+
+The router-firewall integration is optional. If `router-firewall` is imported,
+the module can open the WAN UDP port and treat the tunnel as trusted; otherwise
+it only configures native WireGuard.

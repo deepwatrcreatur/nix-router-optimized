@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  options,
   ...
 }:
 
@@ -8,11 +9,20 @@ with lib;
 
 let
   cfg = config.services.router-wireguard;
+  hasRouterOption = path: hasAttrByPath path options;
   optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+  firewallWanInterfaces =
+    if hasRouterOption [ "services" "router-firewall" "wanInterfaces" ] then
+      config.services.router-firewall.wanInterfaces or [ ]
+    else
+      [ ];
   wanInterfaces =
-    mapAttrsToList (_name: iface: iface.device) (
-      filterAttrs (_name: iface: iface.role == "wan") optimizationInterfaces
-    );
+    if firewallWanInterfaces != [ ] then
+      firewallWanInterfaces
+    else
+      mapAttrsToList (_name: iface: iface.device) (
+        filterAttrs (_name: iface: iface.role == "wan") optimizationInterfaces
+      );
   routeToWanRule = optionalString (cfg.routeToWan && wanInterfaces != [ ]) ''
     iifname "${cfg.interfaceName}" oifname { ${concatStringsSep ", " (map (iface: "\"${iface}\"") wanInterfaces)} } accept
   '';
@@ -60,13 +70,13 @@ in
 
     trustedInterface = mkOption {
       type = types.bool;
-      default = true;
+      default = false;
       description = "Treat the WireGuard tunnel as a trusted router interface.";
     };
 
     routeToWan = mkOption {
       type = types.bool;
-      default = true;
+      default = false;
       description = "Allow WireGuard clients to forward traffic to WAN through router-firewall.";
     };
 
@@ -140,7 +150,7 @@ in
       }) cfg.peers;
     };
 
-    services.router-firewall = {
+    services.router-firewall = mkIf (hasRouterOption [ "services" "router-firewall" "enable" ]) {
       extraTrustedInterfaces = mkIf cfg.trustedInterface [ cfg.interfaceName ];
       wanUdpPorts = mkIf (cfg.openFirewall && cfg.listenPort != null) [ cfg.listenPort ];
       extraForwardRules = mkIf (cfg.routeToWan && wanInterfaces != [ ]) routeToWanRule;
