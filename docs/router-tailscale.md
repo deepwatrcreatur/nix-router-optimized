@@ -30,3 +30,7 @@ When used in a repo that already has host-level Tailscale wiring, prefer one
 source of truth. If another layer already enables `services.tailscale` or runs
 `tailscale up`, use either the upstream router module or the repo-local aspect,
 not both.
+
+The router-firewall integration is opportunistic: if `router-firewall` is also
+imported, the module wires the Tailscale interface and WAN UDP port into that
+policy. If not, it falls back to the native `services.tailscale` behavior.

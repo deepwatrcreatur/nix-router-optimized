@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  options,
   ...
 }:
 
@@ -8,7 +9,12 @@ with lib;
 
 let
   cfg = config.services.router-tailscale;
-  firewallEnabled = config.services.router-firewall.enable or false;
+  hasRouterOption = path: hasAttrByPath path options;
+  firewallEnabled =
+    if hasRouterOption [ "services" "router-firewall" "enable" ] then
+      (config.services.router-firewall.enable or false)
+    else
+      false;
   wantsServer = cfg.advertiseRoutes != [ ] || cfg.advertiseExitNode;
   wantsClient = cfg.acceptRoutes;
   routingMode =
@@ -47,7 +53,7 @@ in
     };
 
     authKeyFile = mkOption {
-      type = types.nullOr types.path;
+      type = types.nullOr types.str;
       default = null;
       description = "Optional auth key file used for automatic tailscale up.";
     };
@@ -110,14 +116,14 @@ in
 
   config = mkIf cfg.enable {
     services.tailscale = {
-      enable = true;
-      interfaceName = cfg.interfaceName;
-      port = cfg.port;
-      authKeyFile = cfg.authKeyFile;
-      useRoutingFeatures = routingMode;
-      extraUpFlags = upFlags;
-      extraSetFlags = cfg.extraSetFlags;
-      extraDaemonFlags = cfg.extraDaemonFlags;
+      enable = mkDefault true;
+      interfaceName = mkDefault cfg.interfaceName;
+      port = mkDefault cfg.port;
+      authKeyFile = mkDefault cfg.authKeyFile;
+      useRoutingFeatures = mkDefault routingMode;
+      extraUpFlags = mkDefault upFlags;
+      extraSetFlags = mkDefault cfg.extraSetFlags;
+      extraDaemonFlags = mkDefault cfg.extraDaemonFlags;
       openFirewall = mkDefault (!firewallEnabled && cfg.openFirewall);
     };
 

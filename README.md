@@ -196,6 +196,10 @@ services.router-tailscale = {
 };
 ```
 
+If `router-firewall` is imported, the module also wires the Tailscale interface
+into the router firewall policy. If another layer already owns Tailscale on the
+host, prefer one source of truth rather than stacking multiple wrappers.
+
 ### router-technitium
 Opt-in Technitium DNS service bundle:
 - enables `services.technitium-dns-server`
