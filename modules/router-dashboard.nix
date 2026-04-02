@@ -237,7 +237,7 @@ in {
         DASHBOARD_SERVICES = builtins.toJSON cfg.services;
         DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
         TECHNITIUM_URL = "http://localhost:5380";
-        TECHNITIUM_API_KEY_FILE = if config.age.secrets ? technitium-api-key
+        TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
           then config.age.secrets.technitium-api-key.path
           else "";
       };

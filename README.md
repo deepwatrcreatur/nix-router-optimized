@@ -12,6 +12,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **Router Log Storage**: Optional persistent log/journal layout on secondary storage
 - **Router PPPoE**: Composable PPPoE uplink module that can coexist with router-networking
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
+- **Router ntopng**: Optional traffic-analysis UI with router-aware interface and LAN binding defaults
 - **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
 - **Technitium DHCP Reservations**: Declarative reserved leases for DHCP-managed hosts
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
@@ -84,6 +85,7 @@ Add to your `flake.nix`:
 
           services.router-homelab = {
             enable = true;
+            enableNtopng = true;
             sshTarget = "ssh router.example.com";
           };
 
@@ -162,10 +164,18 @@ Opt-in service bundle for a small homelab router:
 - enables router dashboard defaults
 - enables Prometheus/Grafana monitoring defaults
 - enables Netdata on the primary LAN address
+- can enable ntopng with router-aware defaults via `services.router-homelab.enableNtopng = true`
 - can delay LAN-bound monitoring services until the chosen listen address is
   actually present with `services.router-homelab.waitForListenAddress = true`
 - adds common trusted firewall ports for dashboard, Grafana, Prometheus, and Technitium when present
 - adds convenient dashboard quick links such as SSH, DNS admin, Grafana, and Netdata
+
+### router-ntopng
+Optional ntopng integration for routers:
+- derives monitored interfaces from `services.router-optimizations.interfaces` by default
+- binds the ntopng UI to the router LAN address by default
+- opens the ntopng port on trusted router firewall interfaces
+- plugs into the homelab dashboard/service list when `router-homelab` is used
 
 ### router-technitium
 Opt-in Technitium DNS service bundle:

@@ -41,6 +41,7 @@ This is a simple home router configuration with:
 
     router-homelab = {
       enable = true;
+      enableNtopng = true;
       sshTarget = "ssh admin@192.168.1.1";
     };
 
@@ -101,6 +102,7 @@ nixos-rebuild switch --flake .#router
 ## Access
 
 - **Router Dashboard**: http://192.168.1.1:8888
-- **Grafana**: http://192.168.1.1:3000 (admin/admin)
+- **Grafana**: http://192.168.1.1:3001 (admin/admin)
+- **ntopng**: http://192.168.1.1:3000
 - **Prometheus**: http://192.168.1.1:9090
 - **SSH**: ssh admin@192.168.1.1
