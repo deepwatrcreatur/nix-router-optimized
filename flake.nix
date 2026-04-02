@@ -19,6 +19,7 @@
           self.nixosModules.router-technitium
           self.nixosModules.router-optimizations
           self.nixosModules.router-dashboard
+          self.nixosModules.router-ntopng
           self.nixosModules.nftables-fasttrack
           # Opt-in extras: all use mkEnableOption so they are safe to include
           self.nixosModules.caddy-reverse-proxy
@@ -39,6 +40,7 @@
       router-technitium = import ./modules/router-technitium.nix;
       router-optimizations = import ./modules/router-optimizations.nix;
       router-dashboard = import ./modules/router-dashboard.nix;
+      router-ntopng = import ./modules/router-ntopng.nix;
       nftables-fasttrack = import ./modules/nftables-fasttrack.nix;
       caddy-reverse-proxy = import ./modules/caddy-reverse-proxy.nix;
       dns = import ./modules/dns.nix;
@@ -61,6 +63,7 @@
           # Minimal example configuration
           networking.hostName = "router-example";
           system.stateVersion = "25.11";
+          nixpkgs.config.allowUnfree = true;
           fileSystems."/" = {
             device = "none";
             fsType = "tmpfs";
@@ -85,6 +88,14 @@
             listenAddresses = [ "192.168.1.1" "127.0.0.1" ];
             searchDomains = [ "lan.local" ];
           };
+
+          services.router-homelab = {
+            enable = true;
+            enableNtopng = true;
+            sshTarget = "ssh router.example";
+          };
+
+          services.grafana.settings.security.secret_key = "router-example-insecure-dev-secret";
 
           # Example router configuration
           services.router-optimizations = {

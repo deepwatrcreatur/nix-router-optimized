@@ -49,6 +49,13 @@ let
         icon = "📈";
       }
     ])
+    ++ (optionals (config.services.router-ntopng.enable or false) [
+      {
+        label = "Traffic";
+        url = "http://${defaultListenAddress}:${toString config.services.router-ntopng.port}/";
+        icon = "🛰️";
+      }
+    ])
     ++ (optionals (config.services.technitium-dns-server.enable or false) [
       {
         label = "DNS Admin";
@@ -74,6 +81,7 @@ let
       "prometheus"
       "grafana"
     ]
+    ++ optionals (config.services.router-ntopng.enable or false) [ "ntopng" ]
     ++ optionals cfg.enableNetdata [ "netdata" ]
     ++ optionals (config.services.technitium-dns-server.enable or false) [ "technitium-dns-server" ]
     ++ optionals (config.services.caddy.enable or false) [ "caddy" ];
@@ -88,6 +96,7 @@ in
   imports = [
     ./router-dashboard.nix
     ./monitoring.nix
+    ./router-ntopng.nix
   ];
 
   options.services.router-homelab = {
@@ -115,6 +124,12 @@ in
       type = types.bool;
       default = true;
       description = "Enable Netdata with sensible LAN-only defaults.";
+    };
+
+    enableNtopng = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Enable ntopng with router-aware defaults.";
     };
 
     grafanaPort = mkOption {
@@ -188,6 +203,13 @@ in
       preStart = mkBefore ''
         ${waitForListenAddressScript} ${escapeShellArg defaultListenAddress}
       '';
+    };
+
+    services.router-ntopng = mkIf cfg.enableNtopng {
+      enable = mkDefault true;
+      listenAddress = mkDefault defaultListenAddress;
+      waitForListenAddress = mkDefault cfg.waitForListenAddress;
+      waitForListenAddressTimeout = mkDefault cfg.waitForListenAddressTimeout;
     };
 
     services.router-firewall.trustedTcpPorts = mkAfter commonTrustedTcpPorts;
