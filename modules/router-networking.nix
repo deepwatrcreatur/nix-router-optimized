@@ -291,7 +291,7 @@ let
       }
     ];
     routingPolicyRules =
-      (mkIf iface.policyRouting.enable [
+      (optional iface.policyRouting.enable
         {
           routingPolicyRuleConfig = {
             IncomingInterface = iface.device;
@@ -299,7 +299,7 @@ let
             Priority = 100;
           };
         }
-      ])
+      )
       ++ (map
         (rule: {
           routingPolicyRuleConfig = {
