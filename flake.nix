@@ -20,6 +20,7 @@
           self.nixosModules.router-optimizations
           self.nixosModules.router-dashboard
           self.nixosModules.router-ntopng
+          self.nixosModules.router-openvpn
           self.nixosModules.router-wireguard
           self.nixosModules.nftables-fasttrack
           # Opt-in extras: all use mkEnableOption so they are safe to include
@@ -42,6 +43,7 @@
       router-optimizations = import ./modules/router-optimizations.nix;
       router-dashboard = import ./modules/router-dashboard.nix;
       router-ntopng = import ./modules/router-ntopng.nix;
+      router-openvpn = import ./modules/router-openvpn.nix;
       router-wireguard = import ./modules/router-wireguard.nix;
       nftables-fasttrack = import ./modules/nftables-fasttrack.nix;
       caddy-reverse-proxy = import ./modules/caddy-reverse-proxy.nix;

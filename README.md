@@ -14,6 +14,8 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
 - **Router ntopng**: Optional traffic-analysis UI with router-aware interface and LAN binding defaults
 - **Router WireGuard**: Optional router-aware WireGuard wrapper for site-to-site and remote-access tunnels
+- **Router OpenVPN**: Optional router-aware wrapper for declarative OpenVPN instances
+- **Router WireGuard**: Optional router-aware WireGuard wrapper for site-to-site and remote-access tunnels
 - **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
 - **Technitium DHCP Reservations**: Declarative reserved leases for DHCP-managed hosts
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
@@ -177,6 +179,32 @@ Optional ntopng integration for routers:
 - binds the ntopng UI to the router LAN address by default
 - opens the ntopng port on trusted router firewall interfaces
 - plugs into the homelab dashboard/service list when `router-homelab` is used
+
+### router-openvpn
+Optional router-aware OpenVPN integration:
+- wraps `services.openvpn.servers` instead of replacing it
+- exposes per-instance WAN TCP/UDP ports through `router-firewall`
+- can treat OpenVPN tunnel interfaces as trusted router interfaces
+- can allow OpenVPN clients to forward to WAN
+
+Example:
+
+```nix
+services.router-openvpn.instances.roadwarrior = {
+  interfaceName = "tun0";
+  wanUdpPorts = [ 1194 ];
+  config = ''
+    dev tun0
+    proto udp
+    port 1194
+    server 10.30.0.0 255.255.255.0
+  '';
+};
+```
+
+`trustedInterface` and `routeToWan` are opt-in. When `router-firewall` is not
+imported, the module still configures OpenVPN instances but skips the router
+firewall integration.
 
 ### router-wireguard
 Optional router-aware WireGuard integration:
