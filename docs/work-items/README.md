@@ -21,6 +21,7 @@ tracked separately from the dashboard planning docs.
 1. `01-router-ddns-module-inadyn.md`
 2. `02-router-ddns-provider-shape.md`
 3. `03-router-ddns-tests-and-docs.md`
+4. `04-private-config-pattern-study.md`
 
 ## Why This Structure
 
