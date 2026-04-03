@@ -30,6 +30,7 @@
           self.nixosModules.dns-zone
           self.nixosModules.dns-blocklists
           self.nixosModules.monitoring
+          self.nixosModules.router-observability
         ];
       };
       
@@ -53,6 +54,7 @@
       dns-zone = import ./modules/dns-zone.nix;
       "dns-blocklists" = import ./modules/dns-blocklists.nix;
       monitoring = import ./modules/monitoring.nix;
+      router-observability = import ./modules/router-observability.nix;
     };
 
     # Example configuration for testing

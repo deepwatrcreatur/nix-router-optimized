@@ -244,6 +244,15 @@ in
         description = "Burst allowance above the rate limit before logs are suppressed.";
       };
     };
+
+    flowLogging = {
+      enable = mkEnableOption "high-performance flow logging via NFLOG (ulogd)";
+      group = mkOption {
+        type = types.int;
+        default = 1;
+        description = "NFLOG group ID for flow logging.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -274,9 +283,16 @@ in
       }
 
       table inet filter {
+        ${optionalString cfg.flowLogging.enable ''
+          chain flow-logger {
+            log group ${toString cfg.flowLogging.group}
+          }
+        ''}
+
         chain input {
           type filter hook input priority 0; policy drop;
 
+          ${optionalString cfg.flowLogging.enable "jump flow-logger"}
           ct state {established, related} accept
           iifname "lo" accept
 
@@ -333,6 +349,7 @@ in
         chain forward {
           type filter hook forward priority 0; policy drop;
 
+          ${optionalString cfg.flowLogging.enable "jump flow-logger"}
           ct state {established, related} accept
           ct state invalid log prefix "${cfg.invalidLogPrefix}" level info flags all
           ct state invalid drop
