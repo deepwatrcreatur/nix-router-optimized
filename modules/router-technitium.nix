@@ -61,7 +61,7 @@ let
 
     SCOPES="$(${pkgs.curl}/bin/curl -fsS \
       "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN" \
-      | ${pkgs.jq}/bin/jq -r '.response.scopes[].name // empty')"
+      | ${pkgs.jq}/bin/jq -r '(.response.scopes // [])[]?.name // empty')"
 
     if [ -z "$SCOPES" ]; then
       echo "No Technitium DHCP scopes found; skipping NTP option 42 sync"
