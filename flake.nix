@@ -31,6 +31,7 @@
           self.nixosModules.dns-blocklists
           self.nixosModules.monitoring
           self.nixosModules.router-observability
+          self.nixosModules.router-vpn
         ];
       };
       
@@ -55,6 +56,7 @@
       "dns-blocklists" = import ./modules/dns-blocklists.nix;
       monitoring = import ./modules/monitoring.nix;
       router-observability = import ./modules/router-observability.nix;
+      router-vpn = import ./modules/router-vpn.nix;
     };
 
     # Example configuration for testing

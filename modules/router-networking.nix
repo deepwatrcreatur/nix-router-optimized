@@ -116,6 +116,15 @@ let
         default = null;
         description = "Optional MTU for the routed interface.";
       };
+
+      policyRouting = {
+        enable = mkEnableOption "policy-based routing for this interface";
+        table = mkOption {
+          type = types.int;
+          default = 100;
+          description = "Routing table ID for this interface's traffic.";
+        };
+      };
     };
   };
 
@@ -257,6 +266,15 @@ let
         Prefix = iface.ipv6Prefix;
         PreferredLifetimeSec = iface.preferredLifetimeSec;
         ValidLifetimeSec = iface.validLifetimeSec;
+      }
+    ];
+    routingPolicyRules = mkIf iface.policyRouting.enable [
+      {
+        routingPolicyRuleConfig = {
+          IncomingInterface = iface.device;
+          Table = iface.policyRouting.table;
+          Priority = 100;
+        };
       }
     ];
   };
