@@ -57,17 +57,9 @@ in
   };
 
   config = mkIf cfg.enable {
-    networking.wg-quick.interfaces = mapAttrs (name: iface: {
-      address = [ iface.ipv4Address ];
+    networking.wireguard.interfaces = mapAttrs (name: iface: {
+      ips = [ iface.ipv4Address ];
       privateKeyFile = iface.privateKeyFile;
-      
-      # Table = "off" prevents wg-quick from adding routes to the main table,
-      # which is necessary for policy routing.
-      extraConfig = mkIf iface.policyRouting.enable ''
-        [Interface]
-        Table = off
-      '';
-
       peers = map (peer: {
         publicKey = peer.publicKey;
         allowedIPs = peer.allowedIPs;
@@ -77,14 +69,18 @@ in
         persistentKeepalive = peer.keepalive;
       }) iface.peers;
       
-      # If policy routing is enabled, we use postUp to add the default route
-      # to the specific table instead of the main table.
-      postUp = mkIf iface.policyRouting.enable ''
-        ${pkgs.iproute2}/bin/ip route add default dev ${iface.device} table ${toString iface.policyRouting.table}
+      # For policy routing, we don't want WireGuard to add routes automatically
+      # to the main table. networking.wireguard.interfaces doesn't add them
+      # by default unless we specify them in allowedIPs and let it manage it.
+      # But we want explicit control.
+      
+      postSetup = mkIf iface.policyRouting.enable ''
+        ${pkgs.iproute2}/bin/ip route add default dev ${iface.device} table ${toString iface.policyRouting.table} || true
       '';
       
-      # Do not let wg-quick add routes to the main table if we want policy routing
-      autostart = true;
+      postShutdown = mkIf iface.policyRouting.enable ''
+        ${pkgs.iproute2}/bin/ip route del default dev ${iface.device} table ${toString iface.policyRouting.table} || true
+      '';
     }) cfg.interfaces;
   };
 }
