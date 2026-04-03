@@ -26,6 +26,26 @@ in
       default = 1;
       description = "Netfilter NFLOG group for ulogd.";
     };
+
+    exportMetrics = {
+      enable = mkEnableOption "remote writing metrics to an external store";
+      remoteWriteUrl = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "http://victoria-metrics:8428/api/v1/write";
+        description = "Prometheus remote write URL.";
+      };
+    };
+
+    exportLogs = {
+      enable = mkEnableOption "shipping flow logs to an external aggregator";
+      upstreamVectorAddr = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "vector-central:6000";
+        description = "Central Vector instance address.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -55,6 +75,20 @@ in
     # Ensure log directory exists
     systemd.services.ulogd.serviceConfig.LogsDirectory = "ulogd";
 
+    services.prometheus = mkIf cfg.exportMetrics.enable {
+      remoteWrite = [
+        {
+          url = cfg.exportMetrics.remoteWriteUrl;
+          queue_config = {
+            max_shards = 10;
+            min_shards = 1;
+            max_samples_per_send = 500;
+            capacity = 10000;
+          };
+        }
+      ];
+    };
+
     services.vector = mkIf cfg.enableVector {
       enable = true;
       journaldAccess = true;
@@ -77,6 +111,13 @@ in
           type = "console";
           inputs = [ "parse_ulogd" ];
           encoding.codec = "json";
+        };
+
+        sinks.upstream = mkIf cfg.exportLogs.enable {
+          type = "vector";
+          inputs = [ "parse_ulogd" ];
+          address = cfg.exportLogs.upstreamVectorAddr;
+          version = "2";
         };
       };
     };
