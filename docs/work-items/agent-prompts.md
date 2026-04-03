@@ -25,3 +25,27 @@ DNS use cases and explicit secret-file handling.
 Implement [`03-router-ddns-tests-and-docs.md`](./03-router-ddns-tests-and-docs.md).
 Add the first checks and docs needed to make the DDNS module usable by flake
 consumers without relying on chat history.
+
+## Prompt 5
+
+Implement [`05-flake-checks-foundation.md`](./05-flake-checks-foundation.md).
+Add the first general `checks` structure for this flake so future router module
+tests have a clear home in CI.
+
+## Prompt 6
+
+Implement [`06-vpn-module-smoke-tests.md`](./06-vpn-module-smoke-tests.md).
+Add smoke coverage for `router-wireguard`, `router-openvpn`, and
+`router-tailscale`, focusing on evaluation and the biggest silent-no-op risks.
+
+## Prompt 7
+
+Implement [`07-interface-and-firewall-invariants.md`](./07-interface-and-firewall-invariants.md).
+Add tests or assertions around WAN/LAN interface derivation and firewall wiring
+so router-local assumptions become visible in CI.
+
+## Prompt 8
+
+Implement [`08-example-and-doc-eval-coverage.md`](./08-example-and-doc-eval-coverage.md).
+Make the documented module examples more executable so README/docs drift is
+caught earlier.
