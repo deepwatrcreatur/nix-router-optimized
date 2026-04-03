@@ -13,9 +13,9 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **Router PPPoE**: Composable PPPoE uplink module that can coexist with router-networking
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
 - **Router ntopng**: Optional traffic-analysis UI with router-aware interface and LAN binding defaults
+- **Router Tailscale**: Optional router-aware Tailscale wrapper for subnet-router and exit-node roles
 - **Router WireGuard**: Optional router-aware WireGuard wrapper for site-to-site and remote-access tunnels
 - **Router OpenVPN**: Optional router-aware wrapper for declarative OpenVPN instances
-- **Router WireGuard**: Optional router-aware WireGuard wrapper for site-to-site and remote-access tunnels
 - **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
 - **Technitium DHCP Reservations**: Declarative reserved leases for DHCP-managed hosts
 - **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
@@ -179,6 +179,28 @@ Optional ntopng integration for routers:
 - binds the ntopng UI to the router LAN address by default
 - opens the ntopng port on trusted router firewall interfaces
 - plugs into the homelab dashboard/service list when `router-homelab` is used
+
+### router-tailscale
+Optional router-aware Tailscale integration:
+- wraps the native `services.tailscale` module with router-oriented defaults
+- configures subnet-router and exit-node flags declaratively
+- plugs the Tailscale interface into `router-firewall`
+- opens the Tailscale UDP port on WAN when `router-firewall` is enabled
+
+Example:
+
+```nix
+services.router-tailscale = {
+  enable = true;
+  authKeyFile = "/run/agenix/tailscale-auth-key";
+  advertiseRoutes = [ "10.10.0.0/16" "192.168.100.0/24" ];
+  enableSsh = true;
+};
+```
+
+If `router-firewall` is imported, the module also wires the Tailscale interface
+into the router firewall policy. If another layer already owns Tailscale on the
+host, prefer one source of truth rather than stacking multiple wrappers.
 
 ### router-openvpn
 Optional router-aware OpenVPN integration:
