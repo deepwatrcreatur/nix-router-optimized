@@ -5,8 +5,7 @@ Use these prompts to dispatch other agents onto the queue.
 ## Prompt 1
 
 Read [`docs/work-items/START-HERE.md`](./START-HERE.md) and take the
-highest-priority item still marked `Status: \`ready\``. Keep the work to one
-PR and update the item status in your branch.
+highest-priority item still marked Status: `ready`.
 
 ## Prompt 2
 

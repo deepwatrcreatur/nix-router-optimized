@@ -40,6 +40,6 @@ The authoritative work queue is the ordered list in [`README.md`](./README.md).
 1. Validate locally as appropriate.
 2. Push your branch and open a PR.
 3. Wait briefly for CI and bot review.
-4. Read comments and fix substantive issues.
+4. Read comments and address substantive issues.
 5. Merge only after checks are green or remaining comments are intentionally
    judged non-blocking.
