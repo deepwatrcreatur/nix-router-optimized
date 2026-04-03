@@ -6,6 +6,15 @@
   };
 
   outputs = { self, nixpkgs }: {
+    packages = forAllSystems (system:
+      let
+        pkgs = nixpkgsFor.${system};
+      in
+      {
+        router-diag = pkgs.callPackage ./pkgs/router-diag { };
+      }
+    );
+
     nixosModules = {
       default = {
         imports = [

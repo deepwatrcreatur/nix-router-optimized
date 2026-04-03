@@ -65,6 +65,12 @@ in {
         module parameter, which must be configured before the module loads.
       '';
     };
+
+    package = mkOption {
+      type = types.package;
+      default = pkgs.hello; # Placeholder, should be overridden in flake or host
+      description = "The router-diag package to install.";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -162,6 +168,7 @@ in {
       bpftrace             # Dynamic tracing
       numactl              # NUMA control
       irqbalance           # IRQ balancing for multi-core
+      cfg.package          # Operational diagnostics CLI
     ];
 
     # Enable IRQ balancing for better multi-core performance
