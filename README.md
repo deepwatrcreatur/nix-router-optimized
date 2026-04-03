@@ -14,6 +14,7 @@ A NixOS flake providing RouterOS-like performance optimizations for home/small b
 - **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
 - **Router ntopng**: Optional traffic-analysis UI with router-aware interface and LAN binding defaults
 - **Router Tailscale**: Optional router-aware Tailscale wrapper for subnet-router and exit-node roles
+- **Router WireGuard**: Optional router-aware WireGuard wrapper for site-to-site and remote-access tunnels
 - **Router OpenVPN**: Optional router-aware wrapper for declarative OpenVPN instances
 - **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
 - **Technitium DHCP Reservations**: Declarative reserved leases for DHCP-managed hosts
@@ -226,6 +227,34 @@ services.router-openvpn.instances.roadwarrior = {
 `trustedInterface` and `routeToWan` are opt-in. When `router-firewall` is not
 imported, the module still configures OpenVPN instances but skips the router
 firewall integration.
+
+### router-wireguard
+Optional router-aware WireGuard integration:
+- wraps `networking.wireguard.interfaces` with a simpler router-facing option set
+- opens the WireGuard UDP port on WAN through `router-firewall`
+- can treat the WireGuard tunnel as a trusted router interface
+- can allow WireGuard clients to forward to WAN through the router
+
+Example:
+
+```nix
+services.router-wireguard = {
+  enable = true;
+  ips = [ "10.20.0.1/24" ];
+  privateKeyFile = "/run/agenix/wg-router-key";
+  peers = [
+    {
+      publicKey = "xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=";
+      allowedIPs = [ "10.20.0.2/32" ];
+      persistentKeepalive = 25;
+    }
+  ];
+};
+```
+
+`trustedInterface` and `routeToWan` are opt-in. When `router-firewall` is not
+imported, the module still configures WireGuard itself but skips the router
+firewall wiring.
 
 ### router-technitium
 Opt-in Technitium DNS service bundle:
