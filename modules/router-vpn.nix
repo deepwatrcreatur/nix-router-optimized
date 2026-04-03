@@ -57,30 +57,43 @@ in
   };
 
   config = mkIf cfg.enable {
-    networking.wireguard.interfaces = mapAttrs (name: iface: {
-      ips = [ iface.ipv4Address ];
-      privateKeyFile = iface.privateKeyFile;
-      peers = map (peer: {
-        publicKey = peer.publicKey;
-        allowedIPs = peer.allowedIPs;
-      } // optionalAttrs (peer.endpoint != null) {
-        endpoint = peer.endpoint;
-      } // {
-        persistentKeepalive = peer.keepalive;
+    systemd.network.netdevs = mapAttrs' (name: iface: nameValuePair "30-${iface.device}" {
+      netdevConfig = {
+        Name = iface.device;
+        Kind = "wireguard";
+      };
+      wireguardConfig = {
+        PrivateKeyFile = iface.privateKeyFile;
+      };
+      wireguardPeers = map (peer: {
+        wireguardPeerConfig = {
+          PublicKey = peer.publicKey;
+          AllowedIPs = peer.allowedIPs;
+          Endpoint = peer.endpoint;
+          PersistentKeepalive = peer.keepalive;
+        };
       }) iface.peers;
+    }) cfg.interfaces;
+
+    systemd.network.networks = mapAttrs' (name: iface: nameValuePair "30-${iface.device}" {
+      matchConfig.Name = iface.device;
+      address = [ iface.ipv4Address ];
       
-      # For policy routing, we don't want WireGuard to add routes automatically
-      # to the main table. networking.wireguard.interfaces doesn't add them
-      # by default unless we specify them in allowedIPs and let it manage it.
-      # But we want explicit control.
+      # If policy routing is enabled, add the default route to the specified table
+      routes = mkIf iface.policyRouting.enable [
+        {
+          routeConfig = {
+            Destination = "0.0.0.0/0";
+            Table = iface.policyRouting.table;
+          };
+        }
+      ];
       
-      postSetup = mkIf iface.policyRouting.enable ''
-        ${pkgs.iproute2}/bin/ip route add default dev ${iface.device} table ${toString iface.policyRouting.table} || true
-      '';
-      
-      postShutdown = mkIf iface.policyRouting.enable ''
-        ${pkgs.iproute2}/bin/ip route del default dev ${iface.device} table ${toString iface.policyRouting.table} || true
-      '';
+      # We usually don't want to manage this interface via DHCP
+      networkConfig = {
+        IPv4Forwarding = "yes";
+        IPv6Forwarding = "yes";
+      };
     }) cfg.interfaces;
   };
 }
