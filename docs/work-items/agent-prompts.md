@@ -12,13 +12,16 @@ PR and update the item status in your branch.
 
 Implement [`01-router-ddns-module-inadyn.md`](./01-router-ddns-module-inadyn.md).
 Add a thin `router-ddns` module using `inadyn` as the single initial backend.
-Do not build a multi-backend abstraction in the first version.
+Do not build a multi-backend abstraction in the first version. Start by
+studying the existing Cloudflare DDNS behavior in `unified-nix-configuration`
+so the work is an extraction/refactor path, not greenfield invention.
 
 ## Prompt 3
 
 Implement [`02-router-ddns-provider-shape.md`](./02-router-ddns-provider-shape.md).
 Define a provider-aware but small option shape, starting with practical public
-DNS use cases and explicit secret-file handling.
+DNS use cases and explicit secret-file handling. Base the first shape on the
+current Cloudflare usage in the main config repo.
 
 ## Prompt 4
 
