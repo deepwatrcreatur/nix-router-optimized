@@ -2,6 +2,12 @@
 
 A NixOS flake providing RouterOS-like performance optimizations for home/small business routers.
 
+## Agent Work Queue
+
+If you are assigning or running agents against this repo, start with:
+
+- [`docs/work-items/START-HERE.md`](docs/work-items/START-HERE.md)
+
 ## Features
 
 - **FastTrack/FastPath**: Connection tracking bypass for established connections
