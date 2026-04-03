@@ -124,6 +124,28 @@ let
           default = 100;
           description = "Routing table ID for this interface's traffic.";
         };
+        rules = mkOption {
+          type = types.listOf (types.submodule {
+            options = {
+              to = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "Destination prefix for the rule.";
+              };
+              table = mkOption {
+                type = types.int;
+                description = "Routing table to look up.";
+              };
+              priority = mkOption {
+                type = types.int;
+                default = 100;
+                description = "Rule priority.";
+              };
+            };
+          });
+          default = [ ];
+          description = "Additional policy routing rules for this interface.";
+        };
       };
     };
   };
@@ -268,15 +290,27 @@ let
         ValidLifetimeSec = iface.validLifetimeSec;
       }
     ];
-    routingPolicyRules = mkIf iface.policyRouting.enable [
-      {
-        routingPolicyRuleConfig = {
-          IncomingInterface = iface.device;
-          Table = iface.policyRouting.table;
-          Priority = 100;
-        };
-      }
-    ];
+    routingPolicyRules =
+      (mkIf iface.policyRouting.enable [
+        {
+          routingPolicyRuleConfig = {
+            IncomingInterface = iface.device;
+            Table = iface.policyRouting.table;
+            Priority = 100;
+          };
+        }
+      ])
+      ++ (map
+        (rule: {
+          routingPolicyRuleConfig = {
+            IncomingInterface = iface.device;
+            Table = rule.table;
+            Priority = rule.priority;
+          } // optionalAttrs (rule.to != null) {
+            Destination = rule.to;
+          };
+        })
+        iface.policyRouting.rules);
   };
 in
 {
