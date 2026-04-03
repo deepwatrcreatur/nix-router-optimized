@@ -21,6 +21,7 @@
           self.nixosModules.router-dashboard
           self.nixosModules.router-ntopng
           self.nixosModules.router-tailscale
+          self.nixosModules.router-openvpn
           self.nixosModules.nftables-fasttrack
           # Opt-in extras: all use mkEnableOption so they are safe to include
           self.nixosModules.caddy-reverse-proxy
@@ -43,6 +44,7 @@
       router-dashboard = import ./modules/router-dashboard.nix;
       router-ntopng = import ./modules/router-ntopng.nix;
       router-tailscale = import ./modules/router-tailscale.nix;
+      router-openvpn = import ./modules/router-openvpn.nix;
       nftables-fasttrack = import ./modules/nftables-fasttrack.nix;
       caddy-reverse-proxy = import ./modules/caddy-reverse-proxy.nix;
       dns = import ./modules/dns.nix;
