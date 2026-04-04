@@ -55,24 +55,23 @@ in
         global = {
           logfile = "/var/log/ulogd/ulogd.log";
           # Notice: plugin names must match exact .so filenames in pkgs.ulogd
+          # BASE matches ulogd_raw2packet_BASE.so
+          # JSON matches ulogd_output_JSON.so (available via overlay in this flake)
           plugin = [
             "${pkgs.ulogd}/lib/ulogd/ulogd_inppkt_NFLOG.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_raw2packet_BASE.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_IFINDEX.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_IP2STR.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_PRINTPKT.so"
-            "${pkgs.ulogd}/lib/ulogd/ulogd_output_LOGEMU.so"
+            "${pkgs.ulogd}/lib/ulogd/ulogd_output_JSON.so"
           ];
-          # Note: BASE matches ulogd_raw2packet_BASE.so
-          # Note: LOGEMU matches ulogd_output_LOGEMU.so
-          # We use LOGEMU because JSON output is not currently packaged in Nixpkgs
-          stack = "log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,emu1:LOGEMU";
+          stack = "log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,json1:JSON";
         };
         log1 = {
           group = cfg.ulogdGroup;
         };
-        emu1 = {
-          file = "/var/log/ulogd/flow.log";
+        json1 = {
+          file = "/var/log/ulogd/flow.json";
           sync = 1;
         };
       };
@@ -99,18 +98,17 @@ in
       enable = true;
       journaldAccess = true;
       settings = {
-        sources.ulogd_log = {
+        sources.ulogd_json = {
           type = "file";
-          include = [ "/var/log/ulogd/flow.log" ];
+          include = [ "/var/log/ulogd/flow.json" ];
         };
 
-        # TODO: Implement better parser for LOGEMU format if needed.
-        # For now, we just ship it as a message.
         transforms.parse_ulogd = {
           type = "remap";
-          inputs = [ "ulogd_log" ];
+          inputs = [ "ulogd_json" ];
           source = ''
-            .timestamp = now()
+            . = parse_json!(.message)
+            .timestamp = parse_timestamp!(.timestamp, "%Y-%m-%dT%H:%M:%S%.f%z")
           '';
         };
 

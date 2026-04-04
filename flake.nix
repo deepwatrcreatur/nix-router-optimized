@@ -10,6 +10,11 @@
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; config.allowUnfree = true; });
+      
+      # Custom ulogd with JSON support
+      ulogdWithJson = pkgs: pkgs.ulogd.overrideAttrs (old: {
+        buildInputs = old.buildInputs ++ [ pkgs.jansson ];
+      });
     in
     {
     packages = forAllSystems (system:
@@ -18,8 +23,13 @@
       in
       {
         router-diag = pkgs.callPackage ./pkgs/router-diag { };
+        ulogd = ulogdWithJson pkgs;
       }
     );
+
+    overlays.default = final: prev: {
+      ulogd = ulogdWithJson prev;
+    };
 
     nixosModules = {
       default = {
