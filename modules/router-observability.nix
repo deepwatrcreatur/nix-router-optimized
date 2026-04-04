@@ -51,25 +51,27 @@ in
   config = mkIf cfg.enable {
     services.ulogd = mkIf cfg.enableUlogd {
       enable = true;
-      settings = ''
-        [global]
-        logfile="/var/log/ulogd/ulogd.log"
-        loglevel=5
-        plugin="${pkgs.ulogd}/lib/ulogd/ulogd_inppkt_NFLOG.so"
-        plugin="${pkgs.ulogd}/lib/ulogd/ulogd_filter_IFINDEX.so"
-        plugin="${pkgs.ulogd}/lib/ulogd/ulogd_filter_IP2STR.so"
-        plugin="${pkgs.ulogd}/lib/ulogd/ulogd_filter_PRINTPKT.so"
-        plugin="${pkgs.ulogd}/lib/ulogd/ulogd_output_JSON.so"
-
-        stack=log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,json1:JSON
-
-        [log1]
-        group=${toString cfg.ulogdGroup}
-
-        [json1]
-        file="/var/log/ulogd/flow.json"
-        sync=1
-      '';
+      settings = {
+        global = {
+          logfile = "/var/log/ulogd/ulogd.log";
+          loglevel = 5;
+          plugin = [
+            "${pkgs.ulogd}/lib/ulogd/ulogd_inppkt_NFLOG.so"
+            "${pkgs.ulogd}/lib/ulogd/ulogd_filter_IFINDEX.so"
+            "${pkgs.ulogd}/lib/ulogd/ulogd_filter_IP2STR.so"
+            "${pkgs.ulogd}/lib/ulogd/ulogd_filter_PRINTPKT.so"
+            "${pkgs.ulogd}/lib/ulogd/ulogd_output_JSON.so"
+          ];
+          stack = "log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,json1:JSON";
+        };
+        log1 = {
+          group = cfg.ulogdGroup;
+        };
+        json1 = {
+          file = "/var/log/ulogd/flow.json";
+          sync = 1;
+        };
+      };
     };
 
     # Ensure log directory exists
