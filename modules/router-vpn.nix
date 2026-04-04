@@ -58,9 +58,13 @@ in
 
   config = mkIf cfg.enable {
     systemd.network.netdevs = mapAttrs' (name: iface: nameValuePair "30-${iface.device}" {
-      Name = iface.device;
-      Kind = "wireguard";
-      PrivateKeyFile = iface.privateKeyFile;
+      netdevConfig = {
+        Name = iface.device;
+        Kind = "wireguard";
+      };
+      wireguardConfig = {
+        PrivateKeyFile = iface.privateKeyFile;
+      };
       wireguardPeers = map (peer: {
         PublicKey = peer.publicKey;
         AllowedIPs = peer.allowedIPs;

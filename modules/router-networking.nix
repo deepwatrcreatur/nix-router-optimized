@@ -159,9 +159,11 @@ let
     };
 
   mkVlanNetdev = item: {
-    Kind = "vlan";
-    Name = item.child;
-    Id = item.vlanId;
+    netdevConfig = {
+      Kind = "vlan";
+      Name = item.child;
+    };
+    vlanConfig.Id = item.vlanId;
   };
 
   routedVlanDefinitions =
