@@ -304,7 +304,7 @@ let
           Table = rule.table;
           Priority = rule.priority;
         } // optionalAttrs (rule.to != null) {
-          Destination = rule.to;
+          To = rule.to;
         })
         iface.policyRouting.rules);
   };
