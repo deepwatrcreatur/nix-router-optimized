@@ -58,20 +58,14 @@ in
 
   config = mkIf cfg.enable {
     systemd.network.netdevs = mapAttrs' (name: iface: nameValuePair "30-${iface.device}" {
-      netdevConfig = {
-        Name = iface.device;
-        Kind = "wireguard";
-      };
-      wireguardConfig = {
-        PrivateKeyFile = iface.privateKeyFile;
-      };
+      Name = iface.device;
+      Kind = "wireguard";
+      PrivateKeyFile = iface.privateKeyFile;
       wireguardPeers = map (peer: {
-        wireguardPeerConfig = {
-          PublicKey = peer.publicKey;
-          AllowedIPs = peer.allowedIPs;
-          Endpoint = peer.endpoint;
-          PersistentKeepalive = peer.keepalive;
-        };
+        PublicKey = peer.publicKey;
+        AllowedIPs = peer.allowedIPs;
+        Endpoint = peer.endpoint;
+        PersistentKeepalive = peer.keepalive;
       }) iface.peers;
     }) cfg.interfaces;
 
@@ -82,10 +76,8 @@ in
       # If policy routing is enabled, add the default route to the specified table
       routes = mkIf iface.policyRouting.enable [
         {
-          routeConfig = {
-            Destination = "0.0.0.0/0";
-            Table = iface.policyRouting.table;
-          };
+          Destination = "0.0.0.0/0";
+          Table = iface.policyRouting.table;
         }
       ];
       
