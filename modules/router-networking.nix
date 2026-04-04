@@ -293,22 +293,18 @@ let
     routingPolicyRules =
       (optional iface.policyRouting.enable
         {
-          routingPolicyRuleConfig = {
-            IncomingInterface = iface.device;
-            Table = iface.policyRouting.table;
-            Priority = 100;
-          };
+          IncomingInterface = iface.device;
+          Table = iface.policyRouting.table;
+          Priority = 100;
         }
       )
       ++ (map
         (rule: {
-          routingPolicyRuleConfig = {
-            IncomingInterface = iface.device;
-            Table = rule.table;
-            Priority = rule.priority;
-          } // optionalAttrs (rule.to != null) {
-            Destination = rule.to;
-          };
+          IncomingInterface = iface.device;
+          Table = rule.table;
+          Priority = rule.priority;
+        } // optionalAttrs (rule.to != null) {
+          Destination = rule.to;
         })
         iface.policyRouting.rules);
   };
