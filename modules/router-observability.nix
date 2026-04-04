@@ -54,21 +54,25 @@ in
       settings = {
         global = {
           logfile = "/var/log/ulogd/ulogd.log";
-          loglevel = 5;
+          # Notice: plugin names must match exact .so filenames in pkgs.ulogd
           plugin = [
             "${pkgs.ulogd}/lib/ulogd/ulogd_inppkt_NFLOG.so"
+            "${pkgs.ulogd}/lib/ulogd/ulogd_raw2packet_BASE.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_IFINDEX.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_IP2STR.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_PRINTPKT.so"
-            "${pkgs.ulogd}/lib/ulogd/ulogd_output_JSON.so"
+            "${pkgs.ulogd}/lib/ulogd/ulogd_output_LOGEMU.so"
           ];
-          stack = "log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,json1:JSON";
+          # Note: BASE matches ulogd_raw2packet_BASE.so
+          # Note: LOGEMU matches ulogd_output_LOGEMU.so
+          # We use LOGEMU because JSON output is not currently packaged in Nixpkgs
+          stack = "log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,emu1:LOGEMU";
         };
         log1 = {
           group = cfg.ulogdGroup;
         };
-        json1 = {
-          file = "/var/log/ulogd/flow.json";
+        emu1 = {
+          file = "/var/log/ulogd/flow.log";
           sync = 1;
         };
       };
@@ -95,17 +99,18 @@ in
       enable = true;
       journaldAccess = true;
       settings = {
-        sources.ulogd_json = {
+        sources.ulogd_log = {
           type = "file";
-          include = [ "/var/log/ulogd/flow.json" ];
+          include = [ "/var/log/ulogd/flow.log" ];
         };
 
+        # TODO: Implement better parser for LOGEMU format if needed.
+        # For now, we just ship it as a message.
         transforms.parse_ulogd = {
           type = "remap";
-          inputs = [ "ulogd_json" ];
+          inputs = [ "ulogd_log" ];
           source = ''
-            . = parse_json!(.message)
-            .timestamp = parse_timestamp!(.timestamp, "%Y-%m-%dT%H:%M:%S%.f%z")
+            .timestamp = now()
           '';
         };
 
