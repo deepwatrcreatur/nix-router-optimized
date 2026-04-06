@@ -289,6 +289,94 @@ in
           }
         ''}
 
+        chain WAN_LOCAL {
+          ${optionalString cfg.enableIpv6 ''
+            udp dport 546 accept comment "DHCPv6 client"
+          ''}
+          ${optionalString (cfg.wanTcpPorts != [ ]) ''
+            tcp dport {${tcpPortSet cfg.wanTcpPorts}} accept
+          ''}
+          ${optionalString (cfg.wanUdpPorts != [ ]) ''
+            udp dport {${tcpPortSet cfg.wanUdpPorts}} accept
+          ''}
+        }
+
+        chain LAN_LOCAL {
+          ${optionalString cfg.allowSsh ''
+            tcp dport 22 accept
+          ''}
+          ${
+            let dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
+            in optionalString (elem "lan" (mapAttrsToList (_name: iface: iface.role) (filterAttrs (n: v: elem v.device lanInterfaces) optimizationInterfaces))) (
+              optionalString (cfg.dnsUdpPorts != [ ]) ''
+                udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
+              '' + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
+                udp sport {67, 68} accept
+              '' + optionalString (cfg.dnsTcpPorts != [ ]) ''
+                tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
+              ''
+            )
+          }
+          ${optionalString (cfg.trustedTcpPorts != [ ]) ''
+            tcp dport {${tcpPortSet cfg.trustedTcpPorts}} accept
+          ''}
+          ${optionalString (cfg.trustedUdpPorts != [ ]) ''
+            udp dport {${tcpPortSet cfg.trustedUdpPorts}} accept
+          ''}
+        }
+
+        chain MGMT_LOCAL {
+          ${optionalString cfg.allowSsh ''
+            tcp dport 22 accept
+          ''}
+          ${
+            let dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
+            in optionalString (elem "management" (mapAttrsToList (_name: iface: iface.role) (filterAttrs (n: v: elem v.device managementInterfaces) optimizationInterfaces))) (
+              optionalString (cfg.dnsUdpPorts != [ ]) ''
+                udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
+              '' + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
+                udp sport {67, 68} accept
+              '' + optionalString (cfg.dnsTcpPorts != [ ]) ''
+                tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
+              ''
+            )
+          }
+          ${optionalString (cfg.trustedTcpPorts != [ ]) ''
+            tcp dport {${tcpPortSet cfg.trustedTcpPorts}} accept
+          ''}
+          ${optionalString (cfg.trustedUdpPorts != [ ]) ''
+            udp dport {${tcpPortSet cfg.trustedUdpPorts}} accept
+          ''}
+        }
+
+        chain WAN_IN {
+          # Default drop via forward chain policy
+        }
+
+        chain LAN_IN {
+          ${optionalString cfg.lanToWan (mkForwardRule lanInterfaces wanInterfaces "accept")}
+          ${
+            if cfg.allowTrustedInterconnect && trustedInterfaces != [ ] then
+              ''
+                iifname ${maybeSet lanInterfaces} oifname ${maybeSet trustedInterfaces} accept
+              ''
+            else
+              ""
+          }
+        }
+
+        chain MGMT_IN {
+          ${optionalString cfg.managementToWan (mkForwardRule managementInterfaces wanInterfaces "accept")}
+          ${
+            if cfg.allowTrustedInterconnect && trustedInterfaces != [ ] then
+              ''
+                iifname ${maybeSet managementInterfaces} oifname ${maybeSet trustedInterfaces} accept
+              ''
+            else
+              ""
+          }
+        }
+
         chain input {
           type filter hook input priority 0; policy drop;
 
@@ -299,38 +387,9 @@ in
           ip protocol icmp accept
           ${optionalString cfg.enableIpv6 "ip6 nexthdr icmpv6 accept"}
 
-          ${optionalString (cfg.enableIpv6 && wanInterfaces != [ ]) ''
-            iifname ${maybeSet wanInterfaces} udp dport 546 accept
-          ''}
-
-          ${optionalString (cfg.allowSsh && trustedInterfaces != [ ]) ''
-            iifname ${maybeSet trustedInterfaces} tcp dport 22 accept
-          ''}
-
-          ${
-            let dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
-            in optionalString (dnsIfaces != [ ] && cfg.dnsUdpPorts != [ ]) ''
-              iifname ${maybeSet dnsIfaces} udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
-            '' + optionalString (dnsIfaces != [ ] && elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
-              iifname ${maybeSet dnsIfaces} udp sport {67, 68} accept
-            '' + optionalString (dnsIfaces != [ ] && cfg.dnsTcpPorts != [ ]) ''
-              iifname ${maybeSet dnsIfaces} tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
-            ''
-          }
-
-          ${optionalString (trustedInterfaces != [ ] && cfg.trustedTcpPorts != [ ]) ''
-            iifname ${maybeSet trustedInterfaces} tcp dport {${tcpPortSet cfg.trustedTcpPorts}} accept
-          ''}
-          ${optionalString (trustedInterfaces != [ ] && cfg.trustedUdpPorts != [ ]) ''
-            iifname ${maybeSet trustedInterfaces} udp dport {${tcpPortSet cfg.trustedUdpPorts}} accept
-          ''}
-
-          ${optionalString (wanInterfaces != [ ] && cfg.wanTcpPorts != [ ]) ''
-            iifname ${maybeSet wanInterfaces} tcp dport {${tcpPortSet cfg.wanTcpPorts}} accept
-          ''}
-          ${optionalString (wanInterfaces != [ ] && cfg.wanUdpPorts != [ ]) ''
-            iifname ${maybeSet wanInterfaces} udp dport {${tcpPortSet cfg.wanUdpPorts}} accept
-          ''}
+          ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_LOCAL"}
+          ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_LOCAL"}
+          ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_LOCAL"}
 
           ${optionalString (cfg.tailscaleInterface != null) ''
             iifname "${cfg.tailscaleInterface}" accept
@@ -354,17 +413,9 @@ in
           ct state invalid log prefix "${cfg.invalidLogPrefix}" level info flags all
           ct state invalid drop
 
-          ${optionalString cfg.lanToWan (mkForwardRule lanInterfaces wanInterfaces "accept")}
-          ${optionalString cfg.managementToWan (mkForwardRule managementInterfaces wanInterfaces "accept")}
-
-          ${
-            if cfg.allowTrustedInterconnect && trustedInterfaces != [ ] then
-              ''
-                iifname ${maybeSet trustedInterfaces} oifname ${maybeSet trustedInterfaces} accept
-              ''
-            else
-              ""
-          }
+          ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_IN"}
+          ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_IN"}
+          ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_IN"}
 
           ${optionalString (cfg.tailscaleInterface != null && allRouterInterfaces != [ ]) ''
             iifname "${cfg.tailscaleInterface}" oifname ${maybeSet allRouterInterfaces} accept
