@@ -180,10 +180,46 @@ in
       description = "Extra nftables input-chain rules appended before final drop.";
     };
 
+    extraWanLocalRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables rules for traffic FROM WAN TO the router.";
+    };
+
+    extraLanLocalRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables rules for traffic FROM LAN TO the router.";
+    };
+
+    extraMgmtLocalRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables rules for traffic FROM management TO the router.";
+    };
+
     extraForwardRules = mkOption {
       type = types.lines;
       default = "";
       description = "Extra nftables forward-chain rules appended before final drop.";
+    };
+
+    extraWanInRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables rules for traffic FROM WAN THROUGH the router.";
+    };
+
+    extraLanInRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables rules for traffic FROM LAN THROUGH the router.";
+    };
+
+    extraMgmtInRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables rules for traffic FROM management THROUGH the router.";
     };
 
     enableIpv4Masquerade = mkOption {
@@ -299,6 +335,7 @@ in
           ${optionalString (cfg.wanUdpPorts != [ ]) ''
             udp dport {${tcpPortSet cfg.wanUdpPorts}} accept
           ''}
+          ${cfg.extraWanLocalRules}
         }
 
         chain LAN_LOCAL {
@@ -323,6 +360,7 @@ in
           ${optionalString (cfg.trustedUdpPorts != [ ]) ''
             udp dport {${tcpPortSet cfg.trustedUdpPorts}} accept
           ''}
+          ${cfg.extraLanLocalRules}
         }
 
         chain MGMT_LOCAL {
@@ -347,9 +385,11 @@ in
           ${optionalString (cfg.trustedUdpPorts != [ ]) ''
             udp dport {${tcpPortSet cfg.trustedUdpPorts}} accept
           ''}
+          ${cfg.extraMgmtLocalRules}
         }
 
         chain WAN_IN {
+          ${cfg.extraWanInRules}
           # Default drop via forward chain policy
         }
 
@@ -363,6 +403,7 @@ in
             else
               ""
           }
+          ${cfg.extraLanInRules}
         }
 
         chain MGMT_IN {
@@ -375,6 +416,7 @@ in
             else
               ""
           }
+          ${cfg.extraMgmtInRules}
         }
 
         chain input {
