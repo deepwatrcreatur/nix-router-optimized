@@ -51,3 +51,10 @@ so router-local assumptions become visible in CI.
 Implement [`08-example-and-doc-eval-coverage.md`](./08-example-and-doc-eval-coverage.md).
 Make the documented module examples more executable so README/docs drift is
 caught earlier.
+
+## Prompt 9
+
+Implement [`09-pxe-review-followup-hardening.md`](./09-pxe-review-followup-hardening.md).
+Verify the open PR review findings directly against the current PXE branch,
+fix only the ones that are real, and keep the result narrowly focused on
+getting the first PXE slice merge-ready.
