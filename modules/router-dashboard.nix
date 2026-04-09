@@ -234,6 +234,11 @@ in {
         DASHBOARD_BIND = cfg.bind-address;
         DASHBOARD_STATIC = "${dashboardStatic}";
         DASHBOARD_THEME = cfg.theme;
+        DASHBOARD_INTERFACES = builtins.toJSON (map (iface: {
+          device = iface.device;
+          label = iface.label;
+          role = iface.role;
+        }) effectiveInterfaces);
         DASHBOARD_SERVICES = builtins.toJSON cfg.services;
         DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
         TECHNITIUM_URL = "http://localhost:5380";

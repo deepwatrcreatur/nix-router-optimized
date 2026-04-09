@@ -6,6 +6,169 @@ let
   cfg = config.services.router-technitium;
   secretName = cfg.apiKeySecretName;
   hasApiSecret = secretName != null && hasAttr secretName config.age.secrets;
+  exclusionModule = types.submodule {
+    options = {
+      startingAddress = mkOption {
+        type = types.str;
+        description = "First IPv4 address in the excluded range.";
+      };
+
+      endingAddress = mkOption {
+        type = types.str;
+        description = "Last IPv4 address in the excluded range.";
+      };
+    };
+  };
+  scopeModule = types.submodule {
+    options = {
+      legacyNames = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Existing Technitium scope names that should be renamed to this declarative scope name.";
+      };
+
+      enabled = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether the scope should be enabled after synchronization.";
+      };
+
+      startingAddress = mkOption {
+        type = types.str;
+        description = "First address in the dynamic DHCP pool.";
+      };
+
+      endingAddress = mkOption {
+        type = types.str;
+        description = "Last address in the dynamic DHCP pool.";
+      };
+
+      subnetMask = mkOption {
+        type = types.str;
+        description = "IPv4 subnet mask for the scope.";
+      };
+
+      leaseTimeDays = mkOption {
+        type = types.int;
+        default = 1;
+        description = "Lease duration in days.";
+      };
+
+      leaseTimeHours = mkOption {
+        type = types.int;
+        default = 0;
+        description = "Lease duration in hours.";
+      };
+
+      leaseTimeMinutes = mkOption {
+        type = types.int;
+        default = 0;
+        description = "Lease duration in minutes.";
+      };
+
+      offerDelayTime = mkOption {
+        type = types.int;
+        default = 0;
+        description = "Delay before sending DHCPOFFER, in milliseconds.";
+      };
+
+      pingCheckEnabled = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether Technitium should ping-check an address before offering it.";
+      };
+
+      pingCheckTimeout = mkOption {
+        type = types.int;
+        default = 1000;
+        description = "Ping timeout in milliseconds when pingCheckEnabled is true.";
+      };
+
+      pingCheckRetries = mkOption {
+        type = types.int;
+        default = 2;
+        description = "Number of ping retries when pingCheckEnabled is true.";
+      };
+
+      domainName = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "DHCP option 15 domain name for the scope.";
+      };
+
+      domainSearchList = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "DHCP option 119 search domains for the scope.";
+      };
+
+      dnsUpdates = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether Technitium should register dynamic DNS entries for this scope.";
+      };
+
+      dnsOverwriteForDynamicLease = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether dynamic leases may overwrite existing A records.";
+      };
+
+      dnsTtl = mkOption {
+        type = types.int;
+        default = 900;
+        description = "TTL for DHCP-created DNS records.";
+      };
+
+      routerAddress = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Default gateway advertised to clients.";
+      };
+
+      useThisDnsServer = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Advertise the Technitium server address as DHCP option 6.";
+      };
+
+      dnsServers = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Explicit DNS servers advertised when useThisDnsServer is false.";
+      };
+
+      ntpServers = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "NTP servers advertised via DHCP option 42.";
+      };
+
+      exclusions = mkOption {
+        type = types.listOf exclusionModule;
+        default = [ ];
+        description = "Excluded address ranges that should never be handed out dynamically.";
+      };
+
+      allowOnlyReservedLeases = mkOption {
+        type = types.bool;
+        default = false;
+        description = "When true, only reserved leases are handed out.";
+      };
+
+      blockLocallyAdministeredMacAddresses = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether to deny dynamic leases to locally administered MAC addresses.";
+      };
+
+      ignoreClientIdentifierOption = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Prefer MAC address matching over DHCP option 61 when tracking leases.";
+      };
+    };
+  };
   reservationModule = types.submodule {
     options = {
       scope = mkOption {
@@ -85,6 +248,123 @@ let
   dhcpReservationsJson = pkgs.writeText "technitium-dhcp-reservations.json" (
     builtins.toJSON (mapAttrsToList (name: reservation: reservation // { inherit name; }) cfg.dhcpReservations)
   );
+  dhcpScopesJson = pkgs.writeText "technitium-dhcp-scopes.json" (
+    builtins.toJSON (mapAttrsToList (name: scope: scope // { inherit name; }) cfg.scopes)
+  );
+  dhcpScopeScript = pkgs.writeShellScript "technitium-sync-dhcp-scopes" ''
+    set -euo pipefail
+
+    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}" ]; then
+      echo "Technitium API token file not found; cannot sync DHCP scopes" >&2
+      exit 1
+    fi
+
+    for i in {1..30}; do
+      if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:5380/api/dns/status >/dev/null 2>&1; then
+        break
+      fi
+      echo "Waiting for Technitium DNS Server to start..."
+      sleep 2
+    done
+
+    TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
+    SCOPES_JSON="$(${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+
+    ${pkgs.jq}/bin/jq -c '.[]' ${dhcpScopesJson} | while read -r scope; do
+      desired_name="$(${pkgs.jq}/bin/jq -r '.name' <<<"$scope")"
+      existing_name="$(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
+        .response.scopes // []
+        | map(.name)
+        | map(select(. == $desired))
+        | first // empty
+      ' <<<"$SCOPES_JSON")"
+
+      if [ -z "$existing_name" ]; then
+        while IFS= read -r legacy_name; do
+          [ -n "$legacy_name" ] || continue
+          existing_name="$(${pkgs.jq}/bin/jq -r --arg legacy "$legacy_name" '
+            .response.scopes // []
+            | map(.name)
+            | map(select(. == $legacy))
+            | first // empty
+          ' <<<"$SCOPES_JSON")"
+          [ -n "$existing_name" ] && break
+        done < <(${pkgs.jq}/bin/jq -r '.legacyNames[]? // empty' <<<"$scope")
+      fi
+
+      source_name="$desired_name"
+      if [ -n "$existing_name" ]; then
+        source_name="$existing_name"
+      fi
+
+      echo "Synchronizing DHCP scope '$source_name' -> '$desired_name'"
+
+      cmd=(
+        ${pkgs.curl}/bin/curl -fsS -X POST
+        -H "Content-Type: application/x-www-form-urlencoded"
+        --data-urlencode "token=$TOKEN"
+        --data-urlencode "name=$source_name"
+        --data-urlencode "startingAddress=$(${pkgs.jq}/bin/jq -r '.startingAddress' <<<"$scope")"
+        --data-urlencode "endingAddress=$(${pkgs.jq}/bin/jq -r '.endingAddress' <<<"$scope")"
+        --data-urlencode "subnetMask=$(${pkgs.jq}/bin/jq -r '.subnetMask' <<<"$scope")"
+        --data-urlencode "leaseTimeDays=$(${pkgs.jq}/bin/jq -r '.leaseTimeDays' <<<"$scope")"
+        --data-urlencode "leaseTimeHours=$(${pkgs.jq}/bin/jq -r '.leaseTimeHours' <<<"$scope")"
+        --data-urlencode "leaseTimeMinutes=$(${pkgs.jq}/bin/jq -r '.leaseTimeMinutes' <<<"$scope")"
+        --data-urlencode "offerDelayTime=$(${pkgs.jq}/bin/jq -r '.offerDelayTime' <<<"$scope")"
+        --data-urlencode "pingCheckEnabled=$(${pkgs.jq}/bin/jq -r '.pingCheckEnabled' <<<"$scope")"
+        --data-urlencode "pingCheckTimeout=$(${pkgs.jq}/bin/jq -r '.pingCheckTimeout' <<<"$scope")"
+        --data-urlencode "pingCheckRetries=$(${pkgs.jq}/bin/jq -r '.pingCheckRetries' <<<"$scope")"
+        --data-urlencode "dnsUpdates=$(${pkgs.jq}/bin/jq -r '.dnsUpdates' <<<"$scope")"
+        --data-urlencode "dnsOverwriteForDynamicLease=$(${pkgs.jq}/bin/jq -r '.dnsOverwriteForDynamicLease' <<<"$scope")"
+        --data-urlencode "dnsTtl=$(${pkgs.jq}/bin/jq -r '.dnsTtl' <<<"$scope")"
+        --data-urlencode "useThisDnsServer=$(${pkgs.jq}/bin/jq -r '.useThisDnsServer' <<<"$scope")"
+        --data-urlencode "allowOnlyReservedLeases=$(${pkgs.jq}/bin/jq -r '.allowOnlyReservedLeases' <<<"$scope")"
+        --data-urlencode "blockLocallyAdministeredMacAddresses=$(${pkgs.jq}/bin/jq -r '.blockLocallyAdministeredMacAddresses' <<<"$scope")"
+        --data-urlencode "ignoreClientIdentifierOption=$(${pkgs.jq}/bin/jq -r '.ignoreClientIdentifierOption' <<<"$scope")"
+      )
+
+      maybe_add_text() {
+        local key="$1"
+        local value="$2"
+        if [ -n "$value" ]; then
+          cmd+=( --data-urlencode "$key=$value" )
+        fi
+      }
+
+      maybe_add_text "newName" "$(
+        if [ "$source_name" != "$desired_name" ]; then
+          printf '%s' "$desired_name"
+        fi
+      )"
+      maybe_add_text "domainName" "$(${pkgs.jq}/bin/jq -r '.domainName // empty' <<<"$scope")"
+      maybe_add_text "domainSearchList" "$(${pkgs.jq}/bin/jq -r '(.domainSearchList // []) | join(",")' <<<"$scope")"
+      maybe_add_text "routerAddress" "$(${pkgs.jq}/bin/jq -r '.routerAddress // empty' <<<"$scope")"
+      maybe_add_text "dnsServers" "$(${pkgs.jq}/bin/jq -r '(.dnsServers // []) | join(",")' <<<"$scope")"
+      maybe_add_text "ntpServers" "$(${pkgs.jq}/bin/jq -r '(.ntpServers // []) | join(",")' <<<"$scope")"
+      maybe_add_text "exclusions" "$(${pkgs.jq}/bin/jq -r '(.exclusions // []) | map("\(.startingAddress)|\(.endingAddress)") | join("|")' <<<"$scope")"
+
+      cmd+=( "http://127.0.0.1:5380/api/dhcp/scopes/set" )
+      "''${cmd[@]}" >/dev/null
+
+      if [ "$(${pkgs.jq}/bin/jq -r '.enabled' <<<"$scope")" = "true" ]; then
+        ${pkgs.curl}/bin/curl -fsS -X POST \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          --data-urlencode "token=$TOKEN" \
+          --data-urlencode "name=$desired_name" \
+          "http://127.0.0.1:5380/api/dhcp/scopes/enable" \
+          >/dev/null
+      else
+        ${pkgs.curl}/bin/curl -fsS -X POST \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          --data-urlencode "token=$TOKEN" \
+          --data-urlencode "name=$desired_name" \
+          "http://127.0.0.1:5380/api/dhcp/scopes/disable" \
+          >/dev/null
+      fi
+    done
+
+    echo "Technitium DHCP scopes synchronized"
+  '';
   dhcpReservationScript = pkgs.writeShellScript "technitium-sync-dhcp-reservations" ''
     set -euo pipefail
 
@@ -207,6 +487,31 @@ in
       '';
     };
 
+    scopes = mkOption {
+      type = types.attrsOf scopeModule;
+      default = { };
+      example = literalExpression ''
+        {
+          LAN = {
+            legacyNames = [ "Default" ];
+            startingAddress = "10.10.10.100";
+            endingAddress = "10.10.10.250";
+            subnetMask = "255.255.0.0";
+            routerAddress = "10.10.10.1";
+            domainName = "example.internal";
+            domainSearchList = [ "example.internal" ];
+            useThisDnsServer = true;
+            ntpServers = [ "10.10.10.1" ];
+          };
+        }
+      '';
+      description = ''
+        Declarative Technitium DHCP scope definitions keyed by the desired
+        scope name. Existing scopes can be renamed into place using
+        legacyNames.
+      '';
+    };
+
     dhcpReservations = mkOption {
       type = types.attrsOf reservationModule;
       default = { };
@@ -233,6 +538,10 @@ in
 
   config = mkIf cfg.enable {
     assertions = [
+      {
+        assertion = cfg.scopes == { } || hasApiSecret;
+        message = "services.router-technitium.scopes requires a Technitium API token secret.";
+      }
       {
         assertion = cfg.dhcpReservations == { } || hasApiSecret;
         message = "services.router-technitium.dhcpReservations requires a Technitium API token secret.";
@@ -262,11 +571,36 @@ in
       mode = "0644";
     };
 
+    environment.etc."technitium/dhcp-scopes.json" = mkIf (cfg.scopes != { }) {
+      source = dhcpScopesJson;
+      mode = "0644";
+    };
+
+    systemd.services.technitium-sync-dhcp-scopes = mkIf (cfg.scopes != { }) {
+      description = "Sync declarative Technitium DHCP scopes";
+      after = [
+        "technitium-dns-server.service"
+        "agenix.service"
+      ];
+      wants = [ "technitium-dns-server.service" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+
+      script = ''
+        ${dhcpScopeScript}
+      '';
+    };
+
     systemd.services.technitium-sync-ntp-option = mkIf (cfg.ntpServers != [ ] && hasApiSecret) {
       description = "Sync NTP server list to Technitium DHCP option 42";
       after = [
         "technitium-dns-server.service"
         "agenix.service"
+        "technitium-sync-dhcp-scopes.service"
         "technitium-sync-dhcp-reservations.service"
       ];
       wants = [ "technitium-dns-server.service" ];
@@ -287,6 +621,7 @@ in
       after = [
         "technitium-dns-server.service"
         "agenix.service"
+        "technitium-sync-dhcp-scopes.service"
       ];
       wants = [ "technitium-dns-server.service" ];
       wantedBy = [ "multi-user.target" ];

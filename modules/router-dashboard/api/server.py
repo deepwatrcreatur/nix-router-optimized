@@ -30,6 +30,10 @@ try:
 except json.JSONDecodeError:
     DASHBOARD_SERVICES = []
 try:
+    DASHBOARD_INTERFACES = json.loads(os.environ.get('DASHBOARD_INTERFACES', '[]'))
+except json.JSONDecodeError:
+    DASHBOARD_INTERFACES = []
+try:
     WOL_DEVICES = json.loads(os.environ.get('DASHBOARD_WOL_DEVICES', '[]'))
 except json.JSONDecodeError:
     WOL_DEVICES = []
@@ -226,14 +230,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             interfaces = {}
             net_path = Path('/sys/class/net')
 
-            # Interface mapping (customize as needed)
-            iface_map = {
-                'ens17': 'wan',
-                'ens16': 'lan',
-                'ens18': 'mgmt',
-                'eth0': 'wan',
-                'eth1': 'lan'
-            }
+            # Route real device names to dashboard role keys so widgets can
+            # look up "wan"/"lan"/"mgmt" even when NIC names are enp*.
+            iface_map = {}
+            for iface in DASHBOARD_INTERFACES:
+                device = iface.get('device')
+                role = iface.get('role')
+                if device and role:
+                    iface_map[device] = role
 
             for iface_path in net_path.iterdir():
                 name = iface_path.name
@@ -998,10 +1002,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             stats_url = f"{TECHNITIUM_URL}/api/dashboard/stats/get?token={token}&type=LastHour&utc=true"
             stats_data = self.fetch_technitium_api(stats_url)
 
-            if not stats_data or stats_data.get('status') == 'error':
+            if not self.technitium_response_ok(stats_data):
                 self.send_json({
                     'available': False,
-                    'message': stats_data.get('errorMessage', 'Failed to get DNS stats')
+                    'message': self.technitium_error_message(stats_data, 'Failed to get DNS stats')
                 })
                 return
 
@@ -1040,7 +1044,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             top_url = f"{TECHNITIUM_URL}/api/dashboard/stats/getTop?token={token}&type=LastHour&statsType=TopDomains&limit=5&utc=true"
             top_data = self.fetch_technitium_api(top_url)
             top_domains = []
-            if top_data and top_data.get('status') == 'ok':
+            if self.technitium_response_ok(top_data):
                 top_response = top_data.get('response', {})
                 top_domains = (top_response.get('topDomains')
                                or top_response.get('domains')
@@ -1051,7 +1055,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             clients_url = f"{TECHNITIUM_URL}/api/dashboard/stats/getTop?token={token}&type=LastHour&statsType=TopClients&limit=5&utc=true"
             clients_data = self.fetch_technitium_api(clients_url)
             top_clients = []
-            if clients_data and clients_data.get('status') == 'ok':
+            if self.technitium_response_ok(clients_data):
                 clients_response = clients_data.get('response', {})
                 top_clients = (clients_response.get('topClients')
                                or clients_response.get('clients')
@@ -1090,10 +1094,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             scopes_url = f"{TECHNITIUM_URL}/api/dhcp/scopes/list?token={token}"
             scopes_data = self.fetch_technitium_api(scopes_url)
 
-            if not scopes_data or scopes_data.get('status') == 'error':
+            if not self.technitium_response_ok(scopes_data):
                 self.send_json({
                     'available': False,
-                    'message': scopes_data.get('errorMessage', 'Failed to get DHCP scopes')
+                    'message': self.technitium_error_message(scopes_data, 'Failed to get DHCP scopes')
                 })
                 return
 
@@ -1106,7 +1110,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             leases_url = f"{TECHNITIUM_URL}/api/dhcp/leases/list?token={token}"
             leases_data = self.fetch_technitium_api(leases_url)
             all_raw_leases = []
-            if leases_data and leases_data.get('status') == 'ok':
+            if self.technitium_response_ok(leases_data):
                 all_raw_leases = leases_data.get('response', {}).get('leases', [])
 
             for scope in scopes:
@@ -1546,6 +1550,18 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return {'status': 'error', 'errorMessage': str(e.reason)}
         except Exception as e:
             return {'status': 'error', 'errorMessage': str(e)}
+
+    def technitium_response_ok(self, data):
+        return bool(data) and data.get('status') == 'ok'
+
+    def technitium_error_message(self, data, default_message):
+        if not data:
+            return default_message
+        status = data.get('status')
+        error = data.get('errorMessage')
+        if status and status != 'ok':
+            return error or f'Technitium API returned {status}'
+        return error or default_message
 
     def get_default_gateway(self):
         """Get the default gateway IP"""
