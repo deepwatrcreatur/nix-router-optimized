@@ -268,30 +268,60 @@ let
     done
 
     TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
-    SCOPES_JSON="$(${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
 
-    ${pkgs.jq}/bin/jq -c '.[]' ${dhcpScopesJson} | while read -r scope; do
-      desired_name="$(${pkgs.jq}/bin/jq -r '.name' <<<"$scope")"
+    technitium_request() {
+      local response
+      response="$("$@")"
+      if [ "$(${pkgs.jq}/bin/jq -r '.status // "error"' <<<"$response")" != "ok" ]; then
+        echo "Technitium API error: $(${pkgs.jq}/bin/jq -r '.errorMessage // .status // "unknown error"' <<<"$response")" >&2
+        echo "$response" >&2
+        return 1
+      fi
+      printf '%s' "$response"
+    }
+
+    resolve_scope_name() {
+      local desired_name="$1"
+      local legacy_name
+      local existing_name
+
       existing_name="$(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
         .response.scopes // []
         | map(.name)
         | map(select(. == $desired))
         | first // empty
       ' <<<"$SCOPES_JSON")"
-
-      if [ -z "$existing_name" ]; then
-        while IFS= read -r legacy_name; do
-          [ -n "$legacy_name" ] || continue
-          existing_name="$(${pkgs.jq}/bin/jq -r --arg legacy "$legacy_name" '
-            .response.scopes // []
-            | map(.name)
-            | map(select(. == $legacy))
-            | first // empty
-          ' <<<"$SCOPES_JSON")"
-          [ -n "$existing_name" ] && break
-        done < <(${pkgs.jq}/bin/jq -r '.legacyNames[]? // empty' <<<"$scope")
+      if [ -n "$existing_name" ]; then
+        printf '%s' "$existing_name"
+        return 0
       fi
 
+      while IFS= read -r legacy_name; do
+        [ -n "$legacy_name" ] || continue
+        existing_name="$(${pkgs.jq}/bin/jq -r --arg legacy "$legacy_name" '
+          .response.scopes // []
+          | map(.name)
+          | map(select(. == $legacy))
+          | first // empty
+        ' <<<"$SCOPES_JSON")"
+        if [ -n "$existing_name" ]; then
+          printf '%s' "$existing_name"
+          return 0
+        fi
+      done < <(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
+        .[]
+        | select(.name == $desired)
+        | .legacyNames[]? // empty
+      ' ${dhcpScopesJson})
+
+      return 1
+    }
+
+    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+
+    ${pkgs.jq}/bin/jq -c '.[]' ${dhcpScopesJson} | while read -r scope; do
+      desired_name="$(${pkgs.jq}/bin/jq -r '.name' <<<"$scope")"
+      existing_name="$(resolve_scope_name "$desired_name" || true)"
       source_name="$desired_name"
       if [ -n "$existing_name" ]; then
         source_name="$existing_name"
@@ -344,20 +374,30 @@ let
       maybe_add_text "exclusions" "$(${pkgs.jq}/bin/jq -r '(.exclusions // []) | map("\(.startingAddress)|\(.endingAddress)") | join("|")' <<<"$scope")"
 
       cmd+=( "http://127.0.0.1:5380/api/dhcp/scopes/set" )
-      "''${cmd[@]}" >/dev/null
+      technitium_request "''${cmd[@]}" >/dev/null
+
+      SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+      actual_name="$(resolve_scope_name "$desired_name" || true)"
+      if [ -z "$actual_name" ]; then
+        echo "Declarative scope '$desired_name' did not exist before sync and is still unavailable afterwards" >&2
+        exit 1
+      fi
+      if [ "$actual_name" != "$desired_name" ]; then
+        echo "Technitium retained legacy scope name '$actual_name' for declarative scope '$desired_name'" >&2
+      fi
 
       if [ "$(${pkgs.jq}/bin/jq -r '.enabled' <<<"$scope")" = "true" ]; then
-        ${pkgs.curl}/bin/curl -fsS -X POST \
+        technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
           -H "Content-Type: application/x-www-form-urlencoded" \
           --data-urlencode "token=$TOKEN" \
-          --data-urlencode "name=$desired_name" \
+          --data-urlencode "name=$actual_name" \
           "http://127.0.0.1:5380/api/dhcp/scopes/enable" \
           >/dev/null
       else
-        ${pkgs.curl}/bin/curl -fsS -X POST \
+        technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
           -H "Content-Type: application/x-www-form-urlencoded" \
           --data-urlencode "token=$TOKEN" \
-          --data-urlencode "name=$desired_name" \
+          --data-urlencode "name=$actual_name" \
           "http://127.0.0.1:5380/api/dhcp/scopes/disable" \
           >/dev/null
       fi
@@ -383,17 +423,82 @@ let
 
     TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
 
+    technitium_request() {
+      local response
+      response="$("$@")"
+      if [ "$(${pkgs.jq}/bin/jq -r '.status // "error"' <<<"$response")" != "ok" ]; then
+        echo "Technitium API error: $(${pkgs.jq}/bin/jq -r '.errorMessage // .status // "unknown error"' <<<"$response")" >&2
+        echo "$response" >&2
+        return 1
+      fi
+      printf '%s' "$response"
+    }
+
+    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+
+    resolve_scope_name() {
+      local desired_name="$1"
+      local legacy_name
+      local existing_name
+
+      existing_name="$(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
+        .response.scopes // []
+        | map(.name)
+        | map(select(. == $desired))
+        | first // empty
+      ' <<<"$SCOPES_JSON")"
+      if [ -n "$existing_name" ]; then
+        printf '%s' "$existing_name"
+        return 0
+      fi
+
+      while IFS= read -r legacy_name; do
+        [ -n "$legacy_name" ] || continue
+        existing_name="$(${pkgs.jq}/bin/jq -r --arg legacy "$legacy_name" '
+          .response.scopes // []
+          | map(.name)
+          | map(select(. == $legacy))
+          | first // empty
+        ' <<<"$SCOPES_JSON")"
+        if [ -n "$existing_name" ]; then
+          printf '%s' "$existing_name"
+          return 0
+        fi
+      done < <(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
+        .[]
+        | select(.name == $desired)
+        | .legacyNames[]? // empty
+      ' ${dhcpScopesJson})
+
+      return 1
+    }
+
+    normalize_mac() {
+      printf '%s' "$1" | ${pkgs.coreutils}/bin/tr '[:lower:]' '[:upper:]' | ${pkgs.gnused}/bin/sed 's/[:-]//g'
+    }
+
     ${pkgs.jq}/bin/jq -c '.[]' ${dhcpReservationsJson} | while read -r reservation; do
       scope="$(${pkgs.jq}/bin/jq -r '.scope' <<<"$reservation")"
+      actual_scope="$(resolve_scope_name "$scope" || true)"
+      if [ -z "$actual_scope" ]; then
+        echo "Unable to resolve live Technitium scope for declarative reservation scope '$scope'" >&2
+        exit 1
+      fi
       mac="$(${pkgs.jq}/bin/jq -r '.macAddress' <<<"$reservation")"
       ip="$(${pkgs.jq}/bin/jq -r '.ipAddress' <<<"$reservation")"
       hostname="$(${pkgs.jq}/bin/jq -r '.hostName // ""' <<<"$reservation")"
       comments="$(${pkgs.jq}/bin/jq -r '.comments // ""' <<<"$reservation")"
       name="$(${pkgs.jq}/bin/jq -r '.name' <<<"$reservation")"
+      normalized_mac="$(normalize_mac "$mac")"
 
-      existing="$(${pkgs.curl}/bin/curl -fsS \
-        "http://127.0.0.1:5380/api/dhcp/scopes/get?token=$TOKEN&name=$scope" \
-        | ${pkgs.jq}/bin/jq -c --arg mac "$mac" '.response.reservedLeases // [] | map(select(.hardwareAddress == $mac)) | first')"
+      existing="$(
+        technitium_request ${pkgs.curl}/bin/curl -fsS \
+        "http://127.0.0.1:5380/api/dhcp/scopes/get?token=$TOKEN&name=$actual_scope" \
+        | ${pkgs.jq}/bin/jq -c --arg mac "$normalized_mac" '
+            .response.reservedLeases // []
+            | map(select(((.hardwareAddress // "") | ascii_upcase | gsub("[:-]"; "")) == $mac))
+            | first
+          ')"
 
       if [ "$existing" != "null" ]; then
         existing_ip="$(${pkgs.jq}/bin/jq -r '.address // ""' <<<"$existing")"
@@ -403,15 +508,20 @@ let
           continue
         fi
 
-        echo "DHCP reservation $name already exists with different values ($mac -> $existing_ip); leaving it unchanged" >&2
-        continue
+        echo "Updating DHCP reservation $name: $mac $existing_ip -> $ip in scope $actual_scope"
+        technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+          --data-urlencode "token=$TOKEN" \
+          --data-urlencode "name=$actual_scope" \
+          --data-urlencode "hardwareAddress=$mac" \
+          "http://127.0.0.1:5380/api/dhcp/scopes/removeReservedLease" \
+          >/dev/null
       fi
 
-      echo "Adding DHCP reservation $name: $mac -> $ip in scope $scope"
-      ${pkgs.curl}/bin/curl -fsS -X POST \
+      echo "Adding DHCP reservation $name: $mac -> $ip in scope $actual_scope"
+      technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
         --data-urlencode "token=$TOKEN" \
-        --data-urlencode "name=$scope" \
+        --data-urlencode "name=$actual_scope" \
         --data-urlencode "hardwareAddress=$mac" \
         --data-urlencode "ipAddress=$ip" \
         --data-urlencode "hostName=$hostname" \
