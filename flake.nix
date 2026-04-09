@@ -117,6 +117,11 @@
           };
 
           services.router-dhcp.enable = true;
+          services.router-dhcp.interfaces.lan.pxe = {
+            enable = true;
+            bootServerAddress = "192.168.1.1";
+            bootFilename = "http://192.168.1.1/netboot/ipxe.efi";
+          };
           services.router-dns-service = {
             enable = true;
             provider = "unbound";

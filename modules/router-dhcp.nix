@@ -5,6 +5,7 @@ with lib;
 let
   cfg = config.services.router-dhcp;
   routedIfaces = config.services.router-networking.routedInterfaces or { };
+  inherit (types) bool nullOr str submodule;
 
   leaseModule = types.submodule {
     options = {
@@ -22,6 +23,47 @@ let
         type = types.nullOr types.str;
         default = null;
         description = "Optional hostname for this lease. When set, systemd-networkd registers the name in its internal DNS, making the host reachable by name on the segment.";
+      };
+    };
+  };
+
+  pxeModule = submodule {
+    options = {
+      enable = mkOption {
+        type = bool;
+        default = false;
+        description = "Whether to advertise PXE boot information on this routed segment.";
+      };
+
+      bootServerAddress = mkOption {
+        type = nullOr str;
+        default = null;
+        example = "192.168.1.1";
+        description = ''
+          IPv4 boot server address exposed via DHCP `siaddr`
+          (`BootServerAddress=`).
+        '';
+      };
+
+      bootServerName = mkOption {
+        type = nullOr str;
+        default = null;
+        example = "router.example";
+        description = ''
+          Optional boot server name exposed via DHCP option 66
+          (`BootServerName=`).
+        '';
+      };
+
+      bootFilename = mkOption {
+        type = nullOr str;
+        default = null;
+        example = "http://192.168.1.1/netboot/ipxe.efi";
+        description = ''
+          PXE boot filename or URL exposed via DHCP option 67
+          (`BootFilename=`). This can be a TFTP path or an HTTP URL for
+          UEFI-first flows.
+        '';
       };
     };
   };
@@ -82,6 +124,12 @@ let
         description = "Static DHCP leases for this routed segment.";
       };
 
+      pxe = mkOption {
+        type = pxeModule;
+        default = { };
+        description = "PXE boot advertisement settings for this routed segment.";
+      };
+
       extraDhcpServerConfig = mkOption {
         type = types.attrsOf types.anything;
         default = { };
@@ -105,6 +153,7 @@ let
           emitDns = true;
           emitRouter = true;
           staticLeases = [ ];
+          pxe = { };
           extraDhcpServerConfig = { };
         })
         (filterAttrs (_name: iface: elem iface.role cfg.matchRoles) routedIfaces);
@@ -128,6 +177,17 @@ let
         // optionalAttrs (effectiveDns != [ ]) {
           DNS = effectiveDns;
         }
+        // optionalAttrs ifaceCfg.pxe.enable (
+          optionalAttrs (ifaceCfg.pxe.bootServerAddress != null) {
+            BootServerAddress = ifaceCfg.pxe.bootServerAddress;
+          }
+          // optionalAttrs (ifaceCfg.pxe.bootServerName != null) {
+            BootServerName = ifaceCfg.pxe.bootServerName;
+          }
+          // optionalAttrs (ifaceCfg.pxe.bootFilename != null) {
+            BootFilename = ifaceCfg.pxe.bootFilename;
+          }
+        )
         // ifaceCfg.extraDhcpServerConfig;
       dhcpServerStaticLeases = map (lease:
         { MACAddress = lease.macAddress; Address = lease.address; }
@@ -163,12 +223,25 @@ in
   };
 
   config = mkIf cfg.enable {
-    assertions = mapAttrsToList
-      (name: _ifaceCfg: {
-        assertion = hasAttr name routedIfaces;
-        message = "router-dhcp.interfaces.${name} requires a matching services.router-networking.routedInterfaces.${name}.";
-      })
-      cfg.interfaces;
+    assertions =
+      (mapAttrsToList
+        (name: _ifaceCfg: {
+          assertion = hasAttr name routedIfaces;
+          message = "router-dhcp.interfaces.${name} requires a matching services.router-networking.routedInterfaces.${name}.";
+        })
+        cfg.interfaces)
+      ++ (mapAttrsToList
+        (name: ifaceCfg: {
+          assertion = !ifaceCfg.pxe.enable || ifaceCfg.pxe.bootFilename != null;
+          message = "router-dhcp.interfaces.${name}.pxe.enable requires router-dhcp.interfaces.${name}.pxe.bootFilename.";
+        })
+        cfg.interfaces)
+      ++ (mapAttrsToList
+        (name: ifaceCfg: {
+          assertion = !ifaceCfg.pxe.enable || ifaceCfg.pxe.bootServerAddress != null || ifaceCfg.pxe.bootServerName != null;
+          message = "router-dhcp.interfaces.${name}.pxe.enable requires bootServerAddress or bootServerName.";
+        })
+        cfg.interfaces);
 
     systemd.network.networks =
       mapAttrs'
