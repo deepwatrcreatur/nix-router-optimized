@@ -203,6 +203,66 @@ let
       };
     };
   };
+  commonShellHelpers = ''
+    # Helper to wrap curl requests and check for Technitium API error status.
+    # Technitium returns HTTP 200 even for most logical errors, so we MUST
+    # parse the JSON 'status' field.
+    technitium_request() {
+      local response
+      response="$("$@")"
+      if [ "$(${pkgs.jq}/bin/jq -r '.status // "error"' <<<"$response")" != "ok" ]; then
+        echo "Technitium API error: $(${pkgs.jq}/bin/jq -r '.errorMessage // .status // "unknown error"' <<<"$response")" >&2
+        echo "$response" >&2
+        return 1
+      fi
+      printf '%s' "$response"
+    }
+
+    # Deterministically find the live Technitium scope name corresponding to a
+    # declarative name. Handles the following cases:
+    # 1. Desired name already exists (idempotent case)
+    # 2. A legacy name exists (needs renaming)
+    # 3. Neither exists (new scope)
+    resolve_scope_name() {
+      local desired_name="$1"
+      local legacy_name
+      local existing_name
+
+      # First check for the desired name
+      existing_name="$(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
+        .response.scopes // []
+        | map(.name)
+        | map(select(. == $desired))
+        | first // empty
+      ' <<<"$SCOPES_JSON")"
+      if [ -n "$existing_name" ]; then
+        printf '%s' "$existing_name"
+        return 0
+      fi
+
+      # Then check for any legacy names that should be taken over
+      while IFS= read -r legacy_name; do
+        [ -n "$legacy_name" ] || continue
+        existing_name="$(${pkgs.jq}/bin/jq -r --arg legacy "$legacy_name" '
+          .response.scopes // []
+          | map(.name)
+          | map(select(. == $legacy))
+          | first // empty
+        ' <<<"$SCOPES_JSON")"
+        if [ -n "$existing_name" ]; then
+          printf '%s' "$existing_name"
+          return 0
+        fi
+      done < <(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
+        .[]
+        | select(.name == $desired)
+        | .legacyNames[]? // empty
+      ' ${dhcpScopesJson})
+
+      return 1
+    }
+  '';
+
   ntpSyncScript = pkgs.writeShellScript "technitium-sync-ntp-option" ''
     set -euo pipefail
 
@@ -222,9 +282,10 @@ let
     TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
     NTP_SERVERS="${concatStringsSep "," cfg.ntpServers}"
 
-    SCOPES="$(${pkgs.curl}/bin/curl -fsS \
-      "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN" \
-      | ${pkgs.jq}/bin/jq -r '(.response.scopes // [])[]?.name // empty')"
+    ${commonShellHelpers}
+
+    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+    SCOPES=$(echo "$SCOPES_JSON" | ${pkgs.jq}/bin/jq -r '(.response.scopes // [])[]?.name // empty')
 
     if [ -z "$SCOPES" ]; then
       echo "No Technitium DHCP scopes found; skipping NTP option 42 sync"
@@ -233,7 +294,7 @@ let
 
     while IFS= read -r scope; do
       echo "Setting DHCP option 42 (NTP=$NTP_SERVERS) on scope '$scope'"
-      ${pkgs.curl}/bin/curl -fsS -X POST \
+      technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
         --data-urlencode "token=$TOKEN" \
         --data-urlencode "name=$scope" \
@@ -269,53 +330,7 @@ let
 
     TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
 
-    technitium_request() {
-      local response
-      response="$("$@")"
-      if [ "$(${pkgs.jq}/bin/jq -r '.status // "error"' <<<"$response")" != "ok" ]; then
-        echo "Technitium API error: $(${pkgs.jq}/bin/jq -r '.errorMessage // .status // "unknown error"' <<<"$response")" >&2
-        echo "$response" >&2
-        return 1
-      fi
-      printf '%s' "$response"
-    }
-
-    resolve_scope_name() {
-      local desired_name="$1"
-      local legacy_name
-      local existing_name
-
-      existing_name="$(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
-        .response.scopes // []
-        | map(.name)
-        | map(select(. == $desired))
-        | first // empty
-      ' <<<"$SCOPES_JSON")"
-      if [ -n "$existing_name" ]; then
-        printf '%s' "$existing_name"
-        return 0
-      fi
-
-      while IFS= read -r legacy_name; do
-        [ -n "$legacy_name" ] || continue
-        existing_name="$(${pkgs.jq}/bin/jq -r --arg legacy "$legacy_name" '
-          .response.scopes // []
-          | map(.name)
-          | map(select(. == $legacy))
-          | first // empty
-        ' <<<"$SCOPES_JSON")"
-        if [ -n "$existing_name" ]; then
-          printf '%s' "$existing_name"
-          return 0
-        fi
-      done < <(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
-        .[]
-        | select(.name == $desired)
-        | .legacyNames[]? // empty
-      ' ${dhcpScopesJson})
-
-      return 1
-    }
+    ${commonShellHelpers}
 
     SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
 
@@ -423,55 +438,9 @@ let
 
     TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
 
-    technitium_request() {
-      local response
-      response="$("$@")"
-      if [ "$(${pkgs.jq}/bin/jq -r '.status // "error"' <<<"$response")" != "ok" ]; then
-        echo "Technitium API error: $(${pkgs.jq}/bin/jq -r '.errorMessage // .status // "unknown error"' <<<"$response")" >&2
-        echo "$response" >&2
-        return 1
-      fi
-      printf '%s' "$response"
-    }
+    ${commonShellHelpers}
 
     SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
-
-    resolve_scope_name() {
-      local desired_name="$1"
-      local legacy_name
-      local existing_name
-
-      existing_name="$(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
-        .response.scopes // []
-        | map(.name)
-        | map(select(. == $desired))
-        | first // empty
-      ' <<<"$SCOPES_JSON")"
-      if [ -n "$existing_name" ]; then
-        printf '%s' "$existing_name"
-        return 0
-      fi
-
-      while IFS= read -r legacy_name; do
-        [ -n "$legacy_name" ] || continue
-        existing_name="$(${pkgs.jq}/bin/jq -r --arg legacy "$legacy_name" '
-          .response.scopes // []
-          | map(.name)
-          | map(select(. == $legacy))
-          | first // empty
-        ' <<<"$SCOPES_JSON")"
-        if [ -n "$existing_name" ]; then
-          printf '%s' "$existing_name"
-          return 0
-        fi
-      done < <(${pkgs.jq}/bin/jq -r --arg desired "$desired_name" '
-        .[]
-        | select(.name == $desired)
-        | .legacyNames[]? // empty
-      ' ${dhcpScopesJson})
-
-      return 1
-    }
 
     normalize_mac() {
       printf '%s' "$1" | ${pkgs.coreutils}/bin/tr '[:lower:]' '[:upper:]' | ${pkgs.gnused}/bin/sed 's/[:-]//g'

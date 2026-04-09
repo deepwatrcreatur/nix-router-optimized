@@ -262,13 +262,14 @@ in {
         PrivateTmp = true;
         ProtectKernelTunables = true;
         ProtectControlGroups = true;
-        RestrictSUIDSGID = true;
         # PrivateUsers omitted: conflicts with AmbientCapabilities on non-root users.
         # The dedicated service user + CapabilityBoundingSet already provide isolation.
 
-        # Network capabilities: CAP_NET_ADMIN for interface stats, CAP_NET_RAW for ping
-        AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
-        CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" ];
+        # Network capabilities: CAP_NET_ADMIN for interface stats, CAP_NET_RAW for ping.
+        # CAP_SETUID/CAP_SETGID are needed for the narrowly-scoped sudo path used
+        # to query fail2ban-client status.
+        AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" "CAP_SETUID" "CAP_SETGID" ];
+        CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" "CAP_SETUID" "CAP_SETGID" ];
 
         # Read-only paths we need access to
         ReadOnlyPaths = [

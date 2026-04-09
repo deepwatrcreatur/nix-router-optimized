@@ -230,14 +230,22 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             interfaces = {}
             net_path = Path('/sys/class/net')
 
-            # Route real device names to dashboard role keys so widgets can
-            # look up "wan"/"lan"/"mgmt" even when NIC names are enp*.
+            # Expose configured interfaces by both their real device names and
+            # stable dashboard role aliases. When multiple interfaces share a
+            # role (for example LAN + VLAN subinterfaces), prefer the
+            # non-VLAN device for the role alias and always keep the device
+            # entry so the frontend can address exact NIC names directly.
             iface_map = {}
+            role_candidates = {}
             for iface in DASHBOARD_INTERFACES:
                 device = iface.get('device')
                 role = iface.get('role')
+                if device:
+                    iface_map[device] = device
                 if device and role:
-                    iface_map[device] = role
+                    current = role_candidates.get(role)
+                    if current is None or self.prefer_interface_alias(device, current):
+                        role_candidates[role] = device
 
             for iface_path in net_path.iterdir():
                 name = iface_path.name
@@ -258,10 +266,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 ipv4 = self.get_ipv4(name)
                 ipv6_list = self.get_ipv6(name)
 
-                # Use mapped name or device name
-                key = iface_map.get(name, name)
-
-                interfaces[key] = {
+                stats = {
                     'device': name,
                     'state': self.read_file(iface_path / 'operstate').strip().upper() or 'UNKNOWN',
                     'ipv4': ipv4,
@@ -276,9 +281,25 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                     'tx_errors': int(self.read_file(stats_path / 'tx_errors') or 0)
                 }
 
+                interfaces[name] = stats
+
+            for role, device in role_candidates.items():
+                if device in interfaces:
+                    interfaces[role] = interfaces[device]
+
             self.send_json(interfaces)
         except Exception as e:
             self.send_error_json(500, str(e))
+
+    def prefer_interface_alias(self, candidate, current):
+        """Prefer physical base interfaces over VLAN subinterfaces for role aliases."""
+        if current == candidate:
+            return False
+        candidate_is_vlan = '.' in candidate
+        current_is_vlan = '.' in current
+        if candidate_is_vlan != current_is_vlan:
+            return not candidate_is_vlan
+        return candidate < current
 
     def handle_system_info(self):
         """Static-ish host information for the system info widget"""
