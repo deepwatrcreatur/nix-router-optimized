@@ -231,7 +231,12 @@ in
         message = "router-dhcp.interfaces.${name} requires a matching services.router-networking.routedInterfaces.${name}.";
       }) cfg.interfaces)
       ++ (mapAttrsToList (name: ifaceCfg: {
-        assertion = !(ifaceCfg.pxe.enable && ifaceCfg.pxe.bootFilename == null);
+        assertion =
+          !(
+            ifaceCfg.enable
+            && ifaceCfg.pxe.enable
+            && (ifaceCfg.pxe.bootFilename == null || ifaceCfg.pxe.bootFilename == "")
+          );
         message = "services.router-dhcp.interfaces.${name}.pxe.bootFilename must be set when PXE is enabled.";
       }) cfg.interfaces);
 
