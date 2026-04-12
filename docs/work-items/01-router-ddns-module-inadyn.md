@@ -1,6 +1,6 @@
 # 01 Router DDNS Module Inadyn
 
-Status: `ready`
+Status: `in-progress`
 
 Suggested branch: `feat/router-ddns-inadyn`
 
