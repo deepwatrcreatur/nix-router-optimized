@@ -82,6 +82,38 @@ let
         description = "Static DHCP leases for this routed segment.";
       };
 
+      pxe = mkOption {
+        type = types.submodule {
+          options = {
+            enable = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Whether to advertise PXE boot options on this segment.";
+            };
+
+            bootServerAddress = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Optional PXE boot server address (BootServerAddress=).";
+            };
+
+            bootServerName = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Optional PXE boot server name (BootServerName=).";
+            };
+
+            bootFilename = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "PXE boot filename or URL (BootFilename=).";
+            };
+          };
+        };
+        default = { };
+        description = "Typed PXE boot advertisement options for this routed segment.";
+      };
+
       extraDhcpServerConfig = mkOption {
         type = types.attrsOf types.anything;
         default = { };
@@ -94,43 +126,64 @@ let
     if cfg.interfaces != { } || !cfg.autoInterfacesFromNetworking then
       filterAttrs (_name: iface: iface.enable) cfg.interfaces
     else
-      mapAttrs
-        (_name: iface: {
-          enable = true;
-          poolOffset = 100;
-          poolSize = 100;
-          defaultLeaseTimeSec = 3600;
-          maxLeaseTimeSec = 43200;
-          dns = null;
-          emitDns = true;
-          emitRouter = true;
-          staticLeases = [ ];
-          extraDhcpServerConfig = { };
-        })
-        (filterAttrs (_name: iface: elem iface.role cfg.matchRoles) routedIfaces);
+      mapAttrs (_name: iface: {
+        enable = true;
+        poolOffset = 100;
+        poolSize = 100;
+        defaultLeaseTimeSec = 3600;
+        maxLeaseTimeSec = 43200;
+        dns = null;
+        emitDns = true;
+        emitRouter = true;
+        staticLeases = [ ];
+        extraDhcpServerConfig = { };
+      }) (filterAttrs (_name: iface: elem iface.role cfg.matchRoles) routedIfaces);
 
-  mkDhcpNetwork = name: ifaceCfg:
+  mkDhcpNetwork =
+    name: ifaceCfg:
     let
       routedIface = routedIfaces.${name};
       effectiveDns = if ifaceCfg.dns != null then ifaceCfg.dns else routedIface.dns;
+      pxeCfg =
+        ifaceCfg.pxe or {
+          enable = false;
+          bootFilename = null;
+          bootServerAddress = null;
+          bootServerName = null;
+        };
+      pxeDhcpConfig = optionalAttrs pxeCfg.enable (
+        {
+          BootFilename = pxeCfg.bootFilename;
+        }
+        // optionalAttrs (pxeCfg.bootServerAddress != null) {
+          BootServerAddress = pxeCfg.bootServerAddress;
+        }
+        // optionalAttrs (pxeCfg.bootServerName != null) {
+          BootServerName = pxeCfg.bootServerName;
+        }
+      );
     in
     {
       networkConfig.DHCPServer = true;
-      dhcpServerConfig =
+      dhcpServerConfig = {
+        PoolOffset = ifaceCfg.poolOffset;
+        PoolSize = ifaceCfg.poolSize;
+        DefaultLeaseTimeSec = ifaceCfg.defaultLeaseTimeSec;
+        MaxLeaseTimeSec = ifaceCfg.maxLeaseTimeSec;
+        EmitRouter = ifaceCfg.emitRouter;
+        EmitDNS = ifaceCfg.emitDns && effectiveDns != [ ];
+      }
+      // optionalAttrs (effectiveDns != [ ]) {
+        DNS = effectiveDns;
+      }
+      // pxeDhcpConfig
+      // ifaceCfg.extraDhcpServerConfig;
+      dhcpServerStaticLeases = map (
+        lease:
         {
-          PoolOffset = ifaceCfg.poolOffset;
-          PoolSize = ifaceCfg.poolSize;
-          DefaultLeaseTimeSec = ifaceCfg.defaultLeaseTimeSec;
-          MaxLeaseTimeSec = ifaceCfg.maxLeaseTimeSec;
-          EmitRouter = ifaceCfg.emitRouter;
-          EmitDNS = ifaceCfg.emitDns && effectiveDns != [ ];
+          MACAddress = lease.macAddress;
+          Address = lease.address;
         }
-        // optionalAttrs (effectiveDns != [ ]) {
-          DNS = effectiveDns;
-        }
-        // ifaceCfg.extraDhcpServerConfig;
-      dhcpServerStaticLeases = map (lease:
-        { MACAddress = lease.macAddress; Address = lease.address; }
         // optionalAttrs (lease.hostname != null) { Hostname = lease.hostname; }
       ) ifaceCfg.staticLeases;
     };
@@ -150,8 +203,17 @@ in
     };
 
     matchRoles = mkOption {
-      type = types.listOf (types.enum [ "lan" "management" "opt" ]);
-      default = [ "lan" "management" ];
+      type = types.listOf (
+        types.enum [
+          "lan"
+          "management"
+          "opt"
+        ]
+      );
+      default = [
+        "lan"
+        "management"
+      ];
       description = "Routed interface roles that receive automatic DHCP service.";
     };
 
@@ -163,16 +225,23 @@ in
   };
 
   config = mkIf cfg.enable {
-    assertions = mapAttrsToList
-      (name: _ifaceCfg: {
+    assertions =
+      (mapAttrsToList (name: _ifaceCfg: {
         assertion = hasAttr name routedIfaces;
         message = "router-dhcp.interfaces.${name} requires a matching services.router-networking.routedInterfaces.${name}.";
-      })
-      cfg.interfaces;
+      }) cfg.interfaces)
+      ++ (mapAttrsToList (name: ifaceCfg: {
+        assertion =
+          !(
+            ifaceCfg.enable
+            && ifaceCfg.pxe.enable
+            && (ifaceCfg.pxe.bootFilename == null || ifaceCfg.pxe.bootFilename == "")
+          );
+        message = "services.router-dhcp.interfaces.${name}.pxe.bootFilename must be set when PXE is enabled.";
+      }) cfg.interfaces);
 
-    systemd.network.networks =
-      mapAttrs'
-        (name: ifaceCfg: nameValuePair "20-router-${name}" (mkDhcpNetwork name ifaceCfg))
-        effectiveInterfaces;
+    systemd.network.networks = mapAttrs' (
+      name: ifaceCfg: nameValuePair "20-router-${name}" (mkDhcpNetwork name ifaceCfg)
+    ) effectiveInterfaces;
   };
 }
