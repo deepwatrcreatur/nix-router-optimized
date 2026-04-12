@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 with lib;
 
@@ -120,6 +125,24 @@ let
         description = "TTL for DHCP-created DNS records.";
       };
 
+      serverAddress = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "DHCP next-server address, used by PXE clients.";
+      };
+
+      serverHostName = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "DHCP server host name option, used by some PXE clients.";
+      };
+
+      bootFileName = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "DHCP bootfile name, for example an iVentoy loader name.";
+      };
+
       routerAddress = mkOption {
         type = types.nullOr types.str;
         default = null;
@@ -142,6 +165,12 @@ let
         type = types.listOf types.str;
         default = [ ];
         description = "NTP servers advertised via DHCP option 42.";
+      };
+
+      tftpServerAddresses = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "TFTP server addresses advertised to PXE-capable clients.";
       };
 
       exclusions = mkOption {
@@ -266,7 +295,9 @@ let
   ntpSyncScript = pkgs.writeShellScript "technitium-sync-ntp-option" ''
     set -euo pipefail
 
-    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}" ]; then
+    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${
+      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
+    }" ]; then
       echo "Technitium API token file not found; cannot sync NTP option 42" >&2
       exit 1
     fi
@@ -279,7 +310,9 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
+    TOKEN="$(${pkgs.coreutils}/bin/cat "${
+      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
+    }")"
     NTP_SERVERS="${concatStringsSep "," cfg.ntpServers}"
 
     ${commonShellHelpers}
@@ -307,7 +340,9 @@ let
   '';
 
   dhcpReservationsJson = pkgs.writeText "technitium-dhcp-reservations.json" (
-    builtins.toJSON (mapAttrsToList (name: reservation: reservation // { inherit name; }) cfg.dhcpReservations)
+    builtins.toJSON (
+      mapAttrsToList (name: reservation: reservation // { inherit name; }) cfg.dhcpReservations
+    )
   );
   dhcpScopesJson = pkgs.writeText "technitium-dhcp-scopes.json" (
     builtins.toJSON (mapAttrsToList (name: scope: scope // { inherit name; }) cfg.scopes)
@@ -315,7 +350,9 @@ let
   dhcpScopeScript = pkgs.writeShellScript "technitium-sync-dhcp-scopes" ''
     set -euo pipefail
 
-    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}" ]; then
+    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${
+      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
+    }" ]; then
       echo "Technitium API token file not found; cannot sync DHCP scopes" >&2
       exit 1
     fi
@@ -328,7 +365,9 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
+    TOKEN="$(${pkgs.coreutils}/bin/cat "${
+      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
+    }")"
 
     ${commonShellHelpers}
 
@@ -383,9 +422,13 @@ let
       )"
       maybe_add_text "domainName" "$(${pkgs.jq}/bin/jq -r '.domainName // empty' <<<"$scope")"
       maybe_add_text "domainSearchList" "$(${pkgs.jq}/bin/jq -r '(.domainSearchList // []) | join(",")' <<<"$scope")"
+      maybe_add_text "serverAddress" "$(${pkgs.jq}/bin/jq -r '.serverAddress // empty' <<<"$scope")"
+      maybe_add_text "serverHostName" "$(${pkgs.jq}/bin/jq -r '.serverHostName // empty' <<<"$scope")"
+      maybe_add_text "bootFileName" "$(${pkgs.jq}/bin/jq -r '.bootFileName // empty' <<<"$scope")"
       maybe_add_text "routerAddress" "$(${pkgs.jq}/bin/jq -r '.routerAddress // empty' <<<"$scope")"
       maybe_add_text "dnsServers" "$(${pkgs.jq}/bin/jq -r '(.dnsServers // []) | join(",")' <<<"$scope")"
       maybe_add_text "ntpServers" "$(${pkgs.jq}/bin/jq -r '(.ntpServers // []) | join(",")' <<<"$scope")"
+      maybe_add_text "tftpServerAddresses" "$(${pkgs.jq}/bin/jq -r '(.tftpServerAddresses // []) | join(",")' <<<"$scope")"
       maybe_add_text "exclusions" "$(${pkgs.jq}/bin/jq -r '(.exclusions // []) | map("\(.startingAddress)|\(.endingAddress)") | join("|")' <<<"$scope")"
 
       cmd+=( "http://127.0.0.1:5380/api/dhcp/scopes/set" )
@@ -423,7 +466,9 @@ let
   dhcpReservationScript = pkgs.writeShellScript "technitium-sync-dhcp-reservations" ''
     set -euo pipefail
 
-    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}" ]; then
+    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${
+      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
+    }" ]; then
       echo "Technitium API token file not found; cannot sync DHCP reservations" >&2
       exit 1
     fi
@@ -436,7 +481,9 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/cat "${if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"}")"
+    TOKEN="$(${pkgs.coreutils}/bin/cat "${
+      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
+    }")"
 
     ${commonShellHelpers}
 
