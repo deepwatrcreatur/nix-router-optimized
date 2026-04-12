@@ -11,13 +11,12 @@ let
   cfg = config.services.router-ddns;
   runtimeDir = "/run/router-ddns";
   cloudflareIncludeFile = "${runtimeDir}/cloudflare.conf";
+  cloudflareZoneName = cfg.cloudflare.zoneName or "";
   labelToHostname =
-    label: if label == "@" then cfg.cloudflare.zoneName else "${label}.${cfg.cloudflare.zoneName}";
+    label: if label == "@" then cloudflareZoneName else "${label}.${cloudflareZoneName}";
   cloudflareHostnames = (map labelToHostname cfg.cloudflare.labels) ++ cfg.cloudflare.hostnames;
   writeCloudflareInclude = pkgs.writeShellScript "router-ddns-write-cloudflare-include" ''
     set -euo pipefail
-
-    install -d -m 0750 -o root -g ${escapeShellArg config.services.inadyn.group} ${escapeShellArg runtimeDir}
 
     token="$(${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg cfg.cloudflare.apiTokenFile})"
     test -n "$token"
@@ -135,7 +134,7 @@ in
       settings = {
         allow-ipv6 = cfg.allowIPv6;
         provider."cloudflare.com" = {
-          username = cfg.cloudflare.zoneName;
+          username = cloudflareZoneName;
           include = cloudflareIncludeFile;
           hostname = cloudflareHostnames;
           ttl = cfg.cloudflare.ttl;
@@ -144,6 +143,10 @@ in
       };
     };
 
-    systemd.services.inadyn.serviceConfig.ExecStartPre = "+${writeCloudflareInclude}";
+    systemd.services.inadyn.serviceConfig = {
+      ExecStartPre = "+${writeCloudflareInclude}";
+      RuntimeDirectory = "router-ddns";
+      RuntimeDirectoryMode = "0750";
+    };
   };
 }
