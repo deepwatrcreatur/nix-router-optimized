@@ -1,6 +1,6 @@
 # 03 Router DDNS Tests And Docs
 
-Status: `ready`
+Status: `done`
 
 Suggested branch: `docs/router-ddns-tests-and-docs`
 
@@ -19,3 +19,7 @@ with confidence once it exists.
 
 - DDNS usage is discoverable from the repo root
 - at least one CI-visible path exercises the module
+
+## Outcome
+
+Implemented in PR #13.

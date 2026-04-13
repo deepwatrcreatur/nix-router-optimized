@@ -182,5 +182,35 @@
           }
         ];
       };
+
+      nixosConfigurations.router-ddns-example = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.router-ddns
+          {
+            networking.hostName = "router-ddns-example";
+            system.stateVersion = "25.11";
+            fileSystems."/" = {
+              device = "none";
+              fsType = "tmpfs";
+            };
+            boot.loader.grub.devices = [ "nodev" ];
+
+            services.router-ddns = {
+              enable = true;
+              cloudflare = {
+                zoneName = "example.com";
+                labels = [
+                  "@"
+                  "homelab"
+                ];
+                hostnames = [ "service.example.net" ];
+                apiTokenFile = "/run/secrets/cloudflare-ddns-token";
+                ttl = 1;
+              };
+            };
+          }
+        ];
+      };
     };
 }
