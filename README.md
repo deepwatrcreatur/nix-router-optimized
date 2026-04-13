@@ -126,6 +126,17 @@ Small DHCP server layer for routed routers:
 - derives served segments from `services.router-networking.routedInterfaces`
 - uses `systemd-networkd` DHCPServer instead of forcing a separate daemon
 - supports per-segment pool sizing and static leases
+- supports optional PXE/iPXE boot advertisements per routed segment
+
+Example PXE advertisement for an iVentoy or iPXE HTTP boot endpoint:
+
+```nix
+services.router-dhcp.interfaces.lan.pxe = {
+  enable = true;
+  bootServerAddress = "192.168.1.1";
+  bootFilename = "http://192.168.1.1/netboot/ipxe.efi";
+};
+```
 
 ### router-ddns
 Thin Dynamic DNS wrapper for router-hosted public ingress names:

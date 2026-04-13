@@ -188,6 +188,40 @@ in
     }
   ]);
 
+  docs-router-dhcp-pxe-example-eval = mkDocExampleCheck "docs-router-dhcp-pxe-example" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-dhcp
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "ens17";
+        routedInterfaces.lan = {
+          device = "ens16";
+          ipv4Address = "192.168.1.1/24";
+          dns = [ "192.168.1.1" ];
+        };
+      };
+
+      services.router-dhcp = {
+        enable = true;
+        interfaces.lan.pxe = {
+          enable = true;
+          bootServerAddress = "192.168.1.1";
+          bootFilename = "http://192.168.1.1/netboot/ipxe.efi";
+        };
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.systemd.network.networks."20-router-lan".dhcpServerConfig.BootServerAddress == "192.168.1.1";
+      message = "router-dhcp PXE example should render BootServerAddress.";
+    }
+    {
+      assertion = config.systemd.network.networks."20-router-lan".dhcpServerConfig.BootFilename == "http://192.168.1.1/netboot/ipxe.efi";
+      message = "router-dhcp PXE example should render BootFilename.";
+    }
+  ]);
+
   readme-common-wan-policy-eval = mkDocExampleCheck "readme-common-wan-policy" [
     self.nixosModules.router-firewall
     {
