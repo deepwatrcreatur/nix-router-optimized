@@ -1,6 +1,6 @@
 # Dashboard Blue Theme
 
-Status: ready
+Status: done
 
 Branch: `feat/dashboard-blue-theme`
 
