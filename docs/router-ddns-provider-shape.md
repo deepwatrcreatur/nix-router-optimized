@@ -30,6 +30,11 @@ services.router-ddns = {
 };
 ```
 
+The enabled example configuration at
+`nixosConfigurations.router-ddns-example` exercises this path during flake
+evaluation. Its `apiTokenFile` path is intentionally a runtime path; the secret
+file is not read or embedded during build/evaluation.
+
 ## Chosen First Provider Shape
 
 The first supported provider is an explicit `cloudflare` submodule, not a

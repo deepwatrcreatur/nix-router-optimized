@@ -147,6 +147,11 @@ services.router-ddns = {
 };
 ```
 
+The token file must contain the raw token string without quotes. The module
+writes the quoted inadyn include file under `/run/router-ddns` at service start,
+so the token is not embedded in the Nix store. A CI-visible enabled example is
+available as `nixosConfigurations.router-ddns-example`.
+
 This is intentionally narrower than general DNS ownership. Local resolver and
 DHCP-driven host registration remain the responsibility of `router-dns-service`
 and provider modules such as `router-technitium`.

@@ -1,6 +1,6 @@
 # 03 Router DDNS Tests And Docs
 
-Status: `ready`
+Status: `in-progress`
 
 Suggested branch: `docs/router-ddns-tests-and-docs`
 
