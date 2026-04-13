@@ -1,6 +1,6 @@
 # 06 VPN Module Smoke Tests
 
-Status: `in-progress`
+Status: `done`
 
 Suggested branch: `feat/router-vpn-smoke-tests`
 

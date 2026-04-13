@@ -20,6 +20,8 @@ let
       config.services.router-firewall.wanInterfaces or [ ]
     else
       [ ];
+  firewallEnabled =
+    hasRouterOption [ "services" "router-firewall" "enable" ] && config.services.router-firewall.enable;
   wanInterfaces =
     if firewallWanInterfaces != [ ] then
       firewallWanInterfaces
@@ -36,6 +38,7 @@ let
   wanUdpPorts = unique (concatLists (mapAttrsToList (_name: instance: instance.wanUdpPorts) cfg.instances));
   wanTcpPorts = unique (concatLists (mapAttrsToList (_name: instance: instance.wanTcpPorts) cfg.instances));
   extraForwardRules = concatStringsSep "\n" (filter (rule: rule != "") (mapAttrsToList (_name: instance: mkWanRule instance) cfg.instances));
+  routeToWanInstances = filterAttrs (_name: instance: instance.routeToWan) cfg.instances;
 in
 {
   options.services.router-openvpn = {
@@ -126,6 +129,13 @@ in
   };
 
   config = mkIf (cfg.instances != { }) {
+    assertions = [
+      {
+        assertion = routeToWanInstances == { } || !firewallEnabled || wanInterfaces != [ ];
+        message = "router-openvpn routeToWan requires at least one WAN interface when router-firewall is enabled.";
+      }
+    ];
+
     services = {
       openvpn.servers = mapAttrs (_name: instance: {
         inherit (instance) config up down autoStart updateResolvConf authUserPass;
