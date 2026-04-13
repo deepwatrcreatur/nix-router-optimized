@@ -10,7 +10,11 @@ with lib;
 let
   cfg = config.services.router-wireguard;
   hasRouterOption = path: hasAttrByPath path options;
-  optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+  optimizationInterfaces =
+    if hasRouterOption [ "services" "router-optimizations" "interfaces" ] then
+      config.services.router-optimizations.interfaces or { }
+    else
+      { };
   firewallWanInterfaces =
     if hasRouterOption [ "services" "router-firewall" "wanInterfaces" ] then
       config.services.router-firewall.wanInterfaces or [ ]

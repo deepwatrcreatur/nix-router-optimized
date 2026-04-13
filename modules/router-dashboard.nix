@@ -13,7 +13,11 @@ with lib;
 let
   cfg = config.services.router-dashboard;
   hasRouterOption = path: hasAttrByPath path options;
-  optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+  optimizationInterfaces =
+    if hasRouterOption [ "services" "router-optimizations" "interfaces" ] then
+      config.services.router-optimizations.interfaces or { }
+    else
+      { };
 
   normalizeRole = role:
     if role == "management" then
