@@ -1,6 +1,6 @@
 # Dashboard VPN Status API
 
-Status: ready
+Status: done
 
 Branch: `feat/dashboard-vpn-status-api`
 

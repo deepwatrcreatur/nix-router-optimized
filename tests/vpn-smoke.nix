@@ -173,6 +173,51 @@ in
     ])
   ];
 
+  router-dashboard-vpn-metadata-eval = eval.mkNixosEvalCheck "router-dashboard-vpn-metadata" [
+    self.nixosModules.router-dashboard
+    self.nixosModules.router-wireguard
+    self.nixosModules.router-tailscale
+    {
+      services.router-dashboard.enable = true;
+      services.router-wireguard = {
+        enable = true;
+        interfaceName = "wg-dashboard";
+        privateKeyFile = "/run/secrets/wireguard-private-key";
+      };
+      services.router-tailscale = {
+        enable = true;
+        interfaceName = "ts-dashboard";
+      };
+    }
+    (
+      { config, ... }:
+      let
+        vpns = builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_VPNS;
+      in
+      assertModule [
+        {
+          assertion = builtins.any (
+            vpn:
+            vpn.kind == "wireguard"
+            && vpn.name == "wg-dashboard"
+            && vpn.unit == "wireguard-wg-dashboard"
+            && vpn.interface == "wg-dashboard"
+          ) vpns;
+          message = "router-dashboard should export router-wireguard VPN metadata.";
+        }
+        {
+          assertion = builtins.any (
+            vpn:
+            vpn.kind == "tailscale"
+            && vpn.unit == "tailscaled"
+            && vpn.interface == "ts-dashboard"
+          ) vpns;
+          message = "router-dashboard should export router-tailscale VPN metadata.";
+        }
+      ]
+    )
+  ];
+
   router-headscale-standalone-eval = eval.mkNixosEvalCheck "router-headscale-standalone" [
     self.nixosModules.router-headscale
     {
