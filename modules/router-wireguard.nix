@@ -20,6 +20,8 @@ let
       config.services.router-firewall.wanInterfaces or [ ]
     else
       [ ];
+  firewallEnabled =
+    hasRouterOption [ "services" "router-firewall" "enable" ] && config.services.router-firewall.enable;
   wanInterfaces =
     if firewallWanInterfaces != [ ] then
       firewallWanInterfaces
@@ -139,6 +141,10 @@ in
       {
         assertion = cfg.privateKeyFile != null || cfg.generatePrivateKeyFile;
         message = "router-wireguard requires privateKeyFile or generatePrivateKeyFile.";
+      }
+      {
+        assertion = !cfg.routeToWan || !firewallEnabled || wanInterfaces != [ ];
+        message = "router-wireguard routeToWan requires at least one WAN interface when router-firewall is enabled.";
       }
     ];
 

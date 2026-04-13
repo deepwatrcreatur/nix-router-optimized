@@ -31,7 +31,28 @@ let
     pkgs.runCommand "router-${name}-eval" { } ''
       echo ${lib.escapeShellArg toplevel.drvPath} > "$out"
     '';
+
+  mkNixosEvalFailureCheck =
+    name: modules:
+    let
+      result = builtins.tryEval (
+        (nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            baseModule
+          ] ++ modules;
+        }).config.system.build.toplevel.drvPath
+      );
+    in
+    pkgs.runCommand "router-${name}-eval-fails" { } ''
+      if ${if result.success then "true" else "false"}; then
+        echo "expected NixOS evaluation for ${lib.escapeShellArg name} to fail, but it succeeded" >&2
+        exit 1
+      fi
+
+      echo "evaluation failed as expected" > "$out"
+    '';
 in
 {
-  inherit mkNixosEvalCheck;
+  inherit mkNixosEvalCheck mkNixosEvalFailureCheck;
 }

@@ -12,6 +12,10 @@ let
   };
 
   exportedModuleNames = builtins.attrNames self.nixosModules;
+
+  vpnSmokeChecks = import ./vpn-smoke.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -33,6 +37,7 @@ in
     }
   ];
 }
+// vpnSmokeChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (

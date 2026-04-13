@@ -420,7 +420,7 @@ in
         chain LAN_IN {
           ${optionalString cfg.lanToWan (mkForwardRule lanInterfaces wanInterfaces "accept")}
           ${
-            if cfg.allowTrustedInterconnect && trustedInterfaces != [ ] then
+            if cfg.allowTrustedInterconnect && lanInterfaces != [ ] then
               ''
                 iifname ${maybeSet lanInterfaces} oifname ${maybeSet trustedInterfaces} accept
               ''
@@ -433,7 +433,7 @@ in
         chain MGMT_IN {
           ${optionalString cfg.managementToWan (mkForwardRule managementInterfaces wanInterfaces "accept")}
           ${
-            if cfg.allowTrustedInterconnect && trustedInterfaces != [ ] then
+            if cfg.allowTrustedInterconnect && managementInterfaces != [ ] then
               ''
                 iifname ${maybeSet managementInterfaces} oifname ${maybeSet trustedInterfaces} accept
               ''
