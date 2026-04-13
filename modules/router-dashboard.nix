@@ -319,7 +319,10 @@ in {
     })
 
     # Auto-open dashboard port in router-firewall when both are enabled
-    (optionalAttrs (hasRouterOption [ "services" "router-firewall" "enable" ]) (
+    (optionalAttrs (
+      hasRouterOption [ "services" "router-firewall" "enable" ]
+      && hasRouterOption [ "services" "router-firewall" "trustedTcpPorts" ]
+    ) (
       mkIf (cfg.enable && (config.services.router-firewall.enable or false)) {
         services.router-firewall.trustedTcpPorts = [ cfg.port ];
       }
