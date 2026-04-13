@@ -35,6 +35,83 @@ let
         role = normalizeRole iface.role;
       }) optimizationInterfaces;
 
+  effectiveVpnServices =
+    optionals
+      (
+        hasRouterOption [ "services" "router-wireguard" "enable" ]
+        && (config.services.router-wireguard.enable or false)
+      )
+      [
+        {
+          kind = "wireguard";
+          name = config.services.router-wireguard.interfaceName;
+          unit = "wireguard-${config.services.router-wireguard.interfaceName}";
+          interface = config.services.router-wireguard.interfaceName;
+        }
+      ]
+    ++ optionals (hasRouterOption [ "services" "router-openvpn" "instances" ]) (
+      mapAttrsToList
+        (name: instance: {
+          kind = "openvpn";
+          name = name;
+          unit = "openvpn-${name}";
+          interface = instance.interfaceName;
+        })
+        (config.services.router-openvpn.instances or { })
+    )
+    ++ optionals
+      (
+        hasRouterOption [ "services" "router-tailscale" "enable" ]
+        && (config.services.router-tailscale.enable or false)
+      )
+      [
+        {
+          kind = "tailscale";
+          name = "tailscale";
+          unit = "tailscaled";
+          interface = config.services.router-tailscale.interfaceName;
+        }
+      ]
+    ++ optionals
+      (
+        hasRouterOption [ "services" "router-headscale" "enable" ]
+        && (config.services.router-headscale.enable or false)
+      )
+      [
+        {
+          kind = "headscale";
+          name = "headscale";
+          unit = "headscale";
+          interface = null;
+        }
+      ]
+    ++ optionals
+      (
+        hasRouterOption [ "services" "router-netbird" "enable" ]
+        && (config.services.router-netbird.enable or false)
+      )
+      [
+        {
+          kind = "netbird";
+          name = config.services.router-netbird.clientName;
+          unit = "netbird-${config.services.router-netbird.clientName}";
+          interface = config.services.router-netbird.interfaceName;
+        }
+      ]
+    ++ optionals
+      (
+        hasRouterOption [ "services" "router-zerotier" "enable" ]
+        && (config.services.router-zerotier.enable or false)
+      )
+      [
+        {
+          kind = "zerotier";
+          name = "zerotier";
+          unit = "zerotierone";
+          interface = config.services.router-zerotier.interfaceName;
+        }
+      ];
+
   # Package all dashboard static files
   dashboardStatic = pkgs.stdenv.mkDerivation {
     name = "router-dashboard-static";
@@ -60,6 +137,7 @@ let
           icon = link.icon;
         }) cfg.links)},
         services: ${builtins.toJSON cfg.services},
+        vpnServices: ${builtins.toJSON effectiveVpnServices},
         wolDevices: ${builtins.toJSON (map (device: {
           name = device.name;
           macAddress = device.macAddress;
@@ -252,6 +330,7 @@ in {
             role = iface.role;
           }) effectiveInterfaces);
           DASHBOARD_SERVICES = builtins.toJSON cfg.services;
+          DASHBOARD_VPNS = builtins.toJSON effectiveVpnServices;
           DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
           TECHNITIUM_URL = "http://localhost:5380";
           TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
@@ -302,6 +381,7 @@ in {
           iputils # for ping
           fail2ban
           speedtest-cli # for speed tests
+          wireguard-tools # for WireGuard peer status
           "/run/wrappers" # for sudo wrapper
         ];
       };

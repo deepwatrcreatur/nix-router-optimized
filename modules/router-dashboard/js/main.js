@@ -8,8 +8,12 @@ class Dashboard {
     this.widgets = [];
     this.config = window.DASHBOARD_CONFIG || {};
     this.lastUpdate = null;
-    this.grid = null;
-    this.layoutStorageKey = 'router-dashboard-layout-v1';
+    this.grids = new Map();
+    this.layoutStorageKey = 'router-dashboard-layout-v2';
+    this.legacyLayoutStorageKey = 'router-dashboard-layout-v1';
+    this.activePageStorageKey = 'router-dashboard-active-page';
+    this.pageOrder = [ 'overview', 'network', 'services', 'security', 'vpn' ];
+    this.activePage = this.getInitialPage();
   }
 
   /**
@@ -23,8 +27,10 @@ class Dashboard {
 
     // Initialize widgets based on config
     this.initWidgets();
-    this.setupLayout();
+    this.initTabs();
+    this.setupLayouts();
     this.bindLayoutControls();
+    this.bindSearchControls();
 
     // Start header update interval
     setInterval(() => this.updateHeader(), 30000);
@@ -36,8 +42,6 @@ class Dashboard {
    * Initialize all widgets
    */
   initWidgets() {
-    const container = '#dashboard-grid';
-
     // Quick Links widget
     const links = new LinksWidget({
       id: 'links',
@@ -49,8 +53,7 @@ class Dashboard {
         { label: 'Prometheus', url: '/prometheus/', icon: '🎯' }
       ]
     });
-    links.render(container);
-    this.widgets.push(links);
+    this.renderWidget('overview', links);
 
     // System Resources widget
     const system = new SystemWidget({
@@ -59,16 +62,14 @@ class Dashboard {
       showDisk: true,
       refreshInterval: 5000
     });
-    system.render(container);
-    this.widgets.push(system);
+    this.renderWidget('overview', system);
 
     const systemInfo = new SystemInfoWidget({
       id: 'system-info',
       grid: { w: 4, h: 4 },
       refreshInterval: 120000
     });
-    systemInfo.render(container);
-    this.widgets.push(systemInfo);
+    this.renderWidget('overview', systemInfo);
 
     // Traffic Graph widget
     const traffic = new TrafficWidget({
@@ -77,8 +78,7 @@ class Dashboard {
       interface: 'wan',
       refreshInterval: 5000
     });
-    traffic.render(container);
-    this.widgets.push(traffic);
+    this.renderWidget('overview', traffic);
 
     // Interface widgets
     const interfaces = this.config.interfaces || [
@@ -96,8 +96,7 @@ class Dashboard {
         role: iface.role,
         refreshInterval: 5000
       });
-      widget.render(container);
-      this.widgets.push(widget);
+      this.renderWidget('network', widget);
     });
 
     // Connections widget
@@ -106,8 +105,7 @@ class Dashboard {
       grid: { w: 3, h: 3 },
       refreshInterval: 5000
     });
-    connections.render(container);
-    this.widgets.push(connections);
+    this.renderWidget('overview', connections);
 
     // Services widget
     const services = new ServicesWidget({
@@ -123,8 +121,7 @@ class Dashboard {
         'technitium-dns-server'
       ]
     });
-    services.render(container);
-    this.widgets.push(services);
+    this.renderWidget('services', services);
 
     // Gateway health widget
     const gateway = new GatewayWidget({
@@ -132,8 +129,7 @@ class Dashboard {
       grid: { w: 4, h: 4 },
       refreshInterval: 10000
     });
-    gateway.render(container);
-    this.widgets.push(gateway);
+    this.renderWidget('overview', gateway);
 
     // Top connections widget
     const topConns = new TopConnectionsWidget({
@@ -142,8 +138,7 @@ class Dashboard {
       refreshInterval: 10000,
       limit: 15
     });
-    topConns.render(container);
-    this.widgets.push(topConns);
+    this.renderWidget('network', topConns);
 
     // Firewall widget
     const firewall = new FirewallWidget({
@@ -151,23 +146,20 @@ class Dashboard {
       grid: { w: 3, h: 3 },
       refreshInterval: 30000
     });
-    firewall.render(container);
-    this.widgets.push(firewall);
+    this.renderWidget('security', firewall);
 
     const firewallLogs = new FirewallLogsWidget({
       id: 'firewall-logs',
       grid: { w: 6, h: 4 }
     });
-    firewallLogs.render(container);
-    this.widgets.push(firewallLogs);
+    this.renderWidget('security', firewallLogs);
 
     const caddy = new CaddyWidget({
       id: 'caddy',
       grid: { w: 4, h: 4 },
       refreshInterval: 30000
     });
-    caddy.render(container);
-    this.widgets.push(caddy);
+    this.renderWidget('services', caddy);
 
     // DNS Statistics widget
     const dns = new DnsWidget({
@@ -175,8 +167,7 @@ class Dashboard {
       grid: { w: 4, h: 4 },
       refreshInterval: 30000
     });
-    dns.render(container);
-    this.widgets.push(dns);
+    this.renderWidget('services', dns);
 
     // DHCP Leases widget
     const dhcp = new DhcpWidget({
@@ -184,8 +175,7 @@ class Dashboard {
       grid: { w: 6, h: 4 },
       refreshInterval: 60000
     });
-    dhcp.render(container);
-    this.widgets.push(dhcp);
+    this.renderWidget('network', dhcp);
 
     // Fail2ban widget
     const fail2ban = new Fail2banWidget({
@@ -193,16 +183,14 @@ class Dashboard {
       grid: { w: 4, h: 4 },
       refreshInterval: 30000
     });
-    fail2ban.render(container);
-    this.widgets.push(fail2ban);
+    this.renderWidget('security', fail2ban);
 
     // Speed test widget
     const speedtest = new SpeedtestWidget({
       id: 'speedtest',
       grid: { w: 4, h: 4 }
     });
-    speedtest.render(container);
-    this.widgets.push(speedtest);
+    this.renderWidget('services', speedtest);
 
     if ((this.config.wolDevices || []).length > 0) {
       const wol = new WolWidget({
@@ -210,23 +198,83 @@ class Dashboard {
         grid: { w: 4, h: 4 },
         devices: this.config.wolDevices
       });
-      wol.render(container);
-      this.widgets.push(wol);
+      this.renderWidget('security', wol);
+    }
+
+    const vpn = new VpnWidget({
+      id: 'vpn-status',
+      grid: { w: 12, h: 5 },
+      refreshInterval: 15000
+    });
+    this.renderWidget('vpn', vpn);
+  }
+
+  initTabs() {
+    const buttons = Array.from(document.querySelectorAll('[data-dashboard-tab]'));
+    buttons.forEach(button => {
+      button.addEventListener('click', () => this.setActivePage(button.dataset.dashboardTab));
+    });
+
+    this.setActivePage(this.activePage, { persist: false, initializeLayout: false });
+  }
+
+  getInitialPage() {
+    try {
+      const saved = localStorage.getItem(this.activePageStorageKey);
+      return this.pageOrder.includes(saved) ? saved : 'overview';
+    } catch {
+      return 'overview';
     }
   }
 
-  setupLayout() {
+  setActivePage(pageId, options = {}) {
+    if (!this.pageOrder.includes(pageId)) return;
+
+    this.activePage = pageId;
+    document.querySelectorAll('[data-dashboard-tab]').forEach(button => {
+      button.classList.toggle('is-active', button.dataset.dashboardTab === pageId);
+    });
+    document.querySelectorAll('[data-dashboard-page]').forEach(page => {
+      page.classList.toggle('is-active', page.dataset.dashboardPage === pageId);
+    });
+
+    if (options.persist !== false) {
+      try {
+        localStorage.setItem(this.activePageStorageKey, pageId);
+      } catch (error) {
+        console.warn('Failed to persist active dashboard page:', error);
+      }
+    }
+
+    if (options.initializeLayout !== false) {
+      this.initPageLayout(pageId);
+    }
+    this.resizePageWidgets(pageId);
+  }
+
+  renderWidget(pageId, widget) {
+    widget.render(`#dashboard-grid-${pageId}`);
+    this.widgets.push({ page: pageId, widget });
+  }
+
+  setupLayouts() {
     if (!window.GridStack) {
       console.warn('GridStack not available, using static layout');
       return;
     }
 
-    const container = document.getElementById('dashboard-grid');
+    this.initPageLayout(this.activePage);
+  }
+
+  initPageLayout(pageId) {
+    if (!window.GridStack || this.grids.has(pageId)) return;
+
+    const container = document.getElementById(`dashboard-grid-${pageId}`);
     if (!container) return;
 
-    this.applySavedLayout(container);
+    this.applySavedLayout(container, pageId);
 
-    this.grid = GridStack.init({
+    const grid = GridStack.init({
       column: 12,
       cellHeight: 96,
       margin: 8,
@@ -234,12 +282,134 @@ class Dashboard {
       handle: '.widget-header'
     }, container);
 
-    this.grid.on('change', () => this.saveLayout());
-    this.grid.on('resizestop', (_event, element) => this.handleWidgetResize(element));
+    grid.on('change', () => this.saveLayout(pageId));
+    grid.on('resizestop', (_event, element) => this.handleWidgetResize(element));
+    this.grids.set(pageId, grid);
   }
 
-  applySavedLayout(container) {
+  applySavedLayout(container, pageId) {
     const savedLayout = this.loadLayout();
+    const pageLayout = savedLayout[pageId] || [];
+    if (!pageLayout.length && pageId === 'overview') {
+      this.applyLegacySavedLayout(container);
+      return;
+    }
+    if (!pageLayout.length) return;
+
+    pageLayout.forEach(item => {
+      const element = container.querySelector(`[data-widget-id="${item.id}"]`);
+      if (!element) return;
+
+      [ 'x', 'y', 'w', 'h' ].forEach(key => {
+        if (Number.isInteger(item[key])) {
+          element.setAttribute(`gs-${key}`, String(item[key]));
+        }
+      });
+    });
+  }
+
+  saveLayout(pageId) {
+    const grid = this.grids.get(pageId);
+    if (!grid) return;
+
+    const savedLayout = this.loadLayout();
+    savedLayout[pageId] = grid.save(false).map(item => ({
+      id: item.el?.dataset.widgetId,
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h
+    })).filter(item => item.id);
+
+    localStorage.setItem(this.layoutStorageKey, JSON.stringify(savedLayout));
+  }
+
+  loadLayout() {
+    try {
+      const saved = localStorage.getItem(this.layoutStorageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  bindLayoutControls() {
+    const resetButton = document.getElementById('reset-layout-btn');
+    if (resetButton) {
+      resetButton.addEventListener('click', () => this.resetLayout());
+    }
+  }
+
+  bindSearchControls() {
+    const searchInput = document.getElementById('dashboard-search');
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', () => this.applySearch(searchInput.value));
+    searchInput.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        searchInput.value = '';
+        this.applySearch('');
+        searchInput.blur();
+      }
+    });
+
+    document.addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === 'k') {
+        event.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }
+    });
+  }
+
+  applySearch(query) {
+    const normalizedQuery = query.trim().toLowerCase();
+    const matches = [];
+
+    this.widgets.forEach(entry => {
+      const element = entry.widget.gridItem;
+      if (!element) return;
+
+      const text = [
+        entry.widget.id,
+        entry.widget.title,
+        element.textContent
+      ].filter(Boolean).join(' ').toLowerCase();
+      const isMatch = normalizedQuery.length > 0 && text.includes(normalizedQuery);
+
+      element.classList.toggle('is-search-match', isMatch);
+      element.classList.toggle('is-search-dimmed', normalizedQuery.length > 0 && !isMatch);
+
+      if (isMatch) {
+        matches.push(entry.page);
+      }
+    });
+
+    if (normalizedQuery.length > 0 && matches.length > 0 && !matches.includes(this.activePage)) {
+      this.setActivePage(matches[0]);
+    }
+  }
+
+  resetLayout() {
+    localStorage.removeItem(this.layoutStorageKey);
+    localStorage.removeItem(this.legacyLayoutStorageKey);
+    localStorage.removeItem(this.activePageStorageKey);
+    window.location.reload();
+  }
+
+  resizePageWidgets(pageId) {
+    this.widgets
+      .filter(entry => entry.page === pageId)
+      .forEach(entry => {
+        const element = entry.widget.gridItem;
+        if (!element) return;
+        entry.widget.onResize(element.clientWidth, element.clientHeight);
+      });
+  }
+
+  applyLegacySavedLayout(container) {
+    const savedLayout = this.loadLegacyLayout();
     if (!savedLayout.length) return;
 
     savedLayout.forEach(item => {
@@ -254,51 +424,25 @@ class Dashboard {
     });
   }
 
-  saveLayout() {
-    if (!this.grid) return;
-
-    const layout = this.grid.save(false).map(item => ({
-      id: item.el?.dataset.widgetId,
-      x: item.x,
-      y: item.y,
-      w: item.w,
-      h: item.h
-    })).filter(item => item.id);
-
-    localStorage.setItem(this.layoutStorageKey, JSON.stringify(layout));
-  }
-
-  loadLayout() {
+  loadLegacyLayout() {
     try {
-      const saved = localStorage.getItem(this.layoutStorageKey);
+      const saved = localStorage.getItem(this.legacyLayoutStorageKey);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }
   }
 
-  bindLayoutControls() {
-    const resetButton = document.getElementById('reset-layout-btn');
-    if (resetButton) {
-      resetButton.addEventListener('click', () => this.resetLayout());
-    }
-  }
-
-  resetLayout() {
-    localStorage.removeItem(this.layoutStorageKey);
-    window.location.reload();
-  }
-
   handleWidgetResize(element) {
     const widgetId = element?.dataset?.widgetId;
     if (!widgetId) return;
 
-    const widget = this.widgets.find(entry => entry.id === widgetId);
-    if (!widget) return;
+    const widgetEntry = this.widgets.find(entry => entry.widget.id === widgetId);
+    if (!widgetEntry) return;
 
     const width = element.clientWidth;
     const height = element.clientHeight;
-    widget.onResize(width, height);
+    widgetEntry.widget.onResize(width, height);
   }
 
   /**
@@ -325,12 +469,10 @@ class Dashboard {
    * Destroy all widgets
    */
   destroy() {
-    this.widgets.forEach(w => w.onDestroy());
+    this.widgets.forEach(entry => entry.widget.onDestroy());
     this.widgets = [];
-    if (this.grid) {
-      this.grid.destroy(false);
-      this.grid = null;
-    }
+    this.grids.forEach(grid => grid.destroy(false));
+    this.grids.clear();
   }
 }
 
