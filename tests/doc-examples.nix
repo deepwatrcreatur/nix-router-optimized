@@ -241,6 +241,42 @@ in
     }
   ]);
 
+  docs-router-headscale-example-eval = mkDocExampleCheck "docs-router-headscale-example" [
+    self.nixosModules.caddy-reverse-proxy
+    self.nixosModules.router-headscale
+    self.nixosModules.router-tailscale
+    {
+      services.caddy-router = {
+        enable = true;
+        domain = "example.com";
+        email = "admin@example.com";
+      };
+
+      services.router-headscale = {
+        enable = true;
+        domain = "headscale.example.com";
+      };
+
+      services.router-tailscale = {
+        enable = true;
+        authKeyFile = "/run/agenix/headscale-preauth-key";
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.services.headscale.settings.server_url == "https://headscale.example.com";
+      message = "router-headscale docs example should derive the Headscale server URL.";
+    }
+    {
+      assertion = lib.hasInfix "reverse_proxy http://127.0.0.1:8080" config.services.caddy.virtualHosts."headscale.example.com".extraConfig;
+      message = "router-headscale docs example should configure a Caddy reverse proxy.";
+    }
+    {
+      assertion = builtins.elem "--login-server=https://headscale.example.com" config.services.tailscale.extraUpFlags;
+      message = "router-headscale docs example should wire router-tailscale to Headscale.";
+    }
+  ]);
+
   docs-router-openvpn-example-eval = mkDocExampleCheck "docs-router-openvpn-example" [
     self.nixosModules.router-openvpn
     {

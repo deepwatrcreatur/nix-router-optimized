@@ -1,6 +1,6 @@
 # 10 router-headscale Module
 
-Status: `ready`
+Status: `done`
 
 Suggested branch: `feat/router-headscale-module`
 
