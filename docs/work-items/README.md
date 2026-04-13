@@ -18,12 +18,11 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. `06-vpn-module-smoke-tests.md`
-2. `07-interface-and-firewall-invariants.md`
-3. `08-example-and-doc-eval-coverage.md`
-4. `09-router-zerotier-module.md`
-5. `10-router-headscale-module.md`
-6. `11-module-authoring-guide.md`
+1. `07-interface-and-firewall-invariants.md`
+2. `08-example-and-doc-eval-coverage.md`
+3. `09-router-zerotier-module.md`
+4. `10-router-headscale-module.md`
+5. `11-module-authoring-guide.md`
 
 ## Why This Structure
 

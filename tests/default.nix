@@ -16,6 +16,10 @@ let
   vpnSmokeChecks = import ./vpn-smoke.nix {
     inherit self lib eval;
   };
+
+  interfaceFirewallInvariantChecks = import ./interface-firewall-invariants.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -38,6 +42,7 @@ in
   ];
 }
 // vpnSmokeChecks
+// interfaceFirewallInvariantChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (
