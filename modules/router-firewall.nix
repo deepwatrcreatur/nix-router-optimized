@@ -85,7 +85,7 @@ in
       example = [ "tailscale0" "nb-router" "ztXXXXXXXX" ];
       description = ''
         Mesh VPN overlay interfaces (Tailscale, Netbird, ZeroTier, etc.) that
-        receive bidirectional forwarding through all router interfaces.
+        receive router-aware input and forwarding rules.
 
         Each interface listed here gets:
         - unrestricted input to the router

@@ -21,8 +21,10 @@ ZeroTier support is planned (see work item 09).
 listed there receives:
 
 - **unrestricted input** — overlay peers can reach the router itself
-- **bidirectional forwarding** — overlay ↔ all router interfaces (WAN, LAN,
-  management)
+- **overlay-originated forwarding** — overlay peers can reach all router
+  interfaces (WAN, LAN, management)
+- **trusted return forwarding** — LAN/management/trusted interfaces can reach
+  overlay peers
 
 Each per-overlay module (`router-tailscale`, `router-netbird`, …) appends its
 interface name to this list automatically when `trustedInterface = true` (the
@@ -111,10 +113,11 @@ but intentional configuration. Common reasons:
 - **Multi-org**: corporate Tailscale tailnet + self-hosted homelab Netbird mesh
 - **Redundancy**: fallback connectivity if one coordination server is unreachable
 
-### Port conflict
+### Port conflicts
 
-Both default to UDP 51820. `router-netbird` defaults to **51821** to avoid
-this. If you override either port, an assertion will fire if they collide.
+The wrappers default to distinct ports: `router-tailscale` uses UDP 41641 and
+`router-netbird` uses UDP 51821. If you override either port, an assertion will
+fire if they collide.
 
 ### DNS coexistence
 
