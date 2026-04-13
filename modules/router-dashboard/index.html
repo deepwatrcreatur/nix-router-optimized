@@ -32,7 +32,10 @@
 
     <main class="dashboard-main">
       <div class="topbar">
-        <button class="topbar-search" type="button">Search widgets, interfaces, services... <span>Ctrl+K</span></button>
+        <div class="topbar-search-wrap">
+          <input class="topbar-search" id="dashboard-search" type="search" placeholder="Search widgets, interfaces, services..." aria-label="Search dashboard widgets">
+          <span>Ctrl+K</span>
+        </div>
         <div class="topbar-actions">
           <button class="header-btn" id="reset-layout-btn" type="button">Reset Layout</button>
           <div class="last-update" id="last-update">Loading...</div>

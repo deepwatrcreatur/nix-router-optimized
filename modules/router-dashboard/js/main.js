@@ -30,6 +30,7 @@ class Dashboard {
     this.initTabs();
     this.setupLayouts();
     this.bindLayoutControls();
+    this.bindSearchControls();
 
     // Start header update interval
     setInterval(() => this.updateHeader(), 30000);
@@ -336,6 +337,57 @@ class Dashboard {
     const resetButton = document.getElementById('reset-layout-btn');
     if (resetButton) {
       resetButton.addEventListener('click', () => this.resetLayout());
+    }
+  }
+
+  bindSearchControls() {
+    const searchInput = document.getElementById('dashboard-search');
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', () => this.applySearch(searchInput.value));
+    searchInput.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        searchInput.value = '';
+        this.applySearch('');
+        searchInput.blur();
+      }
+    });
+
+    document.addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === 'k') {
+        event.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }
+    });
+  }
+
+  applySearch(query) {
+    const normalizedQuery = query.trim().toLowerCase();
+    const matches = [];
+
+    this.widgets.forEach(entry => {
+      const element = entry.widget.gridItem;
+      if (!element) return;
+
+      const text = [
+        entry.widget.id,
+        entry.widget.title,
+        element.textContent
+      ].filter(Boolean).join(' ').toLowerCase();
+      const isMatch = normalizedQuery.length > 0 && text.includes(normalizedQuery);
+
+      element.classList.toggle('is-search-match', isMatch);
+      element.classList.toggle('is-search-dimmed', normalizedQuery.length > 0 && !isMatch);
+
+      if (isMatch) {
+        matches.push(entry.page);
+      }
+    });
+
+    if (normalizedQuery.length > 0 && matches.length > 0 && !matches.includes(this.activePage)) {
+      this.setActivePage(matches[0]);
     }
   }
 

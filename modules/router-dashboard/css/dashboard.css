@@ -132,22 +132,43 @@ body {
   z-index: 20;
 }
 
-.topbar-search {
-  appearance: none;
+.topbar-search-wrap {
+  align-items: center;
   background: var(--bg-search);
   border: 1px solid rgba(57, 91, 135, 0.24);
   border-radius: 8px;
   color: var(--text-muted);
-  cursor: pointer;
+  display: flex;
   flex: 0 1 620px;
-  font: inherit;
-  font-size: 0.84rem;
-  padding: 10px 14px;
-  text-align: left;
+  gap: 10px;
+  padding: 0 12px;
 }
 
-.topbar-search span {
+.topbar-search {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  flex: 1;
+  font: inherit;
+  font-size: 0.84rem;
+  min-width: 0;
+  outline: 0;
+  padding: 10px 0;
+}
+
+.topbar-search::placeholder {
+  color: var(--text-muted);
+}
+
+.topbar-search-wrap:focus-within {
+  border-color: var(--accent-primary);
+}
+
+.topbar-search-wrap span {
   color: #7990aa;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .topbar-actions {
@@ -331,6 +352,15 @@ header h1 {
 .widget:hover {
   border-color: var(--border-active);
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.1);
+}
+
+.widget.is-search-match {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--panel-glow-strong);
+}
+
+.widget.is-search-dimmed {
+  opacity: 0.42;
 }
 
 /* Widget sizes */
