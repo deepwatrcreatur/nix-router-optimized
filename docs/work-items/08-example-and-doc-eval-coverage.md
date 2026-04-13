@@ -1,6 +1,6 @@
 # 08 Example And Doc Eval Coverage
 
-Status: `ready`
+Status: `done`
 
 Suggested branch: `feat/router-example-doc-eval`
 

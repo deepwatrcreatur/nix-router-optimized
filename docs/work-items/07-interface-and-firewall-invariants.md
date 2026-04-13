@@ -1,6 +1,6 @@
 # 07 Interface And Firewall Invariants
 
-Status: `in-progress`
+Status: `done`
 
 Suggested branch: `feat/router-interface-firewall-invariants`
 

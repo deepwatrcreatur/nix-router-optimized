@@ -10,7 +10,8 @@ with lib;
 let
   cfg = config.services.router-technitium;
   secretName = cfg.apiKeySecretName;
-  hasApiSecret = secretName != null && hasAttr secretName config.age.secrets;
+  ageSecrets = config.age.secrets or { };
+  hasApiSecret = secretName != null && hasAttr secretName ageSecrets;
   exclusionModule = types.submodule {
     options = {
       startingAddress = mkOption {

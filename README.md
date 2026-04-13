@@ -56,7 +56,6 @@ Add to your `flake.nix`:
         router-optimized.nixosModules.router-firewall
         router-optimized.nixosModules.router-pppoe
         router-optimized.nixosModules.router-homelab
-        router-optimized.nixosModules.router-technitium
         router-optimized.nixosModules.router-optimizations
         {
           services.router-networking = {
@@ -97,6 +96,8 @@ Add to your `flake.nix`:
             enableNtopng = true;
             sshTarget = "ssh router.example.com";
           };
+
+          services.grafana.settings.security.secret_key = "$__file{/run/agenix/grafana-secret-key}";
 
           services.router-technitium = {
             enable = true;
