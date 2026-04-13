@@ -1,6 +1,6 @@
 # 11 Module Authoring Guide
 
-Status: `ready`
+Status: `done`
 
 Suggested branch: `docs/module-authoring-guide`
 

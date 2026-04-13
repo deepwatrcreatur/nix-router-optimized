@@ -18,7 +18,7 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. `11-module-authoring-guide.md`
+No active items.
 
 ## Why This Structure
 
