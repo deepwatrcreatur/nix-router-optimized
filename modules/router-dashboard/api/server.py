@@ -423,7 +423,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         details = self.get_vpn_details(kind, interface)
 
         service_active = service.get('active', False)
-        interface_up = interface_status is None or interface_status.get('state') == 'UP'
+        interface_up = interface_status is None or interface_status.get('state') in ('UP', 'UNKNOWN')
         status = 'up' if service_active and interface_up else 'down'
         if service_active and not interface_up:
             status = 'warning'
@@ -469,7 +469,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def get_wireguard_details(self, interface):
         """Use wg dump for peer count and latest handshake when available"""
-        wg = self.find_executable(['/run/current-system/sw/bin/wg', '/usr/bin/wg', 'wg'], ['--version'])
+        wg = self.find_executable(['/run/current-system/sw/bin/wg', '/usr/bin/wg', 'wg'], ['help'])
         if not wg:
             return {'available': False, 'message': 'wg command unavailable'}
 
@@ -492,9 +492,9 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         handshakes = []
         for line in peer_lines:
             fields = line.split('\t')
-            if len(fields) > 5:
+            if len(fields) >= 5:
                 try:
-                    timestamp = int(fields[5])
+                    timestamp = int(fields[4])
                     if timestamp > 0:
                         handshakes.append(timestamp)
                 except ValueError:
