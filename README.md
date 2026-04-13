@@ -126,6 +126,31 @@ Small DHCP server layer for routed routers:
 - uses `systemd-networkd` DHCPServer instead of forcing a separate daemon
 - supports per-segment pool sizing and static leases
 
+### router-ddns
+Thin Dynamic DNS wrapper for router-hosted public ingress names:
+- uses the stock NixOS `services.inadyn` service as the only backend
+- supports Cloudflare API tokens from runtime files without storing tokens in
+  the Nix store
+- accepts inventory-style labels such as `@`, `homelab`, and `paperless`, then
+  expands them under the configured Cloudflare zone
+
+Example:
+
+```nix
+services.router-ddns = {
+  enable = true;
+  cloudflare = {
+    zoneName = "example.com";
+    labels = [ "@" "homelab" "paperless" ];
+    apiTokenFile = "/run/agenix/cloudflare-ddns-token";
+  };
+};
+```
+
+This is intentionally narrower than general DNS ownership. Local resolver and
+DHCP-driven host registration remain the responsibility of `router-dns-service`
+and provider modules such as `router-technitium`.
+
 ### router-dns-service
 Provider-aware local resolver layer:
 - chooses between `technitium`, `unbound`, and `dnsmasq`
