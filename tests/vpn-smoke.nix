@@ -173,6 +173,113 @@ in
     ])
   ];
 
+  router-headscale-standalone-eval = eval.mkNixosEvalCheck "router-headscale-standalone" [
+    self.nixosModules.router-headscale
+    {
+      services.router-headscale = {
+        enable = true;
+        domain = "headscale.example.com";
+        openFirewall = false;
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.headscale.enable;
+        message = "router-headscale should enable services.headscale.";
+      }
+      {
+        assertion = config.services.headscale.settings.server_url == "https://headscale.example.com";
+        message = "router-headscale should derive Headscale server_url from domain.";
+      }
+      {
+        assertion = config.services.headscale.address == "0.0.0.0";
+        message = "router-headscale should listen directly when Caddy is not active.";
+      }
+    ])
+  ];
+
+  router-headscale-with-caddy-eval = eval.mkNixosEvalCheck "router-headscale-with-caddy" [
+    self.nixosModules.caddy-reverse-proxy
+    self.nixosModules.router-headscale
+    {
+      services.caddy-router = {
+        enable = true;
+        domain = "example.com";
+        email = "admin@example.com";
+      };
+      services.router-headscale = {
+        enable = true;
+        domain = "headscale.example.com";
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.headscale.address == "127.0.0.1";
+        message = "router-headscale should bind to loopback when Caddy is active.";
+      }
+      {
+        assertion =
+          lib.hasInfix "reverse_proxy http://127.0.0.1:8080"
+            config.services.caddy.virtualHosts."headscale.example.com".extraConfig;
+        message = "router-headscale should add a Caddy vhost for Headscale.";
+      }
+    ])
+  ];
+
+  router-headscale-with-tailscale-eval = eval.mkNixosEvalCheck "router-headscale-with-tailscale" [
+    self.nixosModules.router-headscale
+    self.nixosModules.router-tailscale
+    {
+      services.router-headscale = {
+        enable = true;
+        domain = "headscale.example.com";
+        openFirewall = false;
+      };
+      services.router-tailscale = {
+        enable = true;
+        authKeyFile = "/run/agenix/headscale-preauth-key";
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = builtins.elem "--login-server=https://headscale.example.com" config.services.tailscale.extraUpFlags;
+        message = "router-headscale should wire router-tailscale to the Headscale login server.";
+      }
+      {
+        assertion = config.services.tailscale.authKeyFile == "/run/agenix/headscale-preauth-key";
+        message = "router-tailscale should keep the Headscale pre-auth key file.";
+      }
+    ])
+  ];
+
+  router-headscale-with-router-firewall-eval =
+    eval.mkNixosEvalCheck "router-headscale-with-router-firewall" [
+      self.nixosModules.router-firewall
+      self.nixosModules.caddy-reverse-proxy
+      self.nixosModules.router-headscale
+      firewallWan
+      {
+        services.router-firewall.enable = true;
+        services.caddy-router = {
+          enable = true;
+          domain = "example.com";
+          email = "admin@example.com";
+        };
+        services.router-headscale = {
+          enable = true;
+          domain = "headscale.example.com";
+        };
+      }
+      ({ config, ... }: assertModule [
+        {
+          assertion =
+            builtins.elem 80 config.services.router-firewall.wanTcpPorts
+            && builtins.elem 443 config.services.router-firewall.wanTcpPorts;
+          message = "router-headscale should expose HTTP/HTTPS through router-firewall when Caddy is active.";
+        }
+      ])
+    ];
+
   router-netbird-with-firewall-eval = eval.mkNixosEvalCheck "router-netbird-with-firewall" [
     self.nixosModules.router-firewall
     self.nixosModules.router-netbird

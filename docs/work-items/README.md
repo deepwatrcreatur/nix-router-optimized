@@ -18,8 +18,7 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. `10-router-headscale-module.md`
-2. `11-module-authoring-guide.md`
+1. `11-module-authoring-guide.md`
 
 ## Why This Structure
 

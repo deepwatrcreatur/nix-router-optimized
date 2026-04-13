@@ -66,6 +66,7 @@
             self.nixosModules.router-homelab
             self.nixosModules.router-optimizations
             self.nixosModules.router-tailscale
+            self.nixosModules.router-headscale
             self.nixosModules.router-netbird
             self.nixosModules.router-zerotier
             self.nixosModules.router-openvpn
@@ -91,6 +92,7 @@
         router-dashboard = import ./modules/router-dashboard.nix;
         router-ntopng = import ./modules/router-ntopng.nix;
         router-tailscale = import ./modules/router-tailscale.nix;
+        router-headscale = import ./modules/router-headscale.nix;
         router-netbird = import ./modules/router-netbird.nix;
         router-zerotier = import ./modules/router-zerotier.nix;
         router-openvpn = import ./modules/router-openvpn.nix;
