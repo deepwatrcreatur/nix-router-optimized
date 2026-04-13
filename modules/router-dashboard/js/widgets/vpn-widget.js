@@ -53,7 +53,7 @@ class VpnWidget extends BaseWidget {
       this.hideLoading();
     } catch (error) {
       console.error('VPN widget error:', error);
-      this.showError('Unable to load VPN status');
+      this.renderErrorState('Unable to load VPN status');
     }
   }
 
@@ -100,7 +100,7 @@ class VpnWidget extends BaseWidget {
   }
 
   renderVpnRow(vpn) {
-    const status = vpn.status || 'down';
+    const status = this.normalizeStatus(vpn.status);
     const service = vpn.service || {};
     const iface = vpn.interface || {};
     const details = vpn.details || {};
@@ -143,14 +143,31 @@ class VpnWidget extends BaseWidget {
     return 'status-down';
   }
 
+  normalizeStatus(status) {
+    return [ 'up', 'warning', 'down' ].includes(status) ? status : 'down';
+  }
+
+  renderErrorState(message) {
+    const summaryEl = this.container?.querySelector(`#${this.id}-summary`);
+    if (summaryEl) {
+      summaryEl.textContent = 'Error';
+      summaryEl.className = 'status-badge status-down';
+    }
+
+    const list = this.container?.querySelector(`#${this.id}-list`);
+    if (list) {
+      list.innerHTML = `<div class="error-message">${this.escape(message)}</div>`;
+    }
+  }
+
   renderDetails(details) {
     if (!details || Object.keys(details).length === 0) return '--';
     if (details.available === false) return this.escape(details.message || 'unavailable');
 
     const parts = [];
-    if (details.peerCount !== undefined) parts.push(`${details.peerCount} peers`);
+    if (details.peerCount !== undefined) parts.push(`${this.escape(details.peerCount)} peers`);
     if (details.backendState) parts.push(this.escape(details.backendState));
-    if (details.latestHandshake) parts.push(`last handshake ${this.formatHandshake(details.latestHandshake)}`);
+    if (details.latestHandshake) parts.push(`last handshake ${this.escape(this.formatHandshake(details.latestHandshake))}`);
     return parts.length > 0 ? parts.join(' / ') : 'available';
   }
 

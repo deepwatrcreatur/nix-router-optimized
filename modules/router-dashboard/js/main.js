@@ -26,8 +26,8 @@ class Dashboard {
     await this.updateHeader();
 
     // Initialize widgets based on config
-    this.initTabs();
     this.initWidgets();
+    this.initTabs();
     this.setupLayouts();
     this.bindLayoutControls();
 
@@ -95,8 +95,7 @@ class Dashboard {
         role: iface.role,
         refreshInterval: 5000
       });
-      widget.render('#dashboard-grid-network');
-      this.widgets.push({ page: 'network', widget });
+      this.renderWidget('network', widget);
     });
 
     // Connections widget
@@ -239,7 +238,11 @@ class Dashboard {
     });
 
     if (options.persist !== false) {
-      localStorage.setItem(this.activePageStorageKey, pageId);
+      try {
+        localStorage.setItem(this.activePageStorageKey, pageId);
+      } catch (error) {
+        console.warn('Failed to persist active dashboard page:', error);
+      }
     }
 
     if (options.initializeLayout !== false) {
@@ -286,6 +289,10 @@ class Dashboard {
   applySavedLayout(container, pageId) {
     const savedLayout = this.loadLayout();
     const pageLayout = savedLayout[pageId] || [];
+    if (!pageLayout.length && pageId === 'overview') {
+      this.applyLegacySavedLayout(container);
+      return;
+    }
     if (!pageLayout.length) return;
 
     pageLayout.forEach(item => {
@@ -335,6 +342,7 @@ class Dashboard {
   resetLayout() {
     localStorage.removeItem(this.layoutStorageKey);
     localStorage.removeItem(this.legacyLayoutStorageKey);
+    localStorage.removeItem(this.activePageStorageKey);
     window.location.reload();
   }
 
