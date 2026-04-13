@@ -16,6 +16,7 @@ The repo now has router-aware wrappers for:
 - `router-wireguard`
 - `router-openvpn`
 - `router-tailscale`
+- `router-netbird`
 
 But there is no automated coverage proving they still evaluate cleanly in the
 common integration cases documented by the repo.
@@ -25,6 +26,7 @@ common integration cases documented by the repo.
 - add evaluation-oriented tests for `router-wireguard`
 - add evaluation-oriented tests for `router-openvpn`
 - add evaluation-oriented tests for `router-tailscale`
+- add evaluation-oriented tests for `router-netbird`
 
 ## Minimum Cases To Cover
 
@@ -48,6 +50,15 @@ common integration cases documented by the repo.
 - enabled without `router-firewall`
 - ensure the optional integration path stays composable instead of hard-failing
 
+### `router-netbird`
+
+- enabled with `router-firewall` present
+- enabled without `router-firewall`
+- enabled alongside `router-tailscale` (dual-overlay case, no port collision)
+- port collision assertion fires when both modules use the same port
+- `dnsResolverAddress` set — check the env var is threaded through correctly
+- `setupKeyFile` set — ensure the login block appears in the client config
+
 ## Non-Goals
 
 - real tunnel establishment
@@ -55,5 +66,6 @@ common integration cases documented by the repo.
 
 ## Validation
 
-- CI exercises the three wrapper modules in representative configurations
+- CI exercises all four wrapper modules in representative configurations
+- the dual-overlay (Tailscale + Netbird) case evaluates cleanly
 - silent-no-op cases become visible to maintainers

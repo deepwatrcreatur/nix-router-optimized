@@ -129,7 +129,7 @@ in
       };
     } // optionalAttrs (hasRouterOption [ "services" "router-firewall" "enable" ]) {
       router-firewall = mkIf firewallEnabled {
-        tailscaleInterface = mkIf cfg.trustedInterface cfg.interfaceName;
+        overlayInterfaces = mkIf cfg.trustedInterface [ cfg.interfaceName ];
         wanUdpPorts = mkIf cfg.openFirewall [ cfg.port ];
       };
     };
