@@ -11,52 +11,71 @@
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1 id="hostname">Router Dashboard</h1>
-      <div class="header-info">
-        <button class="header-btn" id="reset-layout-btn" type="button">Reset Layout</button>
-        <div class="header-stat">
-          <div class="header-stat-label">Uptime</div>
-          <div class="header-stat-value" id="uptime">--</div>
+  <div class="app-shell">
+    <aside class="dashboard-sidebar" aria-label="Dashboard navigation">
+      <div class="sidebar-brand">
+        <span class="brand-mark">NR</span>
+        <div>
+          <div class="brand-title">Router</div>
+          <div class="brand-subtitle">nix-router</div>
         </div>
-        <div class="header-stat">
-          <div class="header-stat-label">Kernel</div>
-          <div class="header-stat-value" id="kernel">--</div>
-        </div>
-        <div class="last-update" id="last-update">Loading...</div>
       </div>
-    </header>
+      <nav class="dashboard-tabs" aria-label="Dashboard pages">
+        <button class="dashboard-tab is-active" type="button" data-dashboard-tab="overview">Overview</button>
+        <button class="dashboard-tab" type="button" data-dashboard-tab="network">Network</button>
+        <button class="dashboard-tab" type="button" data-dashboard-tab="services">Services</button>
+        <button class="dashboard-tab" type="button" data-dashboard-tab="security">Security</button>
+        <button class="dashboard-tab" type="button" data-dashboard-tab="vpn">VPN</button>
+      </nav>
+      <div class="sidebar-footer">Powered by nix-router-optimized</div>
+    </aside>
 
-    <nav class="dashboard-tabs" aria-label="Dashboard pages">
-      <button class="dashboard-tab is-active" type="button" data-dashboard-tab="overview">Overview</button>
-      <button class="dashboard-tab" type="button" data-dashboard-tab="network">Network</button>
-      <button class="dashboard-tab" type="button" data-dashboard-tab="services">Services</button>
-      <button class="dashboard-tab" type="button" data-dashboard-tab="security">Security</button>
-      <button class="dashboard-tab" type="button" data-dashboard-tab="vpn">VPN</button>
-    </nav>
+    <main class="dashboard-main">
+      <div class="topbar">
+        <div class="topbar-search">Search widgets, interfaces, services... <span>Ctrl+K</span></div>
+        <div class="topbar-actions">
+          <button class="header-btn" id="reset-layout-btn" type="button">Reset Layout</button>
+          <div class="last-update" id="last-update">Loading...</div>
+        </div>
+      </div>
 
-    <div class="dashboard-pages">
-      <section class="dashboard-page is-active" id="dashboard-page-overview" data-dashboard-page="overview" aria-label="Overview dashboard">
-        <div class="dashboard-grid" id="dashboard-grid-overview"></div>
-      </section>
-      <section class="dashboard-page" id="dashboard-page-network" data-dashboard-page="network" aria-label="Network dashboard">
-        <div class="dashboard-grid" id="dashboard-grid-network"></div>
-      </section>
-      <section class="dashboard-page" id="dashboard-page-services" data-dashboard-page="services" aria-label="Services dashboard">
-        <div class="dashboard-grid" id="dashboard-grid-services"></div>
-      </section>
-      <section class="dashboard-page" id="dashboard-page-security" data-dashboard-page="security" aria-label="Security dashboard">
-        <div class="dashboard-grid" id="dashboard-grid-security"></div>
-      </section>
-      <section class="dashboard-page" id="dashboard-page-vpn" data-dashboard-page="vpn" aria-label="VPN dashboard">
-        <div class="dashboard-grid" id="dashboard-grid-vpn"></div>
-      </section>
-    </div>
+      <div class="container">
+        <header>
+          <div>
+            <h1 id="hostname">Router Dashboard</h1>
+            <div class="header-subtitle">NixOS edge status and operations</div>
+          </div>
+          <div class="header-info">
+            <div class="header-stat">
+              <div class="header-stat-label">Uptime</div>
+              <div class="header-stat-value" id="uptime">--</div>
+            </div>
+            <div class="header-stat">
+              <div class="header-stat-label">Kernel</div>
+              <div class="header-stat-value" id="kernel">--</div>
+            </div>
+          </div>
+        </header>
 
-    <footer style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 0.85rem;">
-      NixOS Router Dashboard &bull; Powered by <a href="https://github.com/deepwatrcreatur/nix-router-optimized" style="color: var(--accent-blue);">nix-router-optimized</a>
-    </footer>
+        <div class="dashboard-pages">
+          <section class="dashboard-page is-active" id="dashboard-page-overview" data-dashboard-page="overview" aria-label="Overview dashboard">
+            <div class="dashboard-grid" id="dashboard-grid-overview"></div>
+          </section>
+          <section class="dashboard-page" id="dashboard-page-network" data-dashboard-page="network" aria-label="Network dashboard">
+            <div class="dashboard-grid" id="dashboard-grid-network"></div>
+          </section>
+          <section class="dashboard-page" id="dashboard-page-services" data-dashboard-page="services" aria-label="Services dashboard">
+            <div class="dashboard-grid" id="dashboard-grid-services"></div>
+          </section>
+          <section class="dashboard-page" id="dashboard-page-security" data-dashboard-page="security" aria-label="Security dashboard">
+            <div class="dashboard-grid" id="dashboard-grid-security"></div>
+          </section>
+          <section class="dashboard-page" id="dashboard-page-vpn" data-dashboard-page="vpn" aria-label="VPN dashboard">
+            <div class="dashboard-grid" id="dashboard-grid-vpn"></div>
+          </section>
+        </div>
+      </div>
+    </main>
   </div>
 
   <!-- Widget Scripts -->
