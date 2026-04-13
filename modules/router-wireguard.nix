@@ -150,10 +150,12 @@ in
       }) cfg.peers;
     };
 
-    services.router-firewall = mkIf (hasRouterOption [ "services" "router-firewall" "enable" ]) {
-      extraTrustedInterfaces = mkIf cfg.trustedInterface [ cfg.interfaceName ];
-      wanUdpPorts = mkIf (cfg.openFirewall && cfg.listenPort != null) [ cfg.listenPort ];
-      extraForwardRules = mkIf (cfg.routeToWan && wanInterfaces != [ ]) routeToWanRule;
+    services = optionalAttrs (hasRouterOption [ "services" "router-firewall" "enable" ]) {
+      router-firewall = {
+        extraTrustedInterfaces = mkIf cfg.trustedInterface [ cfg.interfaceName ];
+        wanUdpPorts = mkIf (cfg.openFirewall && cfg.listenPort != null) [ cfg.listenPort ];
+        extraForwardRules = mkIf (cfg.routeToWan && wanInterfaces != [ ]) routeToWanRule;
+      };
     };
   };
 }

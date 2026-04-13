@@ -1,11 +1,18 @@
 # Router web dashboard with real-time traffic monitoring
 # Enhanced version with Chart.js graphs and modular widgets
-{ config, pkgs, lib, ... }:
+{
+  config,
+  lib,
+  options,
+  pkgs,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.router-dashboard;
+  hasRouterOption = path: hasAttrByPath path options;
   optimizationInterfaces = config.services.router-optimizations.interfaces or { };
 
   normalizeRole = role:
@@ -212,100 +219,106 @@ in {
     };
   };
 
-  config = mkIf cfg.enable {
-    users.users.router-dashboard = {
-      isSystemUser = true;
-      group = "router-dashboard";
-      description = "Router dashboard service user";
-      extraGroups = [ "systemd-journal" ];
-    };
-
-    users.groups.router-dashboard = { };
-
-    # Router dashboard service
-    systemd.services.router-dashboard = {
-      description = "Enhanced Router Dashboard HTTP Server";
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
-
-      environment = {
-        DASHBOARD_PORT = toString cfg.port;
-        DASHBOARD_BIND = cfg.bind-address;
-        DASHBOARD_STATIC = "${dashboardStatic}";
-        DASHBOARD_THEME = cfg.theme;
-        DASHBOARD_INTERFACES = builtins.toJSON (map (iface: {
-          device = iface.device;
-          label = iface.label;
-          role = iface.role;
-        }) effectiveInterfaces);
-        DASHBOARD_SERVICES = builtins.toJSON cfg.services;
-        DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
-        TECHNITIUM_URL = "http://localhost:5380";
-        TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
-          then config.age.secrets.technitium-api-key.path
-          else "";
+  config = mkMerge [
+    (mkIf cfg.enable {
+      users.users.router-dashboard = {
+        isSystemUser = true;
+        group = "router-dashboard";
+        description = "Router dashboard service user";
+        extraGroups = [ "systemd-journal" ];
       };
 
-      serviceConfig = {
-        Type = "simple";
-        ExecStart = "${pkgs.python3}/bin/python3 ${apiServer}";
-        Restart = "always";
-        RestartSec = "5s";
+      users.groups.router-dashboard = { };
 
-        User = "router-dashboard";
-        Group = "router-dashboard";
+      # Router dashboard service
+      systemd.services.router-dashboard = {
+        description = "Enhanced Router Dashboard HTTP Server";
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        wantedBy = [ "multi-user.target" ];
 
-        # Security hardening
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        PrivateTmp = true;
-        ProtectKernelTunables = true;
-        ProtectControlGroups = true;
-        # PrivateUsers omitted: conflicts with AmbientCapabilities on non-root users.
-        # The dedicated service user + CapabilityBoundingSet already provide isolation.
+        environment = {
+          DASHBOARD_PORT = toString cfg.port;
+          DASHBOARD_BIND = cfg.bind-address;
+          DASHBOARD_STATIC = "${dashboardStatic}";
+          DASHBOARD_THEME = cfg.theme;
+          DASHBOARD_INTERFACES = builtins.toJSON (map (iface: {
+            device = iface.device;
+            label = iface.label;
+            role = iface.role;
+          }) effectiveInterfaces);
+          DASHBOARD_SERVICES = builtins.toJSON cfg.services;
+          DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
+          TECHNITIUM_URL = "http://localhost:5380";
+          TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
+            then config.age.secrets.technitium-api-key.path
+            else "";
+        };
 
-        # Network capabilities: CAP_NET_ADMIN for interface stats, CAP_NET_RAW for ping.
-        # CAP_SETUID/CAP_SETGID are needed for the narrowly-scoped sudo path used
-        # to query fail2ban-client status.
-        AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" "CAP_SETUID" "CAP_SETGID" ];
-        CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" "CAP_SETUID" "CAP_SETGID" ];
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = "${pkgs.python3}/bin/python3 ${apiServer}";
+          Restart = "always";
+          RestartSec = "5s";
 
-        # Read-only paths we need access to
-        ReadOnlyPaths = [
-          "/proc"
-          "/sys/class/net"
-          "/var/log/journal"
-          "/run/agenix"
+          User = "router-dashboard";
+          Group = "router-dashboard";
+
+          # Security hardening
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          ProtectKernelTunables = true;
+          ProtectControlGroups = true;
+          # PrivateUsers omitted: conflicts with AmbientCapabilities on non-root users.
+          # The dedicated service user + CapabilityBoundingSet already provide isolation.
+
+          # Network capabilities: CAP_NET_ADMIN for interface stats, CAP_NET_RAW for ping.
+          # CAP_SETUID/CAP_SETGID are needed for the narrowly-scoped sudo path used
+          # to query fail2ban-client status.
+          AmbientCapabilities = [ "CAP_NET_ADMIN" "CAP_NET_RAW" "CAP_SETUID" "CAP_SETGID" ];
+          CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" "CAP_SETUID" "CAP_SETGID" ];
+
+          # Read-only paths we need access to
+          ReadOnlyPaths = [
+            "/proc"
+            "/sys/class/net"
+            "/var/log/journal"
+            "/run/agenix"
+          ];
+        };
+
+        path = with pkgs; [
+          iproute2
+          procps
+          conntrack-tools
+          nftables
+          coreutils
+          systemd
+          iputils # for ping
+          fail2ban
+          speedtest-cli # for speed tests
+          "/run/wrappers" # for sudo wrapper
         ];
       };
 
-      path = with pkgs; [
-        iproute2
-        procps
-        conntrack-tools
-        nftables
-        coreutils
-        systemd
-        iputils  # for ping
-        fail2ban
-        speedtest-cli  # for speed tests
-        "/run/wrappers"  # for sudo wrapper
-      ];
-    };
+      # Allow the dashboard service user to run fail2ban-client status (read-only) without password
+      security.sudo.extraConfig = ''
+        router-dashboard ALL=(ALL) NOPASSWD: ${pkgs.fail2ban}/bin/fail2ban-client status
+        router-dashboard ALL=(ALL) NOPASSWD: ${pkgs.fail2ban}/bin/fail2ban-client status *
+      '';
 
-    # Allow the dashboard service user to run fail2ban-client status (read-only) without password
-    security.sudo.extraConfig = ''
-      router-dashboard ALL=(ALL) NOPASSWD: ${pkgs.fail2ban}/bin/fail2ban-client status
-      router-dashboard ALL=(ALL) NOPASSWD: ${pkgs.fail2ban}/bin/fail2ban-client status *
-    '';
-
-    # Allow dashboard port in NixOS firewall when it is active.
-    # NOTE: when router-firewall is enabled instead, add the dashboard port via:
-    #   services.router-firewall.trustedTcpPorts = [ cfg.port ];
-    networking.firewall.allowedTCPPorts = mkIf config.networking.firewall.enable [ cfg.port ];
+      # Allow dashboard port in NixOS firewall when it is active.
+      # NOTE: when router-firewall is enabled instead, add the dashboard port via:
+      #   services.router-firewall.trustedTcpPorts = [ cfg.port ];
+      networking.firewall.allowedTCPPorts = mkIf config.networking.firewall.enable [ cfg.port ];
+    })
 
     # Auto-open dashboard port in router-firewall when both are enabled
-    services.router-firewall.trustedTcpPorts = mkIf (config.services.router-firewall.enable or false) [ cfg.port ];
-  };
+    (optionalAttrs (hasRouterOption [ "services" "router-firewall" "enable" ]) (
+      mkIf (cfg.enable && (config.services.router-firewall.enable or false)) {
+        services.router-firewall.trustedTcpPorts = [ cfg.port ];
+      }
+    ))
+  ];
 }

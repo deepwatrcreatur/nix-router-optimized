@@ -122,15 +122,17 @@ in
   };
 
   config = mkIf (cfg.instances != { }) {
-    services.openvpn.servers = mapAttrs (_name: instance: {
-      inherit (instance) config up down autoStart updateResolvConf authUserPass;
-    }) cfg.instances;
-
-    services.router-firewall = mkIf (hasRouterOption [ "services" "router-firewall" "enable" ]) {
-      extraTrustedInterfaces = trustedInterfaces;
-      wanUdpPorts = wanUdpPorts;
-      wanTcpPorts = wanTcpPorts;
-      extraForwardRules = mkIf (extraForwardRules != "") extraForwardRules;
+    services = {
+      openvpn.servers = mapAttrs (_name: instance: {
+        inherit (instance) config up down autoStart updateResolvConf authUserPass;
+      }) cfg.instances;
+    } // optionalAttrs (hasRouterOption [ "services" "router-firewall" "enable" ]) {
+      router-firewall = {
+        extraTrustedInterfaces = trustedInterfaces;
+        wanUdpPorts = wanUdpPorts;
+        wanTcpPorts = wanTcpPorts;
+        extraForwardRules = mkIf (extraForwardRules != "") extraForwardRules;
+      };
     };
   };
 }

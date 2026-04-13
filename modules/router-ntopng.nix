@@ -150,8 +150,10 @@ in
       };
     }
 
-    (mkIf (cfg.openFirewall && hasRouterOption [ "services" "router-firewall" "trustedTcpPorts" ]) {
-      services.router-firewall.trustedTcpPorts = [ cfg.port ];
-    })
+    (optionalAttrs (hasRouterOption [ "services" "router-firewall" "trustedTcpPorts" ]) (
+      mkIf cfg.openFirewall {
+        services.router-firewall.trustedTcpPorts = [ cfg.port ];
+      }
+    ))
   ]);
 }
