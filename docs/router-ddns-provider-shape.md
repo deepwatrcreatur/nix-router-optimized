@@ -41,6 +41,8 @@ The required inputs are:
 
 - `cloudflare.zoneName`: public Cloudflare DNS zone name
 - `cloudflare.apiTokenFile`: runtime file containing a raw Cloudflare API token
+  string, without quotes; the module writes the quoted inadyn include value at
+  service start
 - at least one value in `cloudflare.labels` or `cloudflare.hostnames`
 
 The record inputs are:
@@ -48,7 +50,8 @@ The record inputs are:
 - `cloudflare.labels`: labels under `zoneName`; `@` expands to the apex
 - `cloudflare.hostnames`: fully qualified hostnames for cases that should not
   derive from `zoneName`
-- `cloudflare.ttl`: Cloudflare record TTL, defaulting to `3600`
+- `cloudflare.ttl`: Cloudflare record TTL, defaulting to `3600`; use `1` for
+  Cloudflare Automatic TTL
 - `cloudflare.proxied`: whether Cloudflare should proxy the records, defaulting
   to `false`
 
