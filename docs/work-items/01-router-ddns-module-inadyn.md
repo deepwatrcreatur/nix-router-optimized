@@ -1,6 +1,6 @@
 # 01 Router DDNS Module Inadyn
 
-Status: `in-progress`
+Status: `done`
 
 Suggested branch: `feat/router-ddns-inadyn`
 
@@ -37,3 +37,7 @@ Caddy configuration rather than as a reusable flake module.
 - service wiring is explicit and understandable to downstream consumers
 - the proposed module clearly accounts for the existing Cloudflare/Caddy-based
   DDNS behavior so migration/extraction is plausible
+
+## Outcome
+
+Implemented in PR #11.

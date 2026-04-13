@@ -18,14 +18,13 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. `01-router-ddns-module-inadyn.md`
-2. `02-router-ddns-provider-shape.md`
-3. `03-router-ddns-tests-and-docs.md`
-4. `04-private-config-pattern-study.md`
-5. `05-flake-checks-foundation.md`
-6. `06-vpn-module-smoke-tests.md`
-7. `07-interface-and-firewall-invariants.md`
-8. `08-example-and-doc-eval-coverage.md`
+1. `02-router-ddns-provider-shape.md`
+2. `03-router-ddns-tests-and-docs.md`
+3. `04-private-config-pattern-study.md`
+4. `05-flake-checks-foundation.md`
+5. `06-vpn-module-smoke-tests.md`
+6. `07-interface-and-firewall-invariants.md`
+7. `08-example-and-doc-eval-coverage.md`
 
 ## Why This Structure
 

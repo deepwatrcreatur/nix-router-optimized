@@ -1,6 +1,6 @@
 # 02 Router DDNS Provider Shape
 
-Status: `ready`
+Status: `in-progress`
 
 Suggested branch: `design/router-ddns-provider-shape`
 
