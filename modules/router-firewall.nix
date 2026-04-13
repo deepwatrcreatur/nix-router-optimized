@@ -23,6 +23,7 @@ let
 
   trustedInterfaces = unique (cfg.extraTrustedInterfaces ++ lanInterfaces ++ managementInterfaces);
   allRouterInterfaces = unique (wanInterfaces ++ trustedInterfaces);
+  allOverlayInterfaces = unique (cfg.overlayInterfaces ++ optional (cfg.tailscaleInterface != null) cfg.tailscaleInterface);
   effectiveHairpinCidrs =
     if cfg.hairpinNat.ipv4Cidrs != [ ] then
       cfg.hairpinNat.ipv4Cidrs
@@ -78,10 +79,33 @@ in
       description = "Additional trusted router-facing interfaces.";
     };
 
+    overlayInterfaces = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "tailscale0" "nb-router" "ztXXXXXXXX" ];
+      description = ''
+        Mesh VPN overlay interfaces (Tailscale, Netbird, ZeroTier, etc.) that
+        receive router-aware input and forwarding rules.
+
+        Each interface listed here gets:
+        - unrestricted input to the router
+        - forwarding from the overlay to all router interfaces
+        - forwarding from trusted interfaces back to the overlay
+
+        Use the per-module options (services.router-tailscale,
+        services.router-netbird, …) to populate this list automatically.
+      '';
+    };
+
     tailscaleInterface = mkOption {
       type = types.nullOr types.str;
       default = null;
-      description = "Optional Tailscale interface to trust and route through.";
+      description = ''
+        Deprecated: use overlayInterfaces instead.
+
+        When set, appended to overlayInterfaces automatically so existing
+        configurations continue to work without changes.
+      '';
     };
 
     allowSsh = mkOption {
@@ -433,9 +457,9 @@ in
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_LOCAL"}
           ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_LOCAL"}
 
-          ${optionalString (cfg.tailscaleInterface != null) ''
-            iifname "${cfg.tailscaleInterface}" accept
-          ''}
+          ${concatMapStrings (iface: ''
+            iifname "${iface}" accept
+          '') allOverlayInterfaces}
 
           ${cfg.extraInputRules}
 
@@ -459,10 +483,14 @@ in
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_IN"}
           ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_IN"}
 
-          ${optionalString (cfg.tailscaleInterface != null && allRouterInterfaces != [ ]) ''
-            iifname "${cfg.tailscaleInterface}" oifname ${maybeSet allRouterInterfaces} accept
-            iifname ${maybeSet trustedInterfaces} oifname "${cfg.tailscaleInterface}" accept
-          ''}
+          ${optionalString (allOverlayInterfaces != [ ] && allRouterInterfaces != [ ]) (
+            concatMapStrings (iface: ''
+              iifname "${iface}" oifname ${maybeSet allRouterInterfaces} accept
+              ${optionalString (trustedInterfaces != [ ]) ''
+                iifname ${maybeSet trustedInterfaces} oifname "${iface}" accept
+              ''}
+            '') allOverlayInterfaces
+          )}
 
           ${cfg.extraForwardRules}
 
