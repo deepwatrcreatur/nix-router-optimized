@@ -39,7 +39,9 @@ Headscale is already in nixpkgs as `services.headscale`.
 **Relationship to router-tailscale**: The Tailscale client configured by
 `router-tailscale` needs to point at the Headscale server URL instead of
 `login.tailscale.com`. The module should expose a `controlServerUrl` option and
-forward it to `services.tailscale` via `extraDaemonFlags` or environment.
+feed it into the client join path with `tailscale up --login-server` (for
+example by appending to `router-tailscale.extraUpFlags` when that module is
+enabled), not via `extraDaemonFlags` or environment.
 
 **HTTPS**: Headscale requires HTTPS. The module should integrate with
 `caddy-reverse-proxy` if enabled, or document the manual certificate approach.

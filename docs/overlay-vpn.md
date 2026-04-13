@@ -37,7 +37,7 @@ services.router-firewall.overlayInterfaces = [ "tailscale0" "nb-router" ];
 
 This generates the following nftables rules for each overlay interface:
 
-```
+```text
 # input chain
 iifname "tailscale0" accept
 iifname "nb-router"  accept
@@ -124,7 +124,7 @@ fire if they collide.
 Each overlay manages a different DNS domain. Configure your LAN resolver to
 forward each domain to its respective resolver:
 
-```
+```text
 # Technitium example (conditional forwarders)
 ts.net           → 100.100.100.100   (Tailscale MagicDNS)
 netbird.cloud    → 127.0.0.2:53      (Netbird, with dnsResolverAddress set)
@@ -132,7 +132,7 @@ netbird.cloud    → 127.0.0.2:53      (Netbird, with dnsResolverAddress set)
 
 Unbound equivalent:
 
-```
+```yaml
 forward-zone:
   name: "ts.net."
   forward-addr: 100.100.100.100

@@ -163,10 +163,10 @@ in
         useRoutingFeatures = mkDefault cfg.useRoutingFeatures;
 
         clients.${cfg.clientName} = {
-          port = cfg.port;
-          interface = cfg.interfaceName;
-          logLevel = cfg.logLevel;
-          hardened = cfg.hardened;
+          port = mkDefault cfg.port;
+          interface = mkDefault cfg.interfaceName;
+          logLevel = mkDefault cfg.logLevel;
+          hardened = mkDefault cfg.hardened;
           openFirewall = mkDefault (!firewallEnabled && cfg.openFirewall);
 
           dns-resolver = mkIf (cfg.dnsResolverAddress != null) {

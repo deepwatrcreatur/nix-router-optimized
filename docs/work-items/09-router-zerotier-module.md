@@ -32,9 +32,9 @@ or the open-source `ztncui` / `ZeroTierOne` controller.
 
 **Interface naming**: ZeroTier interface names include the network ID
 (`zt<networkId>`), which is only known at runtime. The module should accept an
-`interfaceName` option (defaulting to something like `zt+` glob or requiring
-explicit naming). The router-firewall `overlayInterfaces` takes string names,
-so the user needs to provide the interface name explicitly.
+`interfaceName` option with no glob-style default. When `trustedInterface =
+true`, require `interfaceName` with a clear assertion because the
+router-firewall `overlayInterfaces` option takes exact interface names.
 
 **Port**: ZeroTier listens on UDP 9993 by default.
 

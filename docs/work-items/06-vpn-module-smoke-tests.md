@@ -55,6 +55,8 @@ common integration cases documented by the repo.
 - enabled with `router-firewall` present
 - enabled without `router-firewall`
 - enabled alongside `router-tailscale` (dual-overlay case, no port collision)
+  and assert the merged `services.router-firewall.overlayInterfaces` contains
+  both overlay interface names
 - port collision assertion fires when both modules use the same port
 - `dnsResolverAddress` set — check the env var is threaded through correctly
 - `setupKeyFile` set — ensure the login block appears in the client config
@@ -68,4 +70,6 @@ common integration cases documented by the repo.
 
 - CI exercises all four wrapper modules in representative configurations
 - the dual-overlay (Tailscale + Netbird) case evaluates cleanly
+- the dual-overlay case proves both wrappers registered their overlay
+  interfaces with `router-firewall`
 - silent-no-op cases become visible to maintainers
