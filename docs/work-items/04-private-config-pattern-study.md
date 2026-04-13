@@ -1,6 +1,6 @@
 # 04 Private Config Pattern Study
 
-Status: `in-progress`
+Status: `done`
 
 Suggested branch: `docs/router-private-config-pattern-study`
 

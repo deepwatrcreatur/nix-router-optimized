@@ -18,11 +18,10 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. `04-private-config-pattern-study.md`
-2. `05-flake-checks-foundation.md`
-3. `06-vpn-module-smoke-tests.md`
-4. `07-interface-and-firewall-invariants.md`
-5. `08-example-and-doc-eval-coverage.md`
+1. `05-flake-checks-foundation.md`
+2. `06-vpn-module-smoke-tests.md`
+3. `07-interface-and-firewall-invariants.md`
+4. `08-example-and-doc-eval-coverage.md`
 
 ## Why This Structure
 
