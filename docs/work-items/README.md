@@ -18,8 +18,7 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. [`14-dashboard-vpn-status-api.md`](./14-dashboard-vpn-status-api.md)
-2. [`15-dashboard-vpn-tab-widget.md`](./15-dashboard-vpn-tab-widget.md)
+1. [`15-dashboard-vpn-tab-widget.md`](./15-dashboard-vpn-tab-widget.md)
 
 ## Why This Structure
 

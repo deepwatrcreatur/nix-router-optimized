@@ -30,6 +30,10 @@ try:
 except json.JSONDecodeError:
     DASHBOARD_SERVICES = []
 try:
+    DASHBOARD_VPNS = json.loads(os.environ.get('DASHBOARD_VPNS', '[]'))
+except json.JSONDecodeError:
+    DASHBOARD_VPNS = []
+try:
     DASHBOARD_INTERFACES = json.loads(os.environ.get('DASHBOARD_INTERFACES', '[]'))
 except json.JSONDecodeError:
     DASHBOARD_INTERFACES = []
@@ -110,6 +114,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_connections_top(query)
         elif path == '/api/services/status':
             self.handle_services_status()
+        elif path == '/api/vpn/status':
+            self.handle_vpn_status()
         elif path == '/api/caddy/status':
             self.handle_caddy_status()
         elif path == '/api/service/logs':
@@ -379,6 +385,161 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             results.append(self.get_service_status(systemctl, service))
 
         self.send_json({'services': results})
+
+    def handle_vpn_status(self):
+        """Declarative VPN status from router module metadata"""
+        systemctl = self.find_systemctl()
+        vpns = []
+
+        for entry in DASHBOARD_VPNS:
+            vpns.append(self.get_vpn_entry_status(systemctl, entry))
+
+        active_count = len([vpn for vpn in vpns if vpn.get('status') == 'up'])
+        warning_count = len([vpn for vpn in vpns if vpn.get('status') == 'warning'])
+        down_count = len([vpn for vpn in vpns if vpn.get('status') == 'down'])
+
+        self.send_json({
+            'configured': len(vpns),
+            'active': active_count,
+            'warning': warning_count,
+            'down': down_count,
+            'vpns': vpns
+        })
+
+    def get_vpn_entry_status(self, systemctl, entry):
+        """Build one VPN runtime status row from declarative metadata"""
+        kind = entry.get('kind', 'unknown')
+        name = entry.get('name') or kind
+        unit = entry.get('unit') or ''
+        interface = entry.get('interface')
+
+        service = self.get_service_status(systemctl, unit) if systemctl and unit else {
+            'name': unit,
+            'unit': unit,
+            'status': 'unknown',
+            'active': False
+        }
+        interface_status = self.get_interface_status(interface) if interface else None
+        details = self.get_vpn_details(kind, interface)
+
+        service_active = service.get('active', False)
+        interface_up = interface_status is None or interface_status.get('state') == 'UP'
+        status = 'up' if service_active and interface_up else 'down'
+        if service_active and not interface_up:
+            status = 'warning'
+
+        return {
+            'kind': kind,
+            'name': name,
+            'unit': service.get('unit') or unit,
+            'service': service,
+            'interface': interface_status,
+            'status': status,
+            'details': details
+        }
+
+    def get_interface_status(self, interface):
+        """Return a small interface status object without failing missing devices"""
+        if not interface:
+            return None
+
+        iface_path = Path('/sys/class/net') / interface
+        if not iface_path.exists():
+            return {
+                'name': interface,
+                'state': 'missing',
+                'ipv4': '',
+                'ipv6': []
+            }
+
+        return {
+            'name': interface,
+            'state': (self.read_file(iface_path / 'operstate').strip() or 'unknown').upper(),
+            'ipv4': self.get_ipv4(interface),
+            'ipv6': self.get_ipv6(interface)
+        }
+
+    def get_vpn_details(self, kind, interface):
+        """Return best-effort VPN-specific counters"""
+        if kind == 'wireguard' and interface:
+            return self.get_wireguard_details(interface)
+        if kind == 'tailscale':
+            return self.get_tailscale_details()
+        return {}
+
+    def get_wireguard_details(self, interface):
+        """Use wg dump for peer count and latest handshake when available"""
+        wg = self.find_executable(['/run/current-system/sw/bin/wg', '/usr/bin/wg', 'wg'], ['--version'])
+        if not wg:
+            return {'available': False, 'message': 'wg command unavailable'}
+
+        try:
+            result = subprocess.run(
+                [wg, 'show', interface, 'dump'],
+                capture_output=True, text=True, timeout=3
+            )
+        except Exception as exc:
+            return {'available': False, 'message': str(exc)}
+
+        if result.returncode != 0:
+            return {
+                'available': False,
+                'message': (result.stderr or result.stdout).strip() or 'wg dump failed'
+            }
+
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        peer_lines = lines[1:] if lines else []
+        handshakes = []
+        for line in peer_lines:
+            fields = line.split('\t')
+            if len(fields) > 5:
+                try:
+                    timestamp = int(fields[5])
+                    if timestamp > 0:
+                        handshakes.append(timestamp)
+                except ValueError:
+                    pass
+
+        return {
+            'available': True,
+            'peerCount': len(peer_lines),
+            'latestHandshake': max(handshakes) if handshakes else None
+        }
+
+    def get_tailscale_details(self):
+        """Use tailscale status json when available"""
+        tailscale = self.find_executable(
+            ['/run/current-system/sw/bin/tailscale', '/usr/bin/tailscale', 'tailscale'],
+            ['version']
+        )
+        if not tailscale:
+            return {'available': False, 'message': 'tailscale command unavailable'}
+
+        try:
+            result = subprocess.run(
+                [tailscale, 'status', '--json'],
+                capture_output=True, text=True, timeout=4
+            )
+        except Exception as exc:
+            return {'available': False, 'message': str(exc)}
+
+        if result.returncode != 0:
+            return {
+                'available': False,
+                'message': (result.stderr or result.stdout).strip() or 'tailscale status failed'
+            }
+
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return {'available': False, 'message': 'tailscale returned invalid JSON'}
+
+        peers = data.get('Peer') or {}
+        return {
+            'available': True,
+            'backendState': data.get('BackendState', 'unknown'),
+            'peerCount': len(peers)
+        }
 
     def handle_caddy_status(self):
         """Detailed Caddy diagnostics"""
