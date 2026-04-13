@@ -151,6 +151,9 @@ This is intentionally narrower than general DNS ownership. Local resolver and
 DHCP-driven host registration remain the responsibility of `router-dns-service`
 and provider modules such as `router-technitium`.
 
+See [`docs/router-ddns-provider-shape.md`](./docs/router-ddns-provider-shape.md)
+for the Cloudflare provider option shape and inventory boundary.
+
 ### router-dns-service
 Provider-aware local resolver layer:
 - chooses between `technitium`, `unbound`, and `dnsmasq`

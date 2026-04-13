@@ -1,6 +1,6 @@
 # 02 Router DDNS Provider Shape
 
-Status: `ready`
+Status: `done`
 
 Suggested branch: `design/router-ddns-provider-shape`
 
@@ -28,3 +28,7 @@ This should begin from the current real Cloudflare usage in
 - docs make clear that this is public DNS only, not local/internal DNS
 - the shape is recognizably mappable from the current main-config Cloudflare
   setup
+
+## Outcome
+
+Documented in PR #12.
