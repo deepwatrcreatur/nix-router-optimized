@@ -28,8 +28,34 @@
       </div>
     </header>
 
-    <div class="dashboard-grid" id="dashboard-grid">
-      <!-- Widgets will be dynamically inserted here -->
+    <nav class="dashboard-tabs" aria-label="Dashboard pages">
+      <button class="dashboard-tab is-active" type="button" data-dashboard-tab="overview">Overview</button>
+      <button class="dashboard-tab" type="button" data-dashboard-tab="network">Network</button>
+      <button class="dashboard-tab" type="button" data-dashboard-tab="services">Services</button>
+      <button class="dashboard-tab" type="button" data-dashboard-tab="security">Security</button>
+      <button class="dashboard-tab" type="button" data-dashboard-tab="vpn">VPN</button>
+    </nav>
+
+    <div class="dashboard-pages">
+      <section class="dashboard-page is-active" id="dashboard-page-overview" data-dashboard-page="overview" aria-label="Overview dashboard">
+        <div class="dashboard-grid" id="dashboard-grid-overview"></div>
+      </section>
+      <section class="dashboard-page" id="dashboard-page-network" data-dashboard-page="network" aria-label="Network dashboard">
+        <div class="dashboard-grid" id="dashboard-grid-network"></div>
+      </section>
+      <section class="dashboard-page" id="dashboard-page-services" data-dashboard-page="services" aria-label="Services dashboard">
+        <div class="dashboard-grid" id="dashboard-grid-services"></div>
+      </section>
+      <section class="dashboard-page" id="dashboard-page-security" data-dashboard-page="security" aria-label="Security dashboard">
+        <div class="dashboard-grid" id="dashboard-grid-security"></div>
+      </section>
+      <section class="dashboard-page" id="dashboard-page-vpn" data-dashboard-page="vpn" aria-label="VPN dashboard">
+        <div class="dashboard-empty-state">
+          <h2>VPN status is queued next</h2>
+          <p>This page is reserved for WireGuard, OpenVPN, Tailscale, Headscale, NetBird, and ZeroTier status widgets.</p>
+        </div>
+        <div class="dashboard-grid" id="dashboard-grid-vpn"></div>
+      </section>
     </div>
 
     <footer style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 0.85rem;">
