@@ -115,21 +115,23 @@ in
   };
 
   config = mkIf cfg.enable {
-    services.tailscale = {
-      enable = mkDefault true;
-      interfaceName = mkDefault cfg.interfaceName;
-      port = mkDefault cfg.port;
-      authKeyFile = mkDefault cfg.authKeyFile;
-      useRoutingFeatures = mkDefault routingMode;
-      extraUpFlags = mkDefault upFlags;
-      extraSetFlags = mkDefault cfg.extraSetFlags;
-      extraDaemonFlags = mkDefault cfg.extraDaemonFlags;
-      openFirewall = mkDefault (!firewallEnabled && cfg.openFirewall);
-    };
-
-    services.router-firewall = mkIf firewallEnabled {
-      tailscaleInterface = mkIf cfg.trustedInterface cfg.interfaceName;
-      wanUdpPorts = mkIf cfg.openFirewall [ cfg.port ];
+    services = {
+      tailscale = {
+        enable = mkDefault true;
+        interfaceName = mkDefault cfg.interfaceName;
+        port = mkDefault cfg.port;
+        authKeyFile = mkDefault cfg.authKeyFile;
+        useRoutingFeatures = mkDefault routingMode;
+        extraUpFlags = mkDefault upFlags;
+        extraSetFlags = mkDefault cfg.extraSetFlags;
+        extraDaemonFlags = mkDefault cfg.extraDaemonFlags;
+        openFirewall = mkDefault (!firewallEnabled && cfg.openFirewall);
+      };
+    } // optionalAttrs (hasRouterOption [ "services" "router-firewall" "enable" ]) {
+      router-firewall = mkIf firewallEnabled {
+        tailscaleInterface = mkIf cfg.trustedInterface cfg.interfaceName;
+        wanUdpPorts = mkIf cfg.openFirewall [ cfg.port ];
+      };
     };
   };
 }

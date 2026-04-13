@@ -40,6 +40,15 @@
         }
       );
 
+      checks = forAllSystems (
+        system:
+        import ./tests {
+          inherit self nixpkgs system;
+          lib = nixpkgs.lib;
+          pkgs = nixpkgsFor.${system};
+        }
+      );
+
       overlays.default = final: prev: {
         ulogd = ulogdWithJson prev;
       };
@@ -55,20 +64,13 @@
             self.nixosModules.router-log-storage
             self.nixosModules.router-pppoe
             self.nixosModules.router-homelab
-            self.nixosModules.router-technitium
             self.nixosModules.router-optimizations
-            self.nixosModules.router-dashboard
-            self.nixosModules.router-ntopng
             self.nixosModules.router-tailscale
             self.nixosModules.router-openvpn
             self.nixosModules.router-wireguard
             self.nixosModules.nftables-fasttrack
             # Opt-in extras: all use mkEnableOption so they are safe to include
             self.nixosModules.caddy-reverse-proxy
-            self.nixosModules.dns
-            self.nixosModules.dns-zone
-            self.nixosModules.dns-blocklists
-            self.nixosModules.monitoring
             self.nixosModules.router-observability
             self.nixosModules.router-vpn
           ];

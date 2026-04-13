@@ -1,10 +1,21 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  options,
+  pkgs,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.router-homelab;
-  routedIfaces = config.services.router-networking.routedInterfaces or { };
+  hasRouterOption = path: hasAttrByPath path options;
+  routedIfaces =
+    if hasRouterOption [ "services" "router-networking" "routedInterfaces" ] then
+      config.services.router-networking.routedInterfaces or { }
+    else
+      { };
   waitForListenAddressScript = pkgs.writeShellScript "wait-for-router-homelab-address" ''
     set -eu
 
@@ -167,54 +178,60 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    services.router-dashboard.enable = mkDefault true;
-    services.router-dashboard.port = mkDefault 8888;
-    services.router-dashboard.services = mkDefault dashboardServices;
-    services.router-dashboard.links = mkAfter dashboardLinks;
+  config = mkMerge [
+    (mkIf cfg.enable {
+      services.router-dashboard.enable = mkDefault true;
+      services.router-dashboard.port = mkDefault 8888;
+      services.router-dashboard.services = mkDefault dashboardServices;
+      services.router-dashboard.links = mkAfter dashboardLinks;
 
-    router.monitoring = mkIf cfg.enableMonitoring {
-      enable = mkDefault true;
-      listenAddress = mkDefault defaultListenAddress;
-      waitForListenAddress = mkDefault cfg.waitForListenAddress;
-      waitForListenAddressTimeout = mkDefault cfg.waitForListenAddressTimeout;
-      prometheusPort = mkDefault cfg.prometheusPort;
-      grafanaPort = mkDefault cfg.grafanaPort;
-    };
+      router.monitoring = mkIf cfg.enableMonitoring {
+        enable = mkDefault true;
+        listenAddress = mkDefault defaultListenAddress;
+        waitForListenAddress = mkDefault cfg.waitForListenAddress;
+        waitForListenAddressTimeout = mkDefault cfg.waitForListenAddressTimeout;
+        prometheusPort = mkDefault cfg.prometheusPort;
+        grafanaPort = mkDefault cfg.grafanaPort;
+      };
 
-    services.netdata = mkIf cfg.enableNetdata {
-      enable = mkDefault true;
-      package = mkDefault pkgs.netdataCloud;
-      config = mkDefault {
-        global = {
-          "default port" = "19999";
-          "bind to" = defaultListenAddress;
-        };
-        web = {
-          "allow connections from" = cfg.netdataAllowConnectionsFrom;
-          "allow dashboard from" = cfg.netdataAllowConnectionsFrom;
+      services.netdata = mkIf cfg.enableNetdata {
+        enable = mkDefault true;
+        package = mkDefault pkgs.netdataCloud;
+        config = mkDefault {
+          global = {
+            "default port" = "19999";
+            "bind to" = defaultListenAddress;
+          };
+          web = {
+            "allow connections from" = cfg.netdataAllowConnectionsFrom;
+            "allow dashboard from" = cfg.netdataAllowConnectionsFrom;
+          };
         };
       };
-    };
 
-    systemd.services.netdata = mkIf (cfg.enableNetdata && cfg.waitForListenAddress && defaultListenAddress != "0.0.0.0") {
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
-      preStart = mkBefore ''
-        ${waitForListenAddressScript} ${escapeShellArg defaultListenAddress}
-      '';
-    };
+      systemd.services.netdata = mkIf (cfg.enableNetdata && cfg.waitForListenAddress && defaultListenAddress != "0.0.0.0") {
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        preStart = mkBefore ''
+          ${waitForListenAddressScript} ${escapeShellArg defaultListenAddress}
+        '';
+      };
 
-    services.router-ntopng = mkIf cfg.enableNtopng {
-      enable = mkDefault true;
-      listenAddress = mkDefault defaultListenAddress;
-      waitForListenAddress = mkDefault cfg.waitForListenAddress;
-      waitForListenAddressTimeout = mkDefault cfg.waitForListenAddressTimeout;
-    };
+      services.router-ntopng = mkIf cfg.enableNtopng {
+        enable = mkDefault true;
+        listenAddress = mkDefault defaultListenAddress;
+        waitForListenAddress = mkDefault cfg.waitForListenAddress;
+        waitForListenAddressTimeout = mkDefault cfg.waitForListenAddressTimeout;
+      };
+    })
 
-    services.router-firewall.trustedTcpPorts = mkAfter commonTrustedTcpPorts;
-    services.router-firewall.wanTcpPorts = mkAfter (
-      optionals (config.services.caddy.enable or false) [ 80 443 ]
-    );
-  };
+    (optionalAttrs (hasRouterOption [ "services" "router-firewall" "trustedTcpPorts" ]) (
+      mkIf cfg.enable {
+        services.router-firewall.trustedTcpPorts = mkAfter commonTrustedTcpPorts;
+        services.router-firewall.wanTcpPorts = mkAfter (
+          optionals (config.services.caddy.enable or false) [ 80 443 ]
+        );
+      }
+    ))
+  ];
 }

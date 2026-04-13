@@ -1,9 +1,15 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  options,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.router-pppoe;
+  hasRouterOption = path: hasAttrByPath path options;
 
   pppoeConfig = concatStringsSep "\n" (
     [
@@ -112,18 +118,20 @@ in
   };
 
   config = mkIf cfg.enable {
-    services.pppd = {
-      enable = true;
-      peers.${cfg.peerName} = {
+    services = {
+      pppd = {
         enable = true;
-        autostart = true;
-        config = pppoeConfig;
+        peers.${cfg.peerName} = {
+          enable = true;
+          autostart = true;
+          config = pppoeConfig;
+        };
       };
-    };
-
-    services.router-networking.wan = {
-      device = mkDefault cfg.interfaceName;
-      manageWithNetworkd = mkDefault false;
+    } // optionalAttrs (hasRouterOption [ "services" "router-networking" "wan" ]) {
+      router-networking.wan = {
+        device = mkDefault cfg.interfaceName;
+        manageWithNetworkd = mkDefault false;
+      };
     };
   };
 }
