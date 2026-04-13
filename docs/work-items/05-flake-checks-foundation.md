@@ -1,6 +1,6 @@
 # 05 Flake Checks Foundation
 
-Status: `in-progress`
+Status: `done`
 
 Suggested branch: `feat/router-flake-checks-foundation`
 
