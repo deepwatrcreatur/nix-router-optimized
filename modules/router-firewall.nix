@@ -486,7 +486,9 @@ in
           ${optionalString (allOverlayInterfaces != [ ] && allRouterInterfaces != [ ]) (
             concatMapStrings (iface: ''
               iifname "${iface}" oifname ${maybeSet allRouterInterfaces} accept
-              iifname ${maybeSet trustedInterfaces} oifname "${iface}" accept
+              ${optionalString (trustedInterfaces != [ ]) ''
+                iifname ${maybeSet trustedInterfaces} oifname "${iface}" accept
+              ''}
             '') allOverlayInterfaces
           )}
 
