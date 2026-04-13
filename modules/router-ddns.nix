@@ -11,14 +11,16 @@ let
   cfg = config.services.router-ddns;
   runtimeDir = "/run/router-ddns";
   cloudflareIncludeFile = "${runtimeDir}/cloudflare.conf";
-  cloudflareZoneName = cfg.cloudflare.zoneName or "";
+  cloudflareZoneName = if cfg.cloudflare.zoneName == null then "" else cfg.cloudflare.zoneName;
+  cloudflareApiTokenFile =
+    if cfg.cloudflare.apiTokenFile == null then "" else cfg.cloudflare.apiTokenFile;
   labelToHostname =
     label: if label == "@" then cloudflareZoneName else "${label}.${cloudflareZoneName}";
   cloudflareHostnames = (map labelToHostname cfg.cloudflare.labels) ++ cfg.cloudflare.hostnames;
   writeCloudflareInclude = pkgs.writeShellScript "router-ddns-write-cloudflare-include" ''
     set -euo pipefail
 
-    token="$(${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg cfg.cloudflare.apiTokenFile})"
+    token="$(${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg cloudflareApiTokenFile})"
     test -n "$token"
 
     tmp="$(${pkgs.coreutils}/bin/mktemp ${escapeShellArg "${runtimeDir}/cloudflare.conf.XXXXXX"})"
@@ -144,7 +146,7 @@ in
     };
 
     systemd.services.inadyn.serviceConfig = {
-      ExecStartPre = "+${writeCloudflareInclude}";
+      ExecStartPre = mkBefore [ "+${writeCloudflareInclude}" ];
       RuntimeDirectory = "router-ddns";
       RuntimeDirectoryMode = "0750";
     };
