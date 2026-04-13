@@ -12,11 +12,7 @@ let
     };
   };
 
-  assertModule = assertions: {
-    assertions = map (assertion: {
-      inherit (assertion) assertion message;
-    }) assertions;
-  };
+  assertModule = assertions: { inherit assertions; };
 in
 {
   router-wireguard-minimal-eval = eval.mkNixosEvalCheck "router-wireguard-minimal" [

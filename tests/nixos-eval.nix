@@ -36,14 +36,12 @@ let
     name: modules:
     let
       result = builtins.tryEval (
-        builtins.deepSeq
-          ((nixpkgs.lib.nixosSystem {
-            inherit system;
-            modules = [
-              baseModule
-            ] ++ modules;
-          }).config.system.build.toplevel.drvPath)
-          true
+        (nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            baseModule
+          ] ++ modules;
+        }).config.system.build.toplevel.drvPath
       );
     in
     pkgs.runCommand "router-${name}-eval-fails" { } ''
