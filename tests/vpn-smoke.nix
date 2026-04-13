@@ -280,4 +280,78 @@ in
       }
     ])
   ];
+
+  router-zerotier-with-firewall-eval = eval.mkNixosEvalCheck "router-zerotier-with-firewall" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-zerotier
+    firewallWan
+    {
+      services.router-zerotier = {
+        enable = true;
+        interfaceName = "zt3jnkd4l9";
+        joinNetworks = [ "a8a2c3c10c1a68de" ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.router-firewall.overlayInterfaces == [ "zt3jnkd4l9" ];
+        message = "router-zerotier should register the configured ZeroTier interface.";
+      }
+      {
+        assertion = config.services.router-firewall.wanUdpPorts == [ 9993 ];
+        message = "router-zerotier should expose its UDP port through router-firewall.";
+      }
+      {
+        assertion = config.services.zerotierone.joinNetworks == [ "a8a2c3c10c1a68de" ];
+        message = "router-zerotier should thread joinNetworks to services.zerotierone.";
+      }
+      {
+        assertion = config.boot.kernel.sysctl."net.ipv4.ip_forward" == 1;
+        message = "router-zerotier should enable IPv4 forwarding for server routing.";
+      }
+    ])
+  ];
+
+  router-zerotier-without-firewall-eval = eval.mkNixosEvalCheck "router-zerotier-without-firewall" [
+    self.nixosModules.router-zerotier
+    {
+      services.router-zerotier = {
+        enable = true;
+        trustedInterface = false;
+        joinNetworks = [ "a8a2c3c10c1a68de" ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.zerotierone.enable;
+        message = "router-zerotier should enable services.zerotierone without router-firewall imported.";
+      }
+      {
+        assertion = config.services.zerotierone.port == 9993;
+        message = "router-zerotier should use ZeroTier's documented default port.";
+      }
+    ])
+  ];
+
+  router-zerotier-trusted-interface-required-fails-eval =
+    eval.mkNixosEvalFailureCheck "router-zerotier-trusted-interface-required" [
+      self.nixosModules.router-zerotier
+      {
+        services.router-zerotier.enable = true;
+      }
+    ];
+
+  router-zerotier-netbird-port-collision-fails-eval =
+    eval.mkNixosEvalFailureCheck "router-zerotier-netbird-port-collision" [
+      self.nixosModules.router-netbird
+      self.nixosModules.router-zerotier
+      {
+        services.router-netbird.enable = true;
+        services.router-zerotier = {
+          enable = true;
+          interfaceName = "zt3jnkd4l9";
+          port = 51821;
+        };
+      }
+    ];
 }

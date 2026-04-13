@@ -10,8 +10,7 @@ The currently supported overlays are:
 |--------|-----------------|-----------|--------------|
 | `router-tailscale` | Tailscale | `tailscale0` | UDP 41641 |
 | `router-netbird` | Netbird | `nb-router` | UDP 51821 |
-
-ZeroTier support is planned (see work item 09).
+| `router-zerotier` | ZeroTier | user-provided `ztXXXXXXXX` | UDP 9993 |
 
 ---
 
@@ -26,9 +25,10 @@ listed there receives:
 - **trusted return forwarding** — LAN/management/trusted interfaces can reach
   overlay peers
 
-Each per-overlay module (`router-tailscale`, `router-netbird`, …) appends its
-interface name to this list automatically when `trustedInterface = true` (the
-default). You do not need to set `overlayInterfaces` manually for normal use.
+Each per-overlay module (`router-tailscale`, `router-netbird`,
+`router-zerotier`, …) appends its interface name to this list automatically
+when `trustedInterface = true` (the default). You do not need to set
+`overlayInterfaces` manually for normal use.
 
 ```nix
 # What happens automatically when you enable both modules:
@@ -104,10 +104,32 @@ domain (e.g. `netbird.cloud` or your self-hosted domain) at `127.0.0.2:53`.
 
 ---
 
+## ZeroTier
+
+```nix
+services.router-zerotier = {
+  enable = true;
+  interfaceName = "zt3jnkd4l9";
+  joinNetworks = [ "a8a2c3c10c1a68de" ];
+  secretFile = "/run/agenix/zerotier-identity-secret";
+};
+```
+
+ZeroTier can use the hosted ZeroTier Central controller or a self-hosted
+controller. Network membership and managed routes are authorized in that
+controller; the router module joins the network locally and enables IP
+forwarding by default.
+
+ZeroTier names interfaces dynamically (`ztXXXXXXXX`), so `interfaceName` has no
+safe default. Set it to the actual interface name before using the default
+`trustedInterface = true` firewall integration.
+
+---
+
 ## Running both at the same time
 
-Running Tailscale and Netbird simultaneously on the same router is a legitimate
-but intentional configuration. Common reasons:
+Running multiple overlays simultaneously on the same router is a legitimate but
+intentional configuration. Common reasons:
 
 - **Migration**: zero-downtime transition between the two
 - **Multi-org**: corporate Tailscale tailnet + self-hosted homelab Netbird mesh
@@ -115,9 +137,10 @@ but intentional configuration. Common reasons:
 
 ### Port conflicts
 
-The wrappers default to distinct ports: `router-tailscale` uses UDP 41641 and
-`router-netbird` uses UDP 51821. If you override either port, an assertion will
-fire if they collide.
+The wrappers default to distinct ports: `router-tailscale` uses UDP 41641,
+`router-netbird` uses UDP 51821, and `router-zerotier` uses UDP 9993. If you
+override ports, an assertion will fire if enabled router overlay modules
+collide.
 
 ### DNS coexistence
 

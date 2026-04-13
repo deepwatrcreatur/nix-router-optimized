@@ -1,6 +1,6 @@
 # 09 router-zerotier Module
 
-Status: `ready`
+Status: `done`
 
 Suggested branch: `feat/router-zerotier-module`
 

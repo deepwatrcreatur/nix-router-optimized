@@ -301,6 +301,31 @@ in
     }
   ]);
 
+  docs-router-zerotier-example-eval = mkDocExampleCheck "docs-router-zerotier-example" [
+    self.nixosModules.router-zerotier
+    {
+      services.router-zerotier = {
+        enable = true;
+        interfaceName = "zt3jnkd4l9";
+        joinNetworks = [ "a8a2c3c10c1a68de" ];
+        secretFile = "/run/agenix/zerotier-identity-secret";
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.services.zerotierone.port == 9993;
+      message = "router-zerotier docs example should use the documented default port.";
+    }
+    {
+      assertion = config.services.zerotierone.joinNetworks == [ "a8a2c3c10c1a68de" ];
+      message = "router-zerotier docs example should thread joinNetworks to services.zerotierone.";
+    }
+    {
+      assertion = config.boot.kernel.sysctl."net.ipv4.ip_forward" == 1;
+      message = "router-zerotier docs example should default to server routing features.";
+    }
+  ]);
+
   docs-overlay-vpn-dual-example-eval = mkDocExampleCheck "docs-overlay-vpn-dual-example" [
     self.nixosModules.router-firewall
     self.nixosModules.router-tailscale
