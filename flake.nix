@@ -134,7 +134,8 @@
 
             services.router-dhcp.enable = true;
             services.router-ddns = {
-              enable = true;
+              # Enable this after provisioning the token file on the target system.
+              enable = false;
               cloudflare = {
                 zoneName = "example.com";
                 labels = [

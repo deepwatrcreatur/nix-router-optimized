@@ -133,7 +133,7 @@ in
       logLevel = cfg.logLevel;
       settings = {
         allow-ipv6 = cfg.allowIPv6;
-        provider."cloudflare.com" = {
+        provider."default@cloudflare.com" = {
           username = cloudflareZoneName;
           include = cloudflareIncludeFile;
           hostname = cloudflareHostnames;
