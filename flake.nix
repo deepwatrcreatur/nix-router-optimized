@@ -67,6 +67,7 @@
             self.nixosModules.router-optimizations
             self.nixosModules.router-tailscale
             self.nixosModules.router-netbird
+            self.nixosModules.router-zerotier
             self.nixosModules.router-openvpn
             self.nixosModules.router-wireguard
             self.nixosModules.nftables-fasttrack
@@ -91,6 +92,7 @@
         router-ntopng = import ./modules/router-ntopng.nix;
         router-tailscale = import ./modules/router-tailscale.nix;
         router-netbird = import ./modules/router-netbird.nix;
+        router-zerotier = import ./modules/router-zerotier.nix;
         router-openvpn = import ./modules/router-openvpn.nix;
         router-wireguard = import ./modules/router-wireguard.nix;
         nftables-fasttrack = import ./modules/nftables-fasttrack.nix;
