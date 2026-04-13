@@ -1597,6 +1597,77 @@ header h1 {
   font-size: 0.82rem;
 }
 
+/* VPN Widget Styles */
+.vpn-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.vpn-list {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.vpn-row {
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--text-muted);
+  border-radius: 14px;
+  background: var(--bg-input);
+  padding: 14px 16px;
+}
+
+.vpn-row-up {
+  border-left-color: var(--accent-green);
+}
+
+.vpn-row-warning {
+  border-left-color: var(--accent-yellow);
+}
+
+.vpn-row-down {
+  border-left-color: var(--accent-red);
+}
+
+.vpn-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.vpn-name {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.vpn-kind,
+.vpn-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.vpn-row-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vpn-value {
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1200px) {
   .speedtest-widget {
     grid-column: span 6;
@@ -1631,6 +1702,11 @@ header h1 {
   }
 
   .system-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vpn-summary-row,
+  .vpn-row-grid {
     grid-template-columns: 1fr;
   }
 }

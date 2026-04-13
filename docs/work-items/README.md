@@ -18,7 +18,7 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. [`15-dashboard-vpn-tab-widget.md`](./15-dashboard-vpn-tab-widget.md)
+No active items.
 
 ## Why This Structure
 

@@ -200,6 +200,13 @@ class Dashboard {
       });
       this.renderWidget('security', wol);
     }
+
+    const vpn = new VpnWidget({
+      id: 'vpn-status',
+      grid: { w: 12, h: 5 },
+      refreshInterval: 15000
+    });
+    this.renderWidget('vpn', vpn);
   }
 
   initTabs() {

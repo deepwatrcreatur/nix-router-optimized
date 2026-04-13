@@ -1,6 +1,6 @@
 # Dashboard VPN Tab Widget
 
-Status: ready
+Status: done
 
 Branch: `feat/dashboard-vpn-tab-widget`
 
