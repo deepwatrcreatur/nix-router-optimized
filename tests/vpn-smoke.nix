@@ -62,7 +62,10 @@ in
     self.nixosModules.router-firewall
     self.nixosModules.router-wireguard
     {
-      services.router-firewall.enable = true;
+      services.router-firewall = {
+        enable = true;
+        autoInterfacesFromOptimizations = false;
+      };
       services.router-wireguard = {
         enable = true;
         privateKeyFile = "/run/secrets/wireguard-private-key";
