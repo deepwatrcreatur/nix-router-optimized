@@ -45,9 +45,10 @@ let
     ++ cfg.extraUrls
   );
 
+  ageSecrets = config.age.secrets or { };
   apiTokenPath =
-    if config.age.secrets ? technitium-api-key then
-      config.age.secrets.technitium-api-key.path
+    if ageSecrets ? technitium-api-key then
+      ageSecrets."technitium-api-key".path
     else
       "";
 
