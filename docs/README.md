@@ -38,6 +38,7 @@ If you're an AI agent picking up this work, start here:
 | [OPNSENSE-RESEARCH.md](./OPNSENSE-RESEARCH.md) | OPNsense dashboard analysis |
 | [DASHBOARD-ARCHITECTURE.md](./DASHBOARD-ARCHITECTURE.md) | Technical implementation details |
 | [CURRENT-STATE.md](./CURRENT-STATE.md) | Analysis of original dashboard (historical) |
+| [module-authoring.md](./module-authoring.md) | How to add router-oriented NixOS modules to this flake |
 
 ### Implementation Phases
 
