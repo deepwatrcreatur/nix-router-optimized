@@ -76,6 +76,7 @@
             self.nixosModules.caddy-reverse-proxy
             self.nixosModules.router-observability
             self.nixosModules.router-vpn
+            self.nixosModules.router-tunnels
           ];
         };
 
@@ -105,6 +106,7 @@
         monitoring = import ./modules/monitoring.nix;
         router-observability = import ./modules/router-observability.nix;
         router-vpn = import ./modules/router-vpn.nix;
+        router-tunnels = import ./modules/router-tunnels.nix;
       };
 
       # Example configuration for testing

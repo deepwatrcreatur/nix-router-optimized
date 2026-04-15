@@ -18,7 +18,12 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-No active items.
+- [16-router-tunnels-module](./16-router-tunnels-module.md)
+- [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md)
+- [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md)
+- [19-router-remote-admin-module](./19-router-remote-admin-module.md)
+- [20-dashboard-remote-admin-status-api](./20-dashboard-remote-admin-status-api.md)
+- [21-dashboard-remote-admin-tab-widget](./21-dashboard-remote-admin-tab-widget.md)
 
 ## Why This Structure
 

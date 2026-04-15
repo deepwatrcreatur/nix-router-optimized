@@ -34,6 +34,10 @@ try:
 except json.JSONDecodeError:
     DASHBOARD_VPNS = []
 try:
+    DASHBOARD_TUNNELS = json.loads(os.environ.get('DASHBOARD_TUNNELS', '[]'))
+except json.JSONDecodeError:
+    DASHBOARD_TUNNELS = []
+try:
     DASHBOARD_INTERFACES = json.loads(os.environ.get('DASHBOARD_INTERFACES', '[]'))
 except json.JSONDecodeError:
     DASHBOARD_INTERFACES = []
@@ -116,6 +120,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_services_status()
         elif path == '/api/vpn/status':
             self.handle_vpn_status()
+        elif path == '/api/tunnels/status':
+            self.handle_tunnels_status()
         elif path == '/api/caddy/status':
             self.handle_caddy_status()
         elif path == '/api/service/logs':
@@ -436,6 +442,64 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'interface': interface_status,
             'status': status,
             'details': details
+        }
+
+    def handle_tunnels_status(self):
+        """Declarative tunnels status from router module metadata"""
+        systemctl = self.find_systemctl()
+        tunnels = []
+
+        for entry in DASHBOARD_TUNNELS:
+            tunnels.append(self.get_tunnel_entry_status(systemctl, entry))
+
+        active_count = len([t for t in tunnels if t.get('status') == 'up'])
+        warning_count = len([t for t in tunnels if t.get('status') == 'warning'])
+        down_count = len([t for t in tunnels if t.get('status') == 'down'])
+
+        self.send_json({
+            'configured': len(tunnels),
+            'active': active_count,
+            'warning': warning_count,
+            'down': down_count,
+            'tunnels': tunnels
+        })
+
+    def get_tunnel_entry_status(self, systemctl, entry):
+        """Build one tunnel runtime status row from declarative metadata"""
+        provider = entry.get('provider') or 'other'
+        name = entry.get('name') or provider
+        unit = entry.get('unit') or ''
+        public_url = entry.get('publicUrl') or ''
+        description = entry.get('description') or ''
+
+        service = self.get_service_status(systemctl, unit) if systemctl and unit else {
+            'name': unit,
+            'unit': unit,
+            'status': 'unknown',
+            'active': False
+        }
+
+        service_status = service.get('status', 'unknown')
+        service_active = service.get('active', False)
+
+        if service_active and service_status == 'active' and public_url:
+            status = 'up'
+        elif service_active:
+            status = 'warning'
+        else:
+            status = 'down'
+
+        return {
+            'provider': provider,
+            'name': name,
+            'unit': service.get('unit') or unit,
+            'publicUrl': public_url,
+            'service': service,
+            'status': status,
+            'details': {
+                'description': description,
+                'publicUrl': public_url
+            }
         }
 
     def get_interface_status(self, interface):

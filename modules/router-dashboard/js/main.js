@@ -12,7 +12,7 @@ class Dashboard {
     this.layoutStorageKey = 'router-dashboard-layout-v2';
     this.legacyLayoutStorageKey = 'router-dashboard-layout-v1';
     this.activePageStorageKey = 'router-dashboard-active-page';
-    this.pageOrder = [ 'overview', 'network', 'services', 'security', 'vpn' ];
+    this.pageOrder = [ 'overview', 'network', 'services', 'security', 'vpn', 'tunnels' ];
     this.activePage = this.getInitialPage();
   }
 
@@ -207,6 +207,13 @@ class Dashboard {
       refreshInterval: 15000
     });
     this.renderWidget('vpn', vpn);
+
+    const tunnels = new TunnelsWidget({
+      id: 'tunnels-status',
+      grid: { w: 12, h: 5 },
+      refreshInterval: 15000
+    });
+    this.renderWidget('tunnels', tunnels);
   }
 
   initTabs() {
