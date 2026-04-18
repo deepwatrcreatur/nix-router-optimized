@@ -269,6 +269,7 @@ in
             tunnel.provider == "cloudflare"
             && tunnel.name == "guac-ingress"
             && tunnel.unit == "cloudflared-guac.service"
+            && tunnel.publicUrl == "https://guac.example.com"
             && tunnel.description == "Cloudflare Tunnel for Guacamole"
           ) tunnels;
           message = "router-dashboard should export router-tunnels Cloudflare metadata.";
@@ -329,6 +330,7 @@ in
             entry.kind == "ssh"
             && entry.name == "bastion"
             && entry.unit == "sshd.service"
+            && entry.url == "ssh://router.example.com"
             && entry.description == "Primary SSH bastion"
           ) remoteAdmin;
           message = "router-dashboard should export SSH remote-admin metadata.";
@@ -376,6 +378,105 @@ in
             && tunnel.publicUrl == "https://grafana.example.com"
           ) tunnels;
           message = "router-cloudflare-tunnel should register dashboard metadata for Cloudflare tunnels.";
+        }
+      ]
+    )
+  ];
+
+  router-cloudflare-tunnel-wildcard-url-eval = eval.mkNixosEvalCheck "router-cloudflare-tunnel-wildcard-url" [
+    self.nixosModules.router-dashboard
+    self.nixosModules.router-cloudflare-tunnel
+    {
+      services.router-dashboard.enable = true;
+      services.router-cloudflare-tunnel = {
+        enable = true;
+        tunnels.wildcard = {
+          credentialsFile = "/run/agenix/cloudflared-wildcard.json";
+          ingress = {
+            "*.example.com" = "http://127.0.0.1:8080";
+          };
+        };
+      };
+    }
+    (
+      { config, ... }:
+      let
+        tunnels = builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_TUNNELS;
+      in
+      assertModule [
+        {
+          assertion = builtins.any (
+            tunnel:
+            tunnel.name == "wildcard"
+            && tunnel.provider == "cloudflare"
+            && tunnel.publicUrl == null
+          ) tunnels;
+          message = "router-cloudflare-tunnel should not derive a dashboard URL from wildcard-only ingress.";
+        }
+      ]
+    )
+  ];
+
+  router-dashboard-tunnels-disabled-metadata-eval = eval.mkNixosEvalCheck "router-dashboard-tunnels-disabled-metadata" [
+    self.nixosModules.router-dashboard
+    self.nixosModules.router-tunnels
+    {
+      services.router-dashboard.enable = true;
+      services.router-tunnels = {
+        enable = false;
+        tunnels = [
+          {
+            name = "hidden";
+            provider = "cloudflare";
+            unit = "cloudflared-hidden.service";
+            publicUrl = "https://hidden.example.com";
+            description = "Should not be exported when router-tunnels is disabled";
+          }
+        ];
+      };
+    }
+    (
+      { config, ... }:
+      let
+        tunnels = builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_TUNNELS;
+      in
+      assertModule [
+        {
+          assertion = tunnels == [ ];
+          message = "router-dashboard should not export tunnel metadata when router-tunnels is disabled.";
+        }
+      ]
+    )
+  ];
+
+  router-dashboard-remote-admin-disabled-metadata-eval = eval.mkNixosEvalCheck "router-dashboard-remote-admin-disabled-metadata" [
+    self.nixosModules.router-dashboard
+    self.nixosModules.router-remote-admin
+    {
+      services.router-dashboard.enable = true;
+      services.router-remote-admin = {
+        enable = false;
+        entries = [
+          {
+            name = "hidden";
+            kind = "ssh";
+            unit = "sshd.service";
+            url = "ssh://hidden.example.com";
+            description = "Should not be exported when router-remote-admin is disabled";
+          }
+        ];
+      };
+    }
+    (
+      { config, ... }:
+      let
+        remoteAdmin =
+          builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_REMOTE_ADMIN;
+      in
+      assertModule [
+        {
+          assertion = remoteAdmin == [ ];
+          message = "router-dashboard should not export remote-admin metadata when router-remote-admin is disabled.";
         }
       ]
     )

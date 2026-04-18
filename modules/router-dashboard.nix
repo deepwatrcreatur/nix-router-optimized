@@ -113,7 +113,12 @@ let
       ];
 
   effectiveTunnels =
-    optionals (hasRouterOption [ "services" "router-tunnels" "tunnels" ])
+    optionals
+      (
+        hasRouterOption [ "services" "router-tunnels" "tunnels" ]
+        && hasRouterOption [ "services" "router-tunnels" "enable" ]
+        && (config.services.router-tunnels.enable or false)
+      )
       (map (tunnel: {
         provider = tunnel.provider;
         name = tunnel.name;
@@ -123,7 +128,12 @@ let
       }) (config.services.router-tunnels.tunnels or [ ]));
 
   effectiveRemoteAdmin =
-    optionals (hasRouterOption [ "services" "router-remote-admin" "entries" ])
+    optionals
+      (
+        hasRouterOption [ "services" "router-remote-admin" "entries" ]
+        && hasRouterOption [ "services" "router-remote-admin" "enable" ]
+        && (config.services.router-remote-admin.enable or false)
+      )
       (map (entry: {
         kind = entry.kind;
         name = entry.name;

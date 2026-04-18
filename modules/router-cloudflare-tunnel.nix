@@ -1,7 +1,6 @@
 {
   config,
   lib,
-  modulesPath,
   ...
 }:
 
@@ -44,12 +43,12 @@ let
     else
       let
         hostnames = attrNames tunnel.ingress;
+        hostname = head hostnames;
       in
-      if length hostnames == 1 then "https://${head hostnames}" else null;
+      if length hostnames == 1 && !(hasInfix "*" hostname) then "https://${hostname}" else null;
 in
 {
   imports = [
-    "${modulesPath}/services/networking/cloudflared.nix"
     ./router-tunnels.nix
   ];
 
@@ -94,8 +93,8 @@ in
                 default = null;
                 description = ''
                   Optional canonical public URL for dashboard display. If omitted
-                  and exactly one ingress hostname is configured, the module
-                  derives `https://<hostname>`.
+                  and exactly one non-wildcard ingress hostname is configured,
+                  the module derives `https://<hostname>`.
                 '';
               };
 
