@@ -171,6 +171,33 @@ and provider modules such as `router-technitium`.
 See [`docs/router-ddns-provider-shape.md`](./docs/router-ddns-provider-shape.md)
 for the Cloudflare provider option shape and inventory boundary.
 
+### router-cloudflare-tunnel
+Router-oriented wrapper for Cloudflare Tunnel using the stock NixOS
+`services.cloudflared` module:
+- manages named `cloudflared` tunnels declaratively
+- keeps tunnel credentials in runtime files instead of the Nix store
+- auto-registers Cloudflare tunnels in the router dashboard via `router-tunnels`
+- derives a dashboard URL automatically when a tunnel exposes exactly one hostname
+
+Example:
+
+```nix
+services.router-cloudflare-tunnel = {
+  enable = true;
+  tunnels.grafana = {
+    credentialsFile = "/run/agenix/cloudflared-grafana.json";
+    description = "Cloudflare Tunnel for public Grafana";
+    ingress = {
+      "grafana.example.com" = "http://127.0.0.1:3001";
+    };
+  };
+};
+```
+
+This is complementary to `caddy-reverse-proxy`: Caddy still handles your local
+reverse proxy and policy, while Cloudflare Tunnel can publish selected services
+without opening inbound ports on the router.
+
 ### router-dns-service
 Provider-aware local resolver layer:
 - chooses between `technitium`, `unbound`, and `dnsmasq`
@@ -342,6 +369,73 @@ Web dashboard on port 8888 showing:
 - WAN IP address
 - Interface status and IPs
 - System uptime and connections
+- VPN status
+- Declarative tunnel status (zrok, ngrok, Cloudflare Tunnel, Tailscale Funnel, etc.)
+- Declarative remote administration status (Guacamole, MeshCentral, SSH, IPMI/iDRAC/iLO, etc.)
+
+The dashboard discovers tunnel and remote-admin entries from metadata-only
+modules. These modules do not manage the underlying services; they simply
+describe existing systemd units and endpoints so the dashboard can render status
+consistently.
+
+Example:
+
+```nix
+{
+  imports = [
+    router-optimized.nixosModules.router-dashboard
+    router-optimized.nixosModules.router-tunnels
+    router-optimized.nixosModules.router-remote-admin
+  ];
+
+  services.router-dashboard.enable = true;
+
+  services.router-tunnels = {
+    enable = true;
+    tunnels = [
+      {
+        name = "grafana-share";
+        provider = "cloudflare";
+        unit = "cloudflared-grafana.service";
+        publicUrl = "https://grafana.example.com";
+        description = "Cloudflare Tunnel for external Grafana access";
+      }
+      {
+        name = "support-zrok";
+        provider = "zrok";
+        unit = "zrok-share-support.service";
+        description = "Ephemeral support tunnel";
+      }
+    ];
+  };
+
+  services.router-remote-admin = {
+    enable = true;
+    entries = [
+      {
+        name = "guac";
+        kind = "guacamole";
+        unit = "guacd.service";
+        url = "https://guac.example.com";
+        description = "Browser-based remote desktop gateway";
+      }
+      {
+        name = "bastion";
+        kind = "ssh";
+        unit = "sshd.service";
+        url = "ssh://router.example.com";
+        description = "Primary SSH bastion";
+      }
+    ];
+  };
+}
+```
+
+Status rules:
+- tunnels are `up` when the backing unit is active and a `publicUrl` is known
+- remote-admin entries are `up` when the backing unit is active and a `url` is known
+- active services without a URL are shown as `warning`
+- inactive services are shown as `down`
 
 ### nftables-fasttrack
 Flow offloading configuration for nftables to bypass connection tracking for established flows.

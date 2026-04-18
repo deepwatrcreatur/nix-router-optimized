@@ -38,6 +38,10 @@ try:
 except json.JSONDecodeError:
     DASHBOARD_TUNNELS = []
 try:
+    DASHBOARD_REMOTE_ADMIN = json.loads(os.environ.get('DASHBOARD_REMOTE_ADMIN', '[]'))
+except json.JSONDecodeError:
+    DASHBOARD_REMOTE_ADMIN = []
+try:
     DASHBOARD_INTERFACES = json.loads(os.environ.get('DASHBOARD_INTERFACES', '[]'))
 except json.JSONDecodeError:
     DASHBOARD_INTERFACES = []
@@ -122,6 +126,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_vpn_status()
         elif path == '/api/tunnels/status':
             self.handle_tunnels_status()
+        elif path == '/api/remote-admin/status':
+            self.handle_remote_admin_status()
         elif path == '/api/caddy/status':
             self.handle_caddy_status()
         elif path == '/api/service/logs':
@@ -499,6 +505,64 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'details': {
                 'description': description,
                 'publicUrl': public_url
+            }
+        }
+
+    def handle_remote_admin_status(self):
+        """Declarative remote administration status from router module metadata"""
+        systemctl = self.find_systemctl()
+        entries = []
+
+        for entry in DASHBOARD_REMOTE_ADMIN:
+            entries.append(self.get_remote_admin_entry_status(systemctl, entry))
+
+        active_count = len([e for e in entries if e.get('status') == 'up'])
+        warning_count = len([e for e in entries if e.get('status') == 'warning'])
+        down_count = len([e for e in entries if e.get('status') == 'down'])
+
+        self.send_json({
+            'configured': len(entries),
+            'active': active_count,
+            'warning': warning_count,
+            'down': down_count,
+            'entries': entries
+        })
+
+    def get_remote_admin_entry_status(self, systemctl, entry):
+        """Build one remote admin runtime status row from declarative metadata"""
+        kind = entry.get('kind') or 'other'
+        name = entry.get('name') or kind
+        unit = entry.get('unit') or ''
+        url = entry.get('url') or ''
+        description = entry.get('description') or ''
+
+        service = self.get_service_status(systemctl, unit) if systemctl and unit else {
+            'name': unit,
+            'unit': unit,
+            'status': 'unknown',
+            'active': False
+        }
+
+        service_status = service.get('status', 'unknown')
+        service_active = service.get('active', False)
+
+        if service_active and service_status == 'active' and url:
+            status = 'up'
+        elif service_active:
+            status = 'warning'
+        else:
+            status = 'down'
+
+        return {
+            'kind': kind,
+            'name': name,
+            'unit': service.get('unit') or unit,
+            'url': url,
+            'service': service,
+            'status': status,
+            'details': {
+                'description': description,
+                'url': url
             }
         }
 

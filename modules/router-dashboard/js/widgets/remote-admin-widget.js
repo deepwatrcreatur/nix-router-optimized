@@ -90,7 +90,7 @@ class RemoteAdminWidget extends BaseWidget {
       list.innerHTML = `
         <div class="dashboard-empty-state">
           <h2>No remote admin entries configured</h2>
-          <p>Define services.router-remote-admin.entries (e.g., Guacamole or MeshCentral) to populate this tab.</p>
+          <p>Define services.router-remote-admin.entries (e.g., Guacamole, MeshCentral, SSH, or IPMI) to populate this tab.</p>
         </div>
       `;
       return;
@@ -123,8 +123,8 @@ class RemoteAdminWidget extends BaseWidget {
             <div class="vpn-value">${this.escape(service.status || 'unknown')}</div>
           </div>
           <div>
-            <div class="vpn-label">URL</div>
-            <div class="vpn-value">${url ? `<a href="${this.escape(url)}" target="_blank" rel="noopener">${this.escape(url)}</a>` : '--'}</div>
+            <div class="vpn-label">Endpoint</div>
+            <div class="vpn-value">${url ? this.renderEndpointValue(url) : '--'}</div>
           </div>
           <div>
             <div class="vpn-label">Details</div>
@@ -143,6 +143,15 @@ class RemoteAdminWidget extends BaseWidget {
 
   normalizeStatus(status) {
     return [ 'up', 'warning', 'down' ].includes(status) ? status : 'down';
+  }
+
+  renderEndpointValue(url) {
+    if (/^https?:\/\//i.test(url)) {
+      const escapedUrl = this.escape(url);
+      return `<a href="${escapedUrl}" target="_blank" rel="noopener">${escapedUrl}</a>`;
+    }
+
+    return this.escape(url);
   }
 
   renderErrorState(message) {

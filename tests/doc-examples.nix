@@ -466,4 +466,40 @@ in
       message = "router-wireguard docs example should configure the documented keepalive.";
     }
   ]);
+
+  docs-router-dashboard-remote-access-example-eval = mkDocExampleCheck "docs-router-dashboard-remote-access-example" [
+    self.nixosModules.router-dashboard
+    self.nixosModules.router-tunnels
+    self.nixosModules.router-remote-admin
+    ../examples/router-dashboard-remote-access-example.nix
+  ] (config: [
+    {
+      assertion = config.services.router-dashboard.enable;
+      message = "Dashboard remote access example should enable router-dashboard.";
+    }
+    {
+      assertion =
+        builtins.length (builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_TUNNELS)
+        == 2;
+      message = "Dashboard remote access example should export both tunnel entries.";
+    }
+    {
+      assertion =
+        builtins.length (
+          builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_REMOTE_ADMIN
+        )
+        == 2;
+      message = "Dashboard remote access example should export both remote-admin entries.";
+    }
+    {
+      assertion =
+        lib.hasInfix "cloudflared-grafana.service" config.systemd.services.router-dashboard.environment.DASHBOARD_TUNNELS;
+      message = "Dashboard remote access example should include the documented Cloudflare tunnel unit.";
+    }
+    {
+      assertion =
+        lib.hasInfix "ssh://router.example.com" config.systemd.services.router-dashboard.environment.DASHBOARD_REMOTE_ADMIN;
+      message = "Dashboard remote access example should include the documented SSH endpoint.";
+    }
+  ]);
 }

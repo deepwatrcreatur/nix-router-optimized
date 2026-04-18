@@ -1,9 +1,15 @@
-{ config, lib, ... }:
+{
+  config,
+  options,
+  lib,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.router-ntp;
+  hasRouterFirewallOption = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
 in
 {
   options.services.router-ntp = {
@@ -33,22 +39,33 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    # chrony handles both upstream sync and serving to LAN clients.
-    # systemd-timesyncd is client-only and must be disabled to avoid port
-    # conflicts on UDP 123.
-    services.timesyncd.enable = false;
+  config = mkIf cfg.enable (mkMerge [
+    {
+      # chrony handles both upstream sync and serving to LAN clients.
+      # systemd-timesyncd is client-only and must be disabled to avoid port
+      # conflicts on UDP 123.
+      services.timesyncd.enable = false;
 
-    services.chrony = {
-      enable = true;
-      servers = cfg.upstreamServers;
-      extraConfig = concatStringsSep "\n" (
-        (map (subnet: "allow ${subnet}") cfg.lanSubnets)
-        ++ [ "local stratum ${toString cfg.localStratum}" ]
-      );
-    };
+      services.chrony = {
+        enable = true;
+        servers = cfg.upstreamServers;
+        extraConfig = concatStringsSep "\n" (
+          (map (subnet: "allow ${subnet}") cfg.lanSubnets)
+          ++ [ "local stratum ${toString cfg.localStratum}" ]
+        );
+      };
+    }
 
-    # Open UDP 123 on trusted (LAN) interfaces so clients can reach chrony.
-    services.router-firewall.trustedUdpPorts = mkIf config.services.router-firewall.enable [ 123 ];
-  };
+    (
+      if hasRouterFirewallOption then
+        {
+          # Open UDP 123 on trusted (LAN) interfaces so clients can reach chrony.
+          services.router-firewall = mkIf (config.services.router-firewall.enable or false) {
+            trustedUdpPorts = [ 123 ];
+          };
+        }
+      else
+        { }
+    )
+  ]);
 }
