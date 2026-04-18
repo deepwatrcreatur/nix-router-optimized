@@ -1,12 +1,4 @@
-{ router-optimized, ... }:
-
 {
-  imports = [
-    router-optimized.nixosModules.router-dashboard
-    router-optimized.nixosModules.router-tunnels
-    router-optimized.nixosModules.router-remote-admin
-  ];
-
   services.router-dashboard.enable = true;
 
   services.router-tunnels = {

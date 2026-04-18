@@ -77,6 +77,7 @@
             self.nixosModules.router-observability
             self.nixosModules.router-vpn
             self.nixosModules.router-tunnels
+            self.nixosModules.router-cloudflare-tunnel
             self.nixosModules.router-remote-admin
             self.nixosModules.router-ntp
           ];
@@ -109,6 +110,7 @@
         router-observability = import ./modules/router-observability.nix;
         router-vpn = import ./modules/router-vpn.nix;
         router-tunnels = import ./modules/router-tunnels.nix;
+        router-cloudflare-tunnel = import ./modules/router-cloudflare-tunnel.nix;
         router-remote-admin = import ./modules/router-remote-admin.nix;
         router-ntp = import ./modules/router-ntp.nix;
       };

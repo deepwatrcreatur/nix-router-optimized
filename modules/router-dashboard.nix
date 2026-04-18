@@ -122,6 +122,16 @@ let
         description = tunnel.description;
       }) (config.services.router-tunnels.tunnels or [ ]));
 
+  effectiveRemoteAdmin =
+    optionals (hasRouterOption [ "services" "router-remote-admin" "entries" ])
+      (map (entry: {
+        kind = entry.kind;
+        name = entry.name;
+        unit = entry.unit;
+        url = entry.url;
+        description = entry.description;
+      }) (config.services.router-remote-admin.entries or [ ]));
+
   # Package all dashboard static files
   dashboardStatic = pkgs.stdenv.mkDerivation {
     name = "router-dashboard-static";
@@ -149,6 +159,7 @@ let
         services: ${builtins.toJSON cfg.services},
         vpnServices: ${builtins.toJSON effectiveVpnServices},
         tunnels: ${builtins.toJSON effectiveTunnels},
+        remoteAdmin: ${builtins.toJSON effectiveRemoteAdmin},
         wolDevices: ${builtins.toJSON (map (device: {
           name = device.name;
           macAddress = device.macAddress;
@@ -343,6 +354,7 @@ in {
           DASHBOARD_SERVICES = builtins.toJSON cfg.services;
           DASHBOARD_VPNS = builtins.toJSON effectiveVpnServices;
           DASHBOARD_TUNNELS = builtins.toJSON effectiveTunnels;
+          DASHBOARD_REMOTE_ADMIN = builtins.toJSON effectiveRemoteAdmin;
           DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
           TECHNITIUM_URL = "http://localhost:5380";
           TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key

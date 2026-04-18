@@ -23,6 +23,9 @@ If you're an AI agent picking up this work, start here:
 8. Wake-on-LAN widget ✅
 9. Live firewall logging (SSE) ✅
 10. Drag-and-drop layout persistence ✅
+11. VPN status tab ✅
+12. Tunnels status tab (zrok/ngrok/Cloudflare metadata) ✅
+13. Remote Admin status tab (Guacamole/MeshCentral/SSH metadata) ✅
 
 ### Remaining Gaps
 - Phase 3 service control is still deferred

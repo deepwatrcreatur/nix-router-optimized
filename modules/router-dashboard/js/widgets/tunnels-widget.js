@@ -90,7 +90,7 @@ class TunnelsWidget extends BaseWidget {
       list.innerHTML = `
         <div class="dashboard-empty-state">
           <h2>No declarative tunnels configured</h2>
-          <p>Define services.router-tunnels.tunnels entries (e.g., zrok/ngrok) to populate this tab.</p>
+          <p>Define services.router-tunnels.tunnels entries (e.g., zrok, ngrok, or Cloudflare Tunnel) to populate this tab.</p>
         </div>
       `;
       return;
