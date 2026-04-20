@@ -1,9 +1,10 @@
-{ config, lib, pkgs, ... }:
+{ config, options, lib, pkgs, ... }:
 
 with lib;
 
 let
   cfg = config.services.router-nat64;
+  hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
 in
 {
   options.services.router-nat64 = {
@@ -34,30 +35,35 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    services.tayga = {
-      enable = true;
-      ipv4 = {
-        address = cfg.ipv4Pool; # Using the whole pool as source
-        router.address = cfg.ipv4RouterAddr;
-        pool = {
-          address = head (splitString "/" cfg.ipv4Pool);
-          prefixLength = toInt (last (splitString "/" cfg.ipv4Pool));
+  config = mkIf cfg.enable (mkMerge [
+    {
+      services.tayga = {
+        enable = true;
+        ipv4 = {
+          address = cfg.ipv4RouterAddr;
+          router.address = cfg.ipv4RouterAddr;
+          pool = {
+            address = head (splitString "/" cfg.ipv4Pool);
+            prefixLength = toInt (last (splitString "/" cfg.ipv4Pool));
+          };
+        };
+        ipv6 = {
+          router.address = cfg.ipv6RouterAddr;
+          pool = {
+            address = head (splitString "/" cfg.ipv6Prefix);
+            prefixLength = toInt (last (splitString "/" cfg.ipv6Prefix));
+          };
         };
       };
-      ipv6 = {
-        router.address = cfg.ipv6RouterAddr;
-        pool = {
-          address = head (splitString "/" cfg.ipv6Prefix);
-          prefixLength = toInt (last (splitString "/" cfg.ipv6Prefix));
-        };
-      };
-    };
 
-    # Ensure IP forwarding is enabled (though other router modules should have done this)
-    boot.kernel.sysctl = {
-      "net.ipv4.conf.all.forwarding" = mkDefault 1;
-      "net.ipv6.conf.all.forwarding" = mkDefault 1;
-    };
-  };
+    }
+
+    (mkIf hasRouterFirewall {
+      services.router-firewall.extraForwardRules = mkIf (
+        config.services.router-firewall.enable or false
+      ) ''
+        iifname "nat64" accept comment "Allow NAT64 translated traffic"
+      '';
+    })
+  ]);
 }

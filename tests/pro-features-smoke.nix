@@ -11,9 +11,6 @@ let
       wanInterfaces = [ "wan0" ];
       lanInterfaces = [ "lan0" ];
     };
-    services.router-networking = {
-      wan.device = "wan0";
-    };
   };
 
   assertModule = assertions: { inherit assertions; };
@@ -39,6 +36,7 @@ in
   ];
 
   router-dns64-eval = eval.mkNixosEvalCheck "router-dns64" [
+    self.nixosModules.router-nat64
     self.nixosModules.router-dns64
     self.nixosModules.dns
     {
