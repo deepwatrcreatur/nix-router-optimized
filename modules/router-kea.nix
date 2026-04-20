@@ -48,17 +48,25 @@ let
   };
 
   # Script that writes the full Kea D2 config including TSIG secret at runtime.
-  # Runs as ExecStartPre for kea-dhcp-ddns-server so the secret never enters
-  # the Nix store.
+  # Runs as ExecStartPre (+prefix = root) for kea-dhcp-ddns-server so the
+  # secret never enters the Nix store and never appears in ps output.
   writeD2Config = pkgs.writeShellScript "kea-write-d2-config" ''
     set -euo pipefail
-    SECRET=$(${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg cfg.ddns.tsigKeyFile})
+    TMPFILE=$(${pkgs.coreutils}/bin/mktemp)
+    trap '${pkgs.coreutils}/bin/rm -f "$TMPFILE"' EXIT
+    ${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg cfg.ddns.tsigKeyFile} > "$TMPFILE"
+    RAW_REV=${escapeShellArg cfg.ddns.reverseZone}
+    if [ "$RAW_REV" = "." ]; then
+      REV_ZONE="."
+    else
+      REV_ZONE="$RAW_REV."
+    fi
     ${pkgs.jq}/bin/jq -n \
       --arg keyName  ${escapeShellArg cfg.ddns.tsigKeyName} \
       --arg keyAlgo  ${escapeShellArg cfg.ddns.tsigAlgorithm} \
-      --arg secret   "$SECRET" \
+      --rawfile secret "$TMPFILE" \
       --arg fwdZone  "${cfg.ddns.forwardZone}." \
-      --arg revZone  "${cfg.ddns.reverseZone}." \
+      --arg revZone  "$REV_ZONE" \
       --arg ip       ${escapeShellArg cfg.ddns.serverAddress} \
       --argjson port ${toString cfg.ddns.serverPort} \
       '{
@@ -66,7 +74,7 @@ let
           "ip-address": "127.0.0.1",
           "port": 53001,
           "tsig-keys": [
-            {"name": $keyName, "algorithm": $keyAlgo, "secret": $secret}
+            {"name": $keyName, "algorithm": $keyAlgo, "secret": ($secret | rtrimstr("\n"))}
           ],
           "forward-ddns": {
             "ddns-domains": [
@@ -203,7 +211,8 @@ in
     services.kea.dhcp4 = {
       enable = true;
       settings = {
-        valid-lifetime = cfg.dhcp4.maxLeaseTimeSec;
+        valid-lifetime = cfg.dhcp4.defaultLeaseTimeSec;
+        max-valid-lifetime = cfg.dhcp4.maxLeaseTimeSec;
         renew-timer = cfg.dhcp4.defaultLeaseTimeSec / 4;
         rebind-timer = (cfg.dhcp4.defaultLeaseTimeSec * 3) / 4;
 
@@ -245,7 +254,11 @@ in
           }
         ];
       } // optionalAttrs cfg.ddns.enable {
-        dhcp-ddns = { enable-updates = true; };
+        dhcp-ddns = {
+          enable-updates = true;
+          server-ip = "127.0.0.1";
+          server-port = 53001;
+        };
         ddns-send-updates = true;
         ddns-qualifying-suffix = "${cfg.ddns.forwardZone}.";
         ddns-override-client-update = true;
@@ -267,7 +280,7 @@ in
 
     systemd.services.kea-dhcp-ddns-server = mkIf cfg.ddns.enable {
       # Generate the real config (with TSIG secret) before the daemon starts.
-      serviceConfig.ExecStartPre = [ "${writeD2Config}" ];
+      serviceConfig.ExecStartPre = [ "+${writeD2Config}" ];
       # Override the ExecStart from the kea module to use our runtime config.
       serviceConfig.ExecStart = mkForce (
         lib.escapeShellArgs [
