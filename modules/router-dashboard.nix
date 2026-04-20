@@ -361,11 +361,19 @@ in {
             label = iface.label;
             role = iface.role;
           }) effectiveInterfaces);
-          DASHBOARD_SERVICES = builtins.toJSON cfg.services;
+          DASHBOARD_SERVICES = builtins.toJSON (cfg.services ++
+            optional (config.services.router-nat64.enable or false) "tayga" ++
+            optional (config.services.router-dns64.enable or false) "unbound" ++
+            optional (config.services.router-mdns.enable or false) "avahi-daemon" ++
+            optional (config.services.router-upnp.enable or false) "miniupnpd" ++
+            optional (config.services.router-bgp.enable or false) "frr"
+          );
           DASHBOARD_VPNS = builtins.toJSON effectiveVpnServices;
           DASHBOARD_TUNNELS = builtins.toJSON effectiveTunnels;
           DASHBOARD_REMOTE_ADMIN = builtins.toJSON effectiveRemoteAdmin;
           DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
+          DASHBOARD_NAT64_PREFIX = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv6Prefix else "";
+          DASHBOARD_NAT64_POOL = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv4Pool else "";
           TECHNITIUM_URL = "http://localhost:5380";
           TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
             then config.age.secrets.technitium-api-key.path

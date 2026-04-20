@@ -81,6 +81,12 @@
             self.nixosModules.router-remote-admin
             self.nixosModules.router-ntp
             self.nixosModules.router-kea
+            self.nixosModules.router-nat64
+            self.nixosModules.router-dns64
+            self.nixosModules.router-sqm
+            self.nixosModules.router-mdns
+            self.nixosModules.router-upnp
+            self.nixosModules.router-bgp
           ];
         };
 
@@ -115,6 +121,12 @@
         router-remote-admin = import ./modules/router-remote-admin.nix;
         router-ntp = import ./modules/router-ntp.nix;
         router-kea = import ./modules/router-kea.nix;
+        router-nat64 = import ./modules/router-nat64.nix;
+        router-dns64 = import ./modules/router-dns64.nix;
+        router-sqm = import ./modules/router-sqm.nix;
+        router-mdns = import ./modules/router-mdns.nix;
+        router-upnp = import ./modules/router-upnp.nix;
+        router-bgp = import ./modules/router-bgp.nix;
       };
 
       # Example configuration for testing

@@ -50,6 +50,9 @@ try:
 except json.JSONDecodeError:
     WOL_DEVICES = []
 
+NAT64_PREFIX = os.environ.get('DASHBOARD_NAT64_PREFIX', '')
+NAT64_POOL = os.environ.get('DASHBOARD_NAT64_POOL', '')
+
 # Rate tracking for interface stats
 RATE_CACHE = {}
 RATE_CACHE_TIME = {}
@@ -148,6 +151,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_fail2ban_status()
         elif path == '/api/speedtest/status':
             self.handle_speedtest_status()
+        elif path == '/api/nat64/connections':
+            self.handle_nat64_connections()
         elif path.startswith('/api/'):
             self.send_error(404, 'API endpoint not found')
         else:
@@ -1295,6 +1300,78 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({'connections': connections})
         except Exception as e:
             self.send_error_json(500, str(e))
+
+    def handle_nat64_connections(self):
+        """Get NAT64 translations from conntrack"""
+        if not NAT64_PREFIX:
+            self.send_json({'enabled': False, 'connections': []})
+            return
+
+        try:
+            self.send_json({
+                'enabled': True,
+                'prefix': NAT64_PREFIX,
+                'pool': NAT64_POOL,
+                'connections': self.get_nat64_connections()
+            })
+        except Exception as e:
+            self.send_error_json(500, str(e))
+
+    def get_nat64_connections(self, limit=100):
+        """Extract NAT64 translations from conntrack table"""
+        connections = []
+        try:
+            # conntrack -L lists all entries
+            result = subprocess.run(
+                ['conntrack', '-L', '-o', 'extended'],
+                capture_output=True, text=True, timeout=5,
+                env={**os.environ, 'LC_ALL': 'C'}
+            )
+            
+            # NAT64 prefix without CIDR for matching
+            prefix_base = NAT64_PREFIX.split('/')[0]
+            pool_base = NAT64_POOL.split('/')[0].rsplit('.', 1)[0] # e.g., 192.168.255
+
+            for line in result.stdout.split('\n'):
+                if not line.strip():
+                    continue
+                
+                # We look for connections where one side is the NAT64 prefix
+                # and the other is the NAT64 pool.
+                if prefix_base in line and pool_base in line:
+                    parts = line.split()
+                    conn = {}
+                    
+                    # Simple parser for conntrack output
+                    # Format: ipv4 2 tcp 6 431981 ESTABLISHED src=192.168.255.1 dst=8.8.8.8 sport=...
+                    # or for IPv6 side: src=2001:db8::... dst=64:ff9b::8.8.8.8
+                    
+                    try:
+                        conn['proto'] = parts[2]
+                        for part in parts:
+                            if part.startswith('src='):
+                                if 'src' not in conn: conn['src'] = part.split('=')[1]
+                                else: conn['reply_src'] = part.split('=')[1]
+                            elif part.startswith('dst='):
+                                if 'dst' not in conn: conn['dst'] = part.split('=')[1]
+                                else: conn['reply_dst'] = part.split('=')[1]
+                            elif part.startswith('sport='):
+                                if 'sport' not in conn: conn['sport'] = part.split('=')[1]
+                                else: conn['reply_sport'] = part.split('=')[1]
+                            elif part.startswith('dport='):
+                                if 'dport' not in conn: conn['dport'] = part.split('=')[1]
+                                else: conn['reply_dport'] = part.split('=')[1]
+                        
+                        if 'src' in conn:
+                            connections.append(conn)
+                    except (IndexError, ValueError):
+                        continue
+
+                if len(connections) >= limit:
+                    break
+        except Exception:
+            pass
+        return connections
 
     def handle_dns_stats(self):
         """Get DNS statistics from Technitium"""

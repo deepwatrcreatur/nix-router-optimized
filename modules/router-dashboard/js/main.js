@@ -177,6 +177,14 @@ class Dashboard {
     });
     this.renderWidget('network', dhcp);
 
+    // NAT64 Widget
+    const nat64 = new NAT64Widget({
+      id: 'nat64',
+      grid: { w: 6, h: 4 },
+      refreshInterval: 10000
+    });
+    this.renderWidget('network', nat64);
+
     // Fail2ban widget
     const fail2ban = new Fail2banWidget({
       id: 'fail2ban',

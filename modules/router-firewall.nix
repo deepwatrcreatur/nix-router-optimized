@@ -252,6 +252,12 @@ in
       description = "Masquerade IPv4 traffic exiting WAN interfaces.";
     };
 
+    enableNat64Masquerade = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Masquerade Tayga NAT64 pool traffic exiting WAN interfaces.";
+    };
+
     hairpinNat.enable = mkEnableOption "IPv4 hairpin NAT for trusted segments";
 
     hairpinNat.ipv4Cidrs = mkOption {
@@ -453,6 +459,10 @@ in
           ip protocol icmp accept
           ${optionalString cfg.enableIpv6 "ip6 nexthdr icmpv6 accept"}
 
+          ${optionalString (config.services.router-nat64.enable or false) ''
+            iifname "nat64" accept comment "Allow Tayga NAT64 traffic"
+          ''}
+
           ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_LOCAL"}
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_LOCAL"}
           ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_LOCAL"}
@@ -483,6 +493,11 @@ in
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_IN"}
           ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_IN"}
 
+          ${optionalString (config.services.router-nat64.enable or false) ''
+            iifname ${maybeSet trustedInterfaces} oifname "nat64" accept comment "Forward to NAT64"
+            iifname "nat64" oifname ${maybeSet wanInterfaces} accept comment "NAT64 to WAN"
+          ''}
+
           ${optionalString (allOverlayInterfaces != [ ] && allRouterInterfaces != [ ]) (
             concatMapStrings (iface: ''
               iifname "${iface}" oifname ${maybeSet allRouterInterfaces} accept
@@ -512,6 +527,9 @@ in
           type nat hook postrouting priority 100; policy accept;
           ${optionalString cfg.enableIpv4Masquerade ''
             oifname ${maybeSet wanInterfaces} masquerade
+          ''}
+          ${optionalString (cfg.enableNat64Masquerade && config.services.router-nat64.enable or false) ''
+            ip saddr ${config.services.router-nat64.ipv4Pool} oifname ${maybeSet wanInterfaces} masquerade
           ''}
           ${optionalString (cfg.hairpinNat.enable && trustedInterfaces != [ ] && effectiveHairpinCidrs != [ ]) ''
             iifname ${maybeSet trustedInterfaces} oifname ${maybeSet trustedInterfaces} ip daddr { ${cidrSet effectiveHairpinCidrs} } masquerade
