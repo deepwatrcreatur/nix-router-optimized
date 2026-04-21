@@ -32,6 +32,14 @@ If you are assigning or running agents against this repo, start with:
 - **Grafana Integration**: Pre-configured dashboards for network monitoring
 - **Caddy Reverse Proxy**: Declarative HTTPS with automatic Let's Encrypt
 - **Technitium Block Lists**: Declarative DNS blocklist presets with additive custom URLs
+- **Kea DHCP**: ISC Kea DHCPv4 with optional RFC2136/TSIG DDNS integration (agenix-safe secret handling)
+- **Router NTP**: Chrony-based NTP server with per-subnet access controls and firewall integration
+- **NAT64**: Tayga-based stateless NAT64 with automatic firewall forward rules
+- **DNS64**: Unbound dns64-module wiring for AAAA synthesis from A records
+- **SQM**: Script-based smart queue management (fq_codel/CAKE) for WAN shaping
+- **mDNS Reflector**: Avahi mDNS reflector for cross-VLAN service discovery
+- **UPnP/NAT-PMP**: miniupnpd with nftables jump-rule integration
+- **BGP**: FRR bgpd with declarative neighbor configuration
 
 ## Quick Start
 
@@ -449,6 +457,108 @@ Declarative Caddy configuration with automatic HTTPS for services:
 ### dns-blocklists
 Declarative Technitium DNS blocklist management with curated presets and additive custom URLs.
 
+### router-kea
+ISC Kea DHCPv4 with optional RFC2136/TSIG DDNS to register leases in a local DNS server. The
+TSIG secret is injected at runtime via an `ExecStartPre` script so it never enters the Nix store.
+
+```nix
+services.router-kea = {
+  enable = true;
+  dhcp4 = {
+    subnet = "10.10.0.0/16";
+    gatewayAddress = "10.10.10.1";
+    dnsServers = [ "10.10.10.1" ];
+    poolRanges = [{ start = "10.10.10.100"; end = "10.10.10.250"; }];
+    reservations = [
+      { hw-address = "aa:bb:cc:dd:ee:ff"; ip-address = "10.10.10.50"; hostname = "myhost"; }
+    ];
+  };
+  ddns = {
+    enable = true;
+    tsigKeyFile = config.age.secrets.kea-ddns-tsig-key.path;
+    forwardZone = "home.example.com";
+    reverseZone = "10.10.in-addr.arpa";
+  };
+};
+```
+
+### router-ntp
+Chrony NTP server with declarative upstream servers, per-subnet client access controls, and
+optional firewall integration (opens UDP 123 on trusted interfaces when router-firewall is loaded).
+
+```nix
+services.router-ntp = {
+  enable = true;
+  lanSubnets = [ "10.10.0.0/16" "10.20.0.0/24" ];
+};
+```
+
+### router-nat64
+Stateless NAT64 via Tayga. Automatically adds an nftables forward rule for the nat64 tunnel
+interface when `router-firewall` is loaded. Use the Well-Known Prefix (`64:ff9b::/96`) or a
+custom ULA prefix.
+
+```nix
+services.router-nat64 = {
+  enable = true;
+  # Defaults: ipv6Prefix = "64:ff9b::/96", ipv4Pool = "192.168.255.0/24"
+};
+```
+
+Pair with `router-dns64` for full NAT64 operation (requires `router-dns-service.provider = "unbound"`):
+
+```nix
+services.router-dns64.enable = true;
+# prefix auto-derives from router-nat64.ipv6Prefix
+```
+
+### router-sqm
+Smart queue management for WAN uplink shaping. Wraps `tc` with fq_codel/CAKE via a
+declarative interface list.
+
+```nix
+services.router-sqm = {
+  enable = true;
+  interfaces = [
+    { device = "ppp0"; bandwidthEgress = "900mbit"; bandwidthIngress = "500mbit"; }
+  ];
+};
+```
+
+### router-mdns
+Avahi mDNS reflector. Enables cross-VLAN discovery (Chromecast, AirPlay, etc.) by reflecting
+mDNS traffic between specified interfaces.
+
+```nix
+services.router-mdns = {
+  enable = true;
+  interfaces = [ "enp6s16" "enp6s16.20" "enp6s16.30" ];
+};
+```
+
+### router-upnp
+miniupnpd UPnP/NAT-PMP server with nftables integration. Adds a `jump miniupnpd` forward rule
+when `router-firewall` is loaded.
+
+```nix
+services.router-upnp = {
+  enable = true;
+  internalIPs = [ "enp6s16" ];
+  # externalInterface defaults to services.router-networking.wan.device
+};
+```
+
+### router-bgp
+FRR bgpd with declarative neighbor configuration. Opens TCP 179 in `networking.firewall`.
+
+```nix
+services.router-bgp = {
+  enable = true;
+  asn = 65001;
+  neighbors."10.10.10.2" = { remoteAs = 65002; };
+};
+```
+
 ## Configuration Examples
 
 See `examples/` directory for complete working configurations.
@@ -457,6 +567,7 @@ Additional docs:
 - `docs/troubleshooting.md` for common operational failures
 - `docs/IMPLEMENTATION-STATUS.md` for current module maturity
 - `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
+- `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
 
 ## PPPoE Example
 
