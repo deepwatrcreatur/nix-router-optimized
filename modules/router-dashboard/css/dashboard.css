@@ -1875,3 +1875,71 @@ header h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* NAT64 Widget Styles */
+.nat64-table-container {
+  max-height: 250px;
+  overflow-y: auto;
+  background: var(--bg-input);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  margin-top: 8px;
+}
+
+.nat64-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.nat64-table th,
+.nat64-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.nat64-table th {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  background: var(--bg-secondary);
+  z-index: 1;
+}
+
+.nat64-table tr:last-child td {
+  border-bottom: none;
+}
+
+.nat64-table tr:hover {
+  background: rgba(56, 189, 248, 0.05);
+}
+
+.proto-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.65rem;
+}
+
+.proto-tcp { background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); }
+.proto-udp { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); }
+.proto-icmp { background: rgba(129, 140, 248, 0.15); color: var(--accent-purple); }
+
+.addr-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-center {
+  text-align: center;
+}
+

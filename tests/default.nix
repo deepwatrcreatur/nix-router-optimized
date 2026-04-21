@@ -17,6 +17,10 @@ let
     inherit self lib eval;
   };
 
+  proFeaturesSmokeChecks = import ./pro-features-smoke.nix {
+    inherit self lib eval;
+  };
+
   interfaceFirewallInvariantChecks = import ./interface-firewall-invariants.nix {
     inherit self lib eval;
   };
@@ -52,6 +56,7 @@ in
   ];
 }
 // vpnSmokeChecks
+// proFeaturesSmokeChecks
 // interfaceFirewallInvariantChecks
 // docExampleChecks
 // lib.mapAttrs' (
