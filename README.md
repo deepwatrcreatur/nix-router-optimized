@@ -40,12 +40,44 @@ If you are assigning or running agents against this repo, start with:
 - **mDNS Reflector**: Avahi mDNS reflector for cross-VLAN service discovery
 - **UPnP/NAT-PMP**: miniupnpd with nftables jump-rule integration
 - **BGP**: FRR bgpd with declarative neighbor configuration
+- **High Availability (HA)**: 
+  - **VRRP (Keepalived)**: Virtual IP (VIP) sharing between master and backup router nodes.
+  - **Kea DHCP HA**: Load-balancing and failover support for Kea DHCPv4.
+  - **WAN HA**: Integrated "Golden MAC" cloning and interface management for seamless ISP failover when using an unmanaged switch topology.
+- **Multi-WAN Failover**: Automatic health-checking and priority switching between multiple ISP uplinks.
+- **WAN MAC Cloning**: Declarative MAC address spoofing for seamless ISP handover
 
 ## Quick Start
 
 ### As a Flake Input
 
-Add to your `flake.nix`:
+...
+
+### High Availability Setup
+
+NixOS Router Optimizations supports advanced High Availability (HA) patterns. 
+
+#### WAN Topology (Unmanaged Switch)
+To share a single-IP ISP modem between two routers without a managed switch:
+1. ISP Modem -> Unmanaged Switch
+2. Router A WAN -> Unmanaged Switch
+3. Router B WAN -> Unmanaged Switch
+
+Enable `services.router-ha.wan` on both nodes. The module will ensure only the Master node has an active WAN interface and the correct "Golden MAC" expected by your ISP.
+
+```nix
+services.router-ha = {
+  enable = true;
+  role = "master"; # or "backup"
+  virtualIp = "10.10.10.1/16";
+  vrrpInterface = "enp6s18"; # LAN interface
+  wan = {
+    enable = true;
+    interface = "enp6s17";
+    clonedMac = "00:11:22:33:44:55"; # Your Golden MAC
+  };
+};
+```
 
 ```nix
 {
