@@ -58,12 +58,12 @@ in
 
     }
 
-    (mkIf hasRouterFirewall {
+    (if hasRouterFirewall then {
       services.router-firewall.extraForwardRules = mkIf (
         config.services.router-firewall.enable or false
       ) ''
         iifname "nat64" accept comment "Allow NAT64 translated traffic"
       '';
-    })
+    } else {})
   ]);
 }

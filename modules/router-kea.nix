@@ -296,10 +296,10 @@ in
   # ── Firewall ────────────────────────────────────────────────────────────────
   # Guard behind hasRouterFirewall so the option is not referenced when
   # router-firewall is not loaded as a module.
-  (mkIf hasRouterFirewall {
+  (if hasRouterFirewall then {
     services.router-firewall.trustedUdpPorts = mkIf (
       config.services.router-firewall.enable or false
     ) [ 67 68 ];
-  })
+  } else {})
 ]);
 }
