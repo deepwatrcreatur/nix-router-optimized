@@ -87,6 +87,8 @@
             self.nixosModules.router-mdns
             self.nixosModules.router-upnp
             self.nixosModules.router-bgp
+            self.nixosModules.router-ha
+            self.nixosModules.router-mwan
           ];
         };
 
@@ -127,6 +129,8 @@
         router-mdns = import ./modules/router-mdns.nix;
         router-upnp = import ./modules/router-upnp.nix;
         router-bgp = import ./modules/router-bgp.nix;
+        router-ha = import ./modules/router-ha.nix;
+        router-mwan = import ./modules/router-mwan.nix;
       };
 
       # Example configuration for testing
