@@ -59,10 +59,7 @@ in
       services.router-firewall.extraForwardRules = mkIf (
         config.services.router-firewall.enable or false
       ) ''
-        # Jump to miniupnpd chain for dynamic port forwarding
-        # The miniupnpd module creates this chain in 'inet miniupnpd'
-        jump miniupnpd
-        ct status dnat accept comment "Allow UPnP forwarded traffic"
+        ct status dnat accept comment "Allow UPnP/NAT-PMP forwarded traffic"
       '';
     } else {})
   ]);

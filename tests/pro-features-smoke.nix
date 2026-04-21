@@ -99,8 +99,8 @@ in
         message = "router-upnp should enable miniupnpd.";
       }
       {
-        assertion = lib.hasInfix "jump miniupnpd" config.services.router-firewall.extraForwardRules;
-        message = "router-upnp should add nftables jump rule.";
+        assertion = lib.hasInfix "ct status dnat accept" config.services.router-firewall.extraForwardRules;
+        message = "router-upnp should add ct status dnat accept rule to forward chain.";
       }
     ])
   ];
