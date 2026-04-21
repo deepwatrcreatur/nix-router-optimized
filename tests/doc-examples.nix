@@ -121,7 +121,7 @@ in
     readmeQuickStartModules
   ) (config: [
     {
-      assertion = config.systemd.network.networks."10-router-wan".matchConfig.Name == "ens17";
+      assertion = config.systemd.network.networks."10-router-wan-primary".matchConfig.Name == "ens17";
       message = "README quick-start should configure the documented WAN interface.";
     }
     {

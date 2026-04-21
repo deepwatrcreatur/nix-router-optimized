@@ -22,6 +22,143 @@ let
     };
   };
 
+  wanModule = types.submodule {
+    options = {
+      device = mkOption {
+        type = types.str;
+        example = "ens17";
+        description = "WAN interface device name.";
+      };
+
+      manageWithNetworkd = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether systemd-networkd should configure the WAN interface directly.";
+      };
+
+      mode = mkOption {
+        type = types.enum [ "dhcp" "static" ];
+        default = "dhcp";
+        description = "Whether the WAN uses DHCP or a static address.";
+      };
+
+      parentDevice = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Optional parent interface for a VLAN-backed WAN.";
+      };
+
+      vlanId = mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        description = "Optional VLAN ID for the WAN interface.";
+      };
+
+      dhcp = mkOption {
+        type = types.str;
+        default = "yes";
+        description = "systemd-networkd DHCP mode for the WAN interface.";
+      };
+
+      ipv6AcceptRA = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to accept IPv6 router advertisements on WAN.";
+      };
+
+      dhcpv6Client = mkOption {
+        type = types.str;
+        default = "always";
+        description = "DHCPv6 client mode when using router advertisements.";
+      };
+
+      prefixDelegationHint = mkOption {
+        type = types.nullOr types.str;
+        default = "::/56";
+        description = "Optional DHCPv6 prefix delegation hint for the upstream.";
+      };
+
+      useAddress = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to request an IPv6 address on the WAN interface.";
+      };
+
+      useDNS = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether to accept DNS servers from WAN DHCP/RA.";
+      };
+
+      ipv4Address = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Static IPv4 CIDR address for the WAN when mode = static.";
+      };
+
+      gateway4 = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Optional IPv4 default gateway for a static WAN.";
+      };
+
+      metric = mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        description = "Route metric for this WAN interface. Lower is preferred.";
+      };
+
+      dns = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "DNS servers to use on a static WAN.";
+      };
+
+      domains = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Search domains to use on a static WAN.";
+      };
+
+      privacyExtensions = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the WAN interface should use temporary IPv6 addresses.";
+      };
+
+      requiredForOnline = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Optional systemd-networkd RequiredForOnline value for the WAN.";
+      };
+
+      extraRoutes = mkOption {
+        type = types.listOf routeModule;
+        default = [ ];
+        example = [
+          {
+            destination = "172.16.0.0/12";
+            scope = "link";
+          }
+        ];
+        description = "Additional static routes installed on the WAN interface.";
+      };
+
+      mtu = mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        description = "Optional MTU for the WAN interface.";
+      };
+
+      macAddress = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "00:11:22:33:44:55";
+        description = "Optional MAC address to clone on the WAN interface.";
+      };
+    };
+  };
+
   routedInterfaceModule = types.submodule {
     options = {
       device = mkOption {
@@ -181,20 +318,22 @@ let
       ) cfg.routedInterfaces
     );
 
-  wanVlanDefinition =
-    if cfg.wan.vlanId != null then
-      [
-        {
-          key = "04-router-vlan-${sanitizeName cfg.wan.device}";
-          parent = cfg.wan.parentDevice;
-          child = cfg.wan.device;
-          vlanId = cfg.wan.vlanId;
-        }
-      ]
-    else
-      [ ];
+  wanVlanDefinitions =
+    filter (item: item != null) (
+      mapAttrsToList (name: wanCfg:
+        if wanCfg.vlanId != null then
+          {
+            key = "04-router-vlan-${sanitizeName wanCfg.device}";
+            parent = wanCfg.parentDevice;
+            child = wanCfg.device;
+            vlanId = wanCfg.vlanId;
+          }
+        else
+          null
+      ) effectiveWans
+    );
 
-  vlanDefinitions = wanVlanDefinition ++ routedVlanDefinitions;
+  vlanDefinitions = wanVlanDefinitions ++ routedVlanDefinitions;
 
   parentVlans =
     foldl'
@@ -208,45 +347,60 @@ let
     linkConfig.RequiredForOnline = "no";
   };
 
-  mkWanNetwork = {
-    matchConfig.Name = cfg.wan.device;
+  effectiveWans = { primary = cfg.wan; } // cfg.wans;
+
+  mkWanNetwork = name: wanCfg: {
+    matchConfig.Name = wanCfg.device;
     address =
       optional
-        (cfg.wan.mode == "static" && cfg.wan.ipv4Address != null)
-        cfg.wan.ipv4Address;
+        (wanCfg.mode == "static" && wanCfg.ipv4Address != null)
+        wanCfg.ipv4Address;
     routes =
       (optional
-        (cfg.wan.mode == "static" && cfg.wan.gateway4 != null)
-        {
-          Destination = "0.0.0.0/0";
-          Gateway = cfg.wan.gateway4;
-        })
-      ++ map mkRoute cfg.wan.extraRoutes;
+        (wanCfg.mode == "static" && wanCfg.gateway4 != null)
+        (
+          {
+            Destination = "0.0.0.0/0";
+            Gateway = wanCfg.gateway4;
+          }
+          // optionalAttrs (wanCfg.metric != null) { Metric = wanCfg.metric; }
+        ))
+      ++ map mkRoute wanCfg.extraRoutes;
     linkConfig =
-      optionalAttrs (cfg.wan.requiredForOnline != null) {
-        RequiredForOnline = cfg.wan.requiredForOnline;
+      optionalAttrs (wanCfg.requiredForOnline != null) {
+        RequiredForOnline = wanCfg.requiredForOnline;
       }
-      // optionalAttrs (cfg.wan.mtu != null) {
-        MTUBytes = toString cfg.wan.mtu;
+      // optionalAttrs (wanCfg.mtu != null) {
+        MTUBytes = toString wanCfg.mtu;
+      }
+      // optionalAttrs (wanCfg.macAddress != null) {
+        MACAddress = wanCfg.macAddress;
       };
     networkConfig =
       {
-        DHCP = if cfg.wan.mode == "dhcp" then cfg.wan.dhcp else "no";
-        IPv6AcceptRA = cfg.wan.ipv6AcceptRA;
-        IPv6PrivacyExtensions = if cfg.wan.privacyExtensions then "kernel" else "no";
+        DHCP = if wanCfg.mode == "dhcp" then wanCfg.dhcp else "no";
+        IPv6AcceptRA = wanCfg.ipv6AcceptRA;
+        IPv6PrivacyExtensions = if wanCfg.privacyExtensions then "kernel" else "no";
       }
-      // optionalAttrs (cfg.wan.mode == "static" && cfg.wan.dns != [ ]) { DNS = cfg.wan.dns; }
-      // optionalAttrs (cfg.wan.mode == "static" && cfg.wan.domains != [ ]) { Domains = cfg.wan.domains; };
+      // optionalAttrs (wanCfg.mode == "static" && wanCfg.dns != [ ]) { DNS = wanCfg.dns; }
+      // optionalAttrs (wanCfg.mode == "static" && wanCfg.domains != [ ]) { Domains = wanCfg.domains; };
+    dhcpConfig = mkIf (wanCfg.mode == "dhcp") (
+      optionalAttrs (wanCfg.metric != null) {
+        RouteMetric = wanCfg.metric;
+      }
+    );
     dhcpV6Config =
-      optionalAttrs (cfg.wan.prefixDelegationHint != null) {
-        PrefixDelegationHint = cfg.wan.prefixDelegationHint;
+      optionalAttrs (wanCfg.prefixDelegationHint != null) {
+        PrefixDelegationHint = wanCfg.prefixDelegationHint;
       }
       // {
-        UseAddress = cfg.wan.useAddress;
+        UseAddress = wanCfg.useAddress;
       };
     ipv6AcceptRAConfig = {
-      DHCPv6Client = cfg.wan.dhcpv6Client;
-      UseDNS = cfg.wan.useDNS;
+      DHCPv6Client = wanCfg.dhcpv6Client;
+      UseDNS = wanCfg.useDNS;
+    } // optionalAttrs (wanCfg.metric != null) {
+      RouteMetric = wanCfg.metric;
     };
   };
 
@@ -325,126 +479,15 @@ in
       description = "Enable systemd-networkd-wait-online.";
     };
 
-    wan = {
-      device = mkOption {
-        type = types.str;
-        example = "ens17";
-        description = "WAN interface device name.";
-      };
+    wan = mkOption {
+      type = wanModule;
+      description = "Primary WAN interface configuration.";
+    };
 
-      manageWithNetworkd = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether systemd-networkd should configure the WAN interface directly.";
-      };
-
-      mode = mkOption {
-        type = types.enum [ "dhcp" "static" ];
-        default = "dhcp";
-        description = "Whether the WAN uses DHCP or a static address.";
-      };
-
-      parentDevice = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional parent interface for a VLAN-backed WAN.";
-      };
-
-      vlanId = mkOption {
-        type = types.nullOr types.int;
-        default = null;
-        description = "Optional VLAN ID for the WAN interface.";
-      };
-
-      dhcp = mkOption {
-        type = types.str;
-        default = "yes";
-        description = "systemd-networkd DHCP mode for the WAN interface.";
-      };
-
-      ipv6AcceptRA = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether to accept IPv6 router advertisements on WAN.";
-      };
-
-      dhcpv6Client = mkOption {
-        type = types.str;
-        default = "always";
-        description = "DHCPv6 client mode when using router advertisements.";
-      };
-
-      prefixDelegationHint = mkOption {
-        type = types.nullOr types.str;
-        default = "::/56";
-        description = "Optional DHCPv6 prefix delegation hint for the upstream.";
-      };
-
-      useAddress = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether to request an IPv6 address on the WAN interface.";
-      };
-
-      useDNS = mkOption {
-        type = types.bool;
-        default = false;
-        description = "Whether to accept DNS servers from WAN DHCP/RA.";
-      };
-
-      ipv4Address = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Static IPv4 CIDR address for the WAN when mode = static.";
-      };
-
-      gateway4 = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional IPv4 default gateway for a static WAN.";
-      };
-
-      dns = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-        description = "DNS servers to use on a static WAN.";
-      };
-
-      domains = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-        description = "Search domains to use on a static WAN.";
-      };
-
-      privacyExtensions = mkOption {
-        type = types.bool;
-        default = false;
-        description = "Whether the WAN interface should use temporary IPv6 addresses.";
-      };
-
-      requiredForOnline = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional systemd-networkd RequiredForOnline value for the WAN.";
-      };
-
-      extraRoutes = mkOption {
-        type = types.listOf routeModule;
-        default = [ ];
-        example = [
-          {
-            destination = "172.16.0.0/12";
-            scope = "link";
-          }
-        ];
-        description = "Additional static routes installed on the WAN interface.";
-      };
-
-      mtu = mkOption {
-        type = types.nullOr types.int;
-        default = null;
-        description = "Optional MTU for the WAN interface.";
-      };
+    wans = mkOption {
+      type = types.attrsOf wanModule;
+      default = { };
+      description = "Additional WAN interfaces for multi-WAN setups.";
     };
 
     routedInterfaces = mkOption {
@@ -486,9 +529,9 @@ in
       );
 
     systemd.network.networks =
-      (optionalAttrs cfg.wan.manageWithNetworkd {
-        "10-router-wan" = mkWanNetwork;
-      })
+      (mapAttrs' (name: wanCfg:
+        nameValuePair "10-router-wan-${name}" (mkWanNetwork name wanCfg)
+      ) (filterAttrs (_name: wanCfg: wanCfg.manageWithNetworkd) effectiveWans))
       // mapAttrs'
         (parent: children:
           nameValuePair "08-router-parent-${sanitizeName parent}" (mkParentVlanNetwork parent children)
