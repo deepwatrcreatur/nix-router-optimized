@@ -153,6 +153,28 @@ in
         default = [ ];
         description = "Static DHCP reservations. Hostnames trigger DDNS A-record registration when DDNS is enabled.";
       };
+
+      ha = {
+        enable = mkEnableOption "Kea DHCPv4 High Availability (Load Balancing/Failover)";
+        thisServerName = mkOption {
+          type = types.str;
+          example = "router-primary";
+          description = "Name of this Kea server in the HA group.";
+        };
+        role = mkOption {
+          type = types.enum [ "primary" "secondary" ];
+          description = "Role of this server in the HA group.";
+        };
+        peerAddress = mkOption {
+          type = types.str;
+          description = "IP address of the peer Kea server.";
+        };
+        peerName = mkOption {
+          type = types.str;
+          example = "router-backup";
+          description = "Name of the peer Kea server.";
+        };
+      };
     };
 
     ddns = {
@@ -232,6 +254,35 @@ in
           interfaces = effectiveInterfaces;
         };
 
+        hooks-libraries = mkIf cfg.dhcp4.ha.enable [
+          {
+            library = "${pkgs.kea}/lib/kea/hooks/libdhcp_ha.so";
+            parameters = {
+              high-availability = [
+                {
+                  this-server-name = cfg.dhcp4.ha.thisServerName;
+                  mode = "load-balancing";
+                  heartbeat-delay = 10000;
+                  max-response-delay = 60000;
+                  max-unacked-clients = 0;
+                  peers = [
+                    {
+                      name = cfg.dhcp4.ha.thisServerName;
+                      url = "http://${if cfg.dhcp4.ha.role == "primary" then "127.0.0.1" else cfg.dhcp4.ha.peerAddress}:8000/";
+                      role = cfg.dhcp4.ha.role;
+                    }
+                    {
+                      name = cfg.dhcp4.ha.peerName;
+                      url = "http://${if cfg.dhcp4.ha.role == "secondary" then "127.0.0.1" else cfg.dhcp4.ha.peerAddress}:8000/";
+                      role = if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary";
+                    }
+                  ];
+                }
+              ];
+            };
+          }
+        ];
+
         subnet4 = [
           {
             id = 1;
@@ -300,6 +351,9 @@ in
     services.router-firewall.trustedUdpPorts = mkIf (
       config.services.router-firewall.enable or false
     ) [ 67 68 ];
+    services.router-firewall.trustedTcpPorts = mkIf (
+      config.services.router-firewall.enable or false && cfg.dhcp4.ha.enable
+    ) [ 8000 ];
   } else {})
 ]);
 }
