@@ -1,10 +1,11 @@
-{ config, lib, ... }:
+{ config, options, lib, ... }:
 
 with lib;
 
 let
   cfg = config.services.router-upnp;
-  firewallCfg = config.services.router-firewall;
+  hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
+  hasRouterNetworking = hasAttrByPath [ "services" "router-networking" "wan" "device" ] options;
 in
 {
   options.services.router-upnp = {
@@ -39,24 +40,30 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    services.miniupnpd = {
-      enable = true;
-      externalInterface = if cfg.externalInterface != null 
-        then cfg.externalInterface 
-        else config.services.router-networking.wan.device;
-      internalIPs = cfg.internalIPs;
-      natpmp = cfg.natpmp;
-      upnp = true;
-      appendConfig = optionalString cfg.secureMode "secure_mode=yes";
-    };
+  config = mkIf cfg.enable (mkMerge [
+    {
+      services.miniupnpd = {
+        enable = true;
+        externalInterface =
+          if cfg.externalInterface != null then cfg.externalInterface
+          else if hasRouterNetworking then config.services.router-networking.wan.device
+          else mkDefault "";
+        internalIPs = cfg.internalIPs;
+        natpmp = cfg.natpmp;
+        upnp = true;
+        appendConfig = optionalString cfg.secureMode "secure_mode=yes";
+      };
+    }
 
-    # Integration with router-firewall's nftables
-    services.router-firewall.extraForwardRules = mkIf firewallCfg.enable ''
-      # Jump to miniupnpd chain for dynamic port forwarding
-      # The miniupnpd module creates this chain in 'inet miniupnpd'
-      jump miniupnpd
-      ct status dnat accept comment "Allow UPnP forwarded traffic"
-    '';
-  };
+    (if hasRouterFirewall then {
+      services.router-firewall.extraForwardRules = mkIf (
+        config.services.router-firewall.enable or false
+      ) ''
+        # Jump to miniupnpd chain for dynamic port forwarding
+        # The miniupnpd module creates this chain in 'inet miniupnpd'
+        jump miniupnpd
+        ct status dnat accept comment "Allow UPnP forwarded traffic"
+      '';
+    } else {})
+  ]);
 }
