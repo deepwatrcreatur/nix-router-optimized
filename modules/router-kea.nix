@@ -154,6 +154,38 @@ in
         description = "Static DHCP reservations. Hostnames trigger DDNS A-record registration when DDNS is enabled.";
       };
 
+      pxe = mkOption {
+        type = types.submodule {
+          options = {
+            enable = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Whether to advertise PXE boot options on this segment.";
+            };
+
+            bootServerAddress = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Optional PXE boot server address (next-server).";
+            };
+
+            bootServerName = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Optional PXE boot server name (tftp-server-name).";
+            };
+
+            bootFilename = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "PXE boot filename or URL (boot-file-name).";
+            };
+          };
+        };
+        default = { };
+        description = "Typed PXE boot advertisement options for this routed segment.";
+      };
+
       ha = {
         enable = mkEnableOption "Kea DHCPv4 High Availability (Load Balancing/Failover)";
         thisServerName = mkOption {
@@ -288,7 +320,11 @@ in
             id = 1;
             subnet = cfg.dhcp4.subnet;
             pools = map (r: { pool = "${r.start} - ${r.end}"; }) cfg.dhcp4.poolRanges;
+            next-server = mkIf (cfg.dhcp4.pxe.enable && cfg.dhcp4.pxe.bootServerAddress != null) cfg.dhcp4.pxe.bootServerAddress;
             option-data =
+              let
+                pxeCfg = cfg.dhcp4.pxe;
+              in
               optional (cfg.dhcp4.gatewayAddress != "") {
                 name = "routers";
                 data = cfg.dhcp4.gatewayAddress;
@@ -296,13 +332,23 @@ in
               ++ optional (cfg.dhcp4.dnsServers != [ ]) {
                 name = "domain-name-servers";
                 data = concatStringsSep ", " cfg.dhcp4.dnsServers;
+              }
+              ++ optional (pxeCfg.enable && pxeCfg.bootServerName != null) {
+                name = "tftp-server-name";
+                data = pxeCfg.bootServerName;
+              }
+              ++ optional (pxeCfg.enable && pxeCfg.bootFilename != null) {
+                name = "boot-file-name";
+                data = pxeCfg.bootFilename;
               };
-            reservations = map (
+              reservations = map (
               r:
-              { hw-address = r.hw-address; ip-address = r.ip-address; }
+              {
+                hw-address = r.hw-address;
+                ip-address = r.ip-address;
+              }
               // optionalAttrs (r.hostname != null) { hostname = r.hostname; }
-            ) cfg.dhcp4.reservations;
-          }
+              ) cfg.dhcp4.reservations;          }
         ];
       } // optionalAttrs cfg.ddns.enable {
         dhcp-ddns = {
