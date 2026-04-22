@@ -8,6 +8,7 @@ let
   effectiveNameservers = unique (cfg.listenAddresses ++ cfg.fallbackNameservers);
   effectiveServiceListenAddresses =
     if cfg.serviceListenAddresses != [ ] then unique cfg.serviceListenAddresses else cfg.listenAddresses;
+  formatTechnitiumEndPoint = addr: if hasInfix ":" addr then "[${addr}]:53" else "${addr}:53";
 
   resolvConfText =
     let
@@ -162,7 +163,7 @@ in
       extraBlockListUrls = cfg.technitium.extraBlockListUrls;
       blockListUpdateIntervalHours = cfg.technitium.blockListUpdateIntervalHours;
       forceBlockListUpdateOnActivation = cfg.technitium.forceBlockListUpdateOnActivation;
-      listenEndPoints = map (addr: "${addr}:53") cfg.serviceListenAddresses;
+      listenEndPoints = map formatTechnitiumEndPoint cfg.serviceListenAddresses;
       ntpServers = cfg.ntpServers;
     };
   };

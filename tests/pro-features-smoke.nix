@@ -206,4 +206,36 @@ in
       }
     ])
   ];
+
+  router-ha-dns-technitium-ipv6-eval = eval.mkNixosEvalCheck "router-ha-dns-technitium-ipv6" [
+    ageSecretStub
+    self.nixosModules.router-ha
+    self.nixosModules.router-dns-service
+    {
+      age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
+      services.router-ha = {
+        enable = true;
+        role = "backup";
+        virtualIp = "fd00::1/64";
+        vrrpInterface = "lan0";
+      };
+      services.router-dns-service = {
+        enable = true;
+        provider = "technitium";
+        serviceListenAddresses = [
+          "::1"
+          "fd00::1"
+        ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.router-technitium.listenEndPoints == [
+          "[::1]:53"
+          "[fd00::1]:53"
+        ];
+        message = "router-dns-service should bracket IPv6 Technitium listener endpoints.";
+      }
+    ])
+  ];
 }

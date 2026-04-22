@@ -365,7 +365,9 @@ let
 
     ${commonShellHelpers}
 
-    SETTINGS_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/settings/get?token=$TOKEN")"
+    SETTINGS_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/settings/get")"
     CURRENT_ENDPOINTS="$(${pkgs.jq}/bin/jq -r '
       (.response.dnsServerLocalEndPoints // [])
       | sort
