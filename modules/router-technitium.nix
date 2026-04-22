@@ -340,6 +340,56 @@ let
     echo "Technitium NTP option 42 synchronized"
   '';
 
+  listenerSyncScript = pkgs.writeShellScript "technitium-sync-listeners" ''
+    set -euo pipefail
+
+    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${
+      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
+    }" ]; then
+      echo "Technitium API token file not found; cannot sync DNS listeners" >&2
+      exit 1
+    fi
+
+    for i in {1..30}; do
+      if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:5380/api/dns/status >/dev/null 2>&1; then
+        break
+      fi
+      echo "Waiting for Technitium DNS Server to start..."
+      sleep 2
+    done
+
+    TOKEN="$(${pkgs.coreutils}/bin/cat "${
+      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
+    }")"
+    DESIRED_ENDPOINTS="${concatStringsSep "," cfg.listenEndPoints}"
+
+    ${commonShellHelpers}
+
+    SETTINGS_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/settings/get?token=$TOKEN")"
+    CURRENT_ENDPOINTS="$(${pkgs.jq}/bin/jq -r '
+      (.response.dnsServerLocalEndPoints // [])
+      | sort
+      | join(",")
+    ' <<<"$SETTINGS_JSON")"
+    NORMALIZED_DESIRED="$(${pkgs.jq}/bin/jq -rn --arg endpoints "$DESIRED_ENDPOINTS" '
+      ($endpoints | split(",") | map(select(length > 0)) | sort | join(","))
+    ')"
+
+    if [ "$CURRENT_ENDPOINTS" = "$NORMALIZED_DESIRED" ]; then
+      echo "Technitium DNS listeners already synchronized"
+      exit 0
+    fi
+
+    technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "token=$TOKEN" \
+      --data-urlencode "dnsServerLocalEndPoints=$DESIRED_ENDPOINTS" \
+      "http://127.0.0.1:5380/api/settings/set" \
+      >/dev/null
+
+    echo "Technitium DNS listeners synchronized"
+  '';
+
   dhcpReservationsJson = pkgs.writeText "technitium-dhcp-reservations.json" (
     builtins.toJSON (
       mapAttrsToList (name: reservation: reservation // { inherit name; }) cfg.dhcpReservations
@@ -614,6 +664,17 @@ in
       '';
     };
 
+    listenEndPoints = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "127.0.0.1:53" "10.10.10.1:53" ];
+      description = ''
+        Declarative DNS listener endpoints synchronized via the Technitium
+        HTTP API. Leave empty to preserve Technitium's existing listener
+        configuration.
+      '';
+    };
+
     scopes = mkOption {
       type = types.attrsOf scopeModule;
       default = { };
@@ -677,6 +738,10 @@ in
         assertion = cfg.ntpServers == [ ] || hasApiSecret;
         message = "services.router-technitium.ntpServers requires a Technitium API token secret.";
       }
+      {
+        assertion = cfg.listenEndPoints == [ ] || hasApiSecret;
+        message = "services.router-technitium.listenEndPoints requires a Technitium API token secret.";
+      }
     ];
 
     services.technitium-dns-server.enable = true;
@@ -722,11 +787,31 @@ in
       '';
     };
 
+    systemd.services.technitium-sync-listeners = mkIf (cfg.listenEndPoints != [ ] && hasApiSecret) {
+      description = "Sync Technitium DNS listener endpoints";
+      after = [
+        "technitium-dns-server.service"
+        "agenix.service"
+      ];
+      wants = [ "technitium-dns-server.service" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+
+      script = ''
+        ${listenerSyncScript}
+      '';
+    };
+
     systemd.services.technitium-sync-ntp-option = mkIf (cfg.ntpServers != [ ] && hasApiSecret) {
       description = "Sync NTP server list to Technitium DHCP option 42";
       after = [
         "technitium-dns-server.service"
         "agenix.service"
+        "technitium-sync-listeners.service"
         "technitium-sync-dhcp-scopes.service"
         "technitium-sync-dhcp-reservations.service"
       ];

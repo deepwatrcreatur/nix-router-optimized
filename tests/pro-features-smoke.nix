@@ -14,6 +14,16 @@ let
   };
 
   assertModule = assertions: { inherit assertions; };
+  ageSecretStub = {
+    options.age.secrets = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule {
+        options.path = lib.mkOption {
+          type = lib.types.str;
+        };
+      });
+      default = { };
+    };
+  };
 in
 {
   router-nat64-eval = eval.mkNixosEvalCheck "router-nat64" [
@@ -122,6 +132,77 @@ in
       {
         assertion = builtins.elem 179 config.networking.firewall.allowedTCPPorts;
         message = "router-bgp should open BGP port 179.";
+      }
+    ])
+  ];
+
+  router-ha-dns-unbound-eval = eval.mkNixosEvalCheck "router-ha-dns-unbound" [
+    self.nixosModules.router-ha
+    self.nixosModules.router-dns-service
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "lan0";
+      };
+      services.router-dns-service = {
+        enable = true;
+        provider = "unbound";
+        listenAddresses = [ "127.0.0.1" ];
+        serviceListenAddresses = [
+          "127.0.0.1"
+          "10.10.10.1"
+        ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.boot.kernel.sysctl."net.ipv4.ip_nonlocal_bind" == 1;
+        message = "router-ha should enable IPv4 non-local bind for IPv4 VIPs.";
+      }
+      {
+        assertion = config.services.unbound.settings.server.interface == [
+          "127.0.0.1"
+          "10.10.10.1"
+        ];
+        message = "router-dns-service should pass serviceListenAddresses to Unbound.";
+      }
+    ])
+  ];
+
+  router-ha-dns-technitium-eval = eval.mkNixosEvalCheck "router-ha-dns-technitium" [
+    ageSecretStub
+    self.nixosModules.router-ha
+    self.nixosModules.router-dns-service
+    {
+      age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
+      services.router-ha = {
+        enable = true;
+        role = "backup";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "lan0";
+      };
+      services.router-dns-service = {
+        enable = true;
+        provider = "technitium";
+        serviceListenAddresses = [
+          "127.0.0.1"
+          "10.10.10.1"
+        ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.router-technitium.listenEndPoints == [
+          "127.0.0.1:53"
+          "10.10.10.1:53"
+        ];
+        message = "router-dns-service should derive Technitium listener endpoints from serviceListenAddresses.";
+      }
+      {
+        assertion = config.systemd.services.technitium-sync-listeners.wantedBy == [ "multi-user.target" ];
+        message = "router-technitium should create a listener sync service when custom listener endpoints are declared.";
       }
     ])
   ];
