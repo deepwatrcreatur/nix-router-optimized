@@ -300,12 +300,12 @@ in
                   peers = [
                     {
                       name = cfg.dhcp4.ha.thisServerName;
-                      url = "http://${if cfg.dhcp4.ha.role == "primary" then "127.0.0.1" else cfg.dhcp4.ha.peerAddress}:8000/";
+                      url = "http://127.0.0.1:8000/";
                       role = cfg.dhcp4.ha.role;
                     }
                     {
                       name = cfg.dhcp4.ha.peerName;
-                      url = "http://${if cfg.dhcp4.ha.role == "secondary" then "127.0.0.1" else cfg.dhcp4.ha.peerAddress}:8000/";
+                      url = "http://${cfg.dhcp4.ha.peerAddress}:8000/";
                       role = if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary";
                     }
                   ];
