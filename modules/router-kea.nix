@@ -214,6 +214,16 @@ in
           type = types.str;
           description = "IP address of the peer Kea server.";
         };
+        localAddress = mkOption {
+          type = types.str;
+          default = "127.0.0.1";
+          example = "192.168.100.100";
+          description = ''
+            IP address this node advertises for its own Kea HA endpoint. In a
+            multi-node deployment this must be reachable by the peer; using
+            127.0.0.1 confines the HA control plane to the local namespace.
+          '';
+        };
         peerName = mkOption {
           type = types.str;
           example = "router-backup";
@@ -302,6 +312,9 @@ in
 
         hooks-libraries = mkIf cfg.dhcp4.ha.enable [
           {
+            library = "${pkgs.kea}/lib/kea/hooks/libdhcp_lease_cmds.so";
+          }
+          {
             library = "${pkgs.kea}/lib/kea/hooks/libdhcp_ha.so";
             parameters = {
               high-availability = [
@@ -314,7 +327,7 @@ in
                   peers = [
                     {
                       name = cfg.dhcp4.ha.thisServerName;
-                      url = "http://127.0.0.1:8000/";
+                      url = "http://${cfg.dhcp4.ha.localAddress}:8000/";
                       role = cfg.dhcp4.ha.role;
                     }
                     {
