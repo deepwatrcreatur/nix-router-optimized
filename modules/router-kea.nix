@@ -111,6 +111,19 @@ in
         description = "LAN interfaces to serve DHCP on. Defaults to LAN-role interfaces from services.router-networking.";
       };
 
+      outboundInterface = mkOption {
+        type = types.enum [
+          "same-as-inbound"
+          "use-routing"
+        ];
+        default = "same-as-inbound";
+        description = ''
+          Kea outbound-interface mode for DHCPv4 replies. `use-routing` is
+          useful as a probe when validating Linux socket behavior in HA/VRRP
+          deployments.
+        '';
+      };
+
       subnet = mkOption {
         type = types.str;
         example = "10.10.0.0/16";
@@ -284,6 +297,7 @@ in
         interfaces-config = {
           dhcp-socket-type = "raw";
           interfaces = effectiveInterfaces;
+          outbound-interface = cfg.dhcp4.outboundInterface;
         };
 
         hooks-libraries = mkIf cfg.dhcp4.ha.enable [
