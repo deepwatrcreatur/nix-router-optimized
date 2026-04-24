@@ -22,6 +22,11 @@ let
         filterAttrs (_name: iface: elem iface.role [ "lan" ]) routedIfaces
       );
 
+      # TECHNICAL GUARDRAIL: Kea 3.x on Linux fails to poll the raw socket for
+      # receiving if the interface is bound with an address qualifier (e.g. eth0/10.0.0.1).
+      # We must ensure that in raw mode, only bare interface names are used.
+      hasAddressQualifiedInterface = any (i: strings.hasInfix "/" i) effectiveInterfaces;
+      in
   reservationModule = types.submodule {
     options = {
       hw-address = mkOption {
@@ -108,7 +113,14 @@ in
       interfaces = mkOption {
         type = types.listOf types.str;
         default = [ ];
-        description = "LAN interfaces to serve DHCP on. Defaults to LAN-role interfaces from services.router-networking.";
+        description = ''
+          LAN interfaces to serve DHCP on. Defaults to LAN-role interfaces from
+          services.router-networking.
+
+          WARNING: In raw socket mode (default), do NOT use address qualifiers
+          (e.g. "eth0/10.0.0.1"). Kea 3.x fails to poll for broadcasts on
+          address-qualified raw sockets.
+        '';
       };
 
       outboundInterface = mkOption {
@@ -116,11 +128,12 @@ in
           "same-as-inbound"
           "use-routing"
         ];
-        default = "same-as-inbound";
+        default = if cfg.dhcp4.ha.enable then "use-routing" else "same-as-inbound";
+        defaultText = literalExpression ''if config.services.router-kea.dhcp4.ha.enable then "use-routing" else "same-as-inbound"'';
         description = ''
           Kea outbound-interface mode for DHCPv4 replies. `use-routing` is
-          useful as a probe when validating Linux socket behavior in HA/VRRP
-          deployments.
+          strongly recommended for HA/VRRP deployments to ensure broadcast
+          replies reach clients through the correct kernel path.
         '';
       };
 
@@ -216,12 +229,13 @@ in
         };
         localAddress = mkOption {
           type = types.str;
-          default = "127.0.0.1";
+          default = "0.0.0.0";
           example = "192.168.100.100";
           description = ''
             IP address this node advertises for its own Kea HA endpoint. In a
-            multi-node deployment this must be reachable by the peer; using
-            127.0.0.1 confines the HA control plane to the local namespace.
+            multi-node deployment this must be reachable by the peer.
+
+            WARNING: Using 127.0.0.1 (previous default) will break HA sync between nodes.
           '';
         };
         peerName = mkOption {
@@ -282,6 +296,16 @@ in
 
   config = mkIf cfg.enable (mkMerge [
   {
+    assertions = [
+      {
+        assertion = !hasAddressQualifiedInterface;
+        message = ''
+          Kea regression check failed: The interface list contains an address qualifier (e.g. eth0/10.0.0.1).
+          Kea 3.x on Linux fails to poll for broadcasts when raw sockets are address-qualified.
+          Use a bare interface name (e.g. "eth0") instead.
+        '';
+      }
+    ];
 
     # ── DHCPv4 ────────────────────────────────────────────────────────────────
 
