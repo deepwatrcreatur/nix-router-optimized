@@ -26,7 +26,7 @@ let
       # receiving if the interface is bound with an address qualifier (e.g. eth0/10.0.0.1).
       # We must ensure that in raw mode, only bare interface names are used.
       hasAddressQualifiedInterface = any (i: strings.hasInfix "/" i) effectiveInterfaces;
-      in
+
   reservationModule = types.submodule {
     options = {
       hw-address = mkOption {
