@@ -22,6 +22,11 @@ let
         filterAttrs (_name: iface: elem iface.role [ "lan" ]) routedIfaces
       );
 
+      # TECHNICAL GUARDRAIL: Kea 3.x on Linux fails to poll the raw socket for
+      # receiving if the interface is bound with an address qualifier (e.g. eth0/10.0.0.1).
+      # We must ensure that in raw mode, only bare interface names are used.
+      hasAddressQualifiedInterface = any (i: strings.hasInfix "/" i) effectiveInterfaces;
+      in
   reservationModule = types.submodule {
     options = {
       hw-address = mkOption {
@@ -108,7 +113,28 @@ in
       interfaces = mkOption {
         type = types.listOf types.str;
         default = [ ];
-        description = "LAN interfaces to serve DHCP on. Defaults to LAN-role interfaces from services.router-networking.";
+        description = ''
+          LAN interfaces to serve DHCP on. Defaults to LAN-role interfaces from
+          services.router-networking.
+
+          WARNING: In raw socket mode (default), do NOT use address qualifiers
+          (e.g. "eth0/10.0.0.1"). Kea 3.x fails to poll for broadcasts on
+          address-qualified raw sockets.
+        '';
+      };
+
+      outboundInterface = mkOption {
+        type = types.enum [
+          "same-as-inbound"
+          "use-routing"
+        ];
+        default = if cfg.dhcp4.ha.enable then "use-routing" else "same-as-inbound";
+        defaultText = literalExpression ''if config.services.router-kea.dhcp4.ha.enable then "use-routing" else "same-as-inbound"'';
+        description = ''
+          Kea outbound-interface mode for DHCPv4 replies. `use-routing` is
+          strongly recommended for HA/VRRP deployments to ensure broadcast
+          replies reach clients through the correct kernel path.
+        '';
       };
 
       subnet = mkOption {
@@ -154,6 +180,38 @@ in
         description = "Static DHCP reservations. Hostnames trigger DDNS A-record registration when DDNS is enabled.";
       };
 
+      pxe = mkOption {
+        type = types.submodule {
+          options = {
+            enable = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Whether to advertise PXE boot options on this segment.";
+            };
+
+            bootServerAddress = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Optional PXE boot server address (next-server).";
+            };
+
+            bootServerName = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Optional PXE boot server name (tftp-server-name).";
+            };
+
+            bootFilename = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "PXE boot filename or URL (boot-file-name).";
+            };
+          };
+        };
+        default = { };
+        description = "Typed PXE boot advertisement options for this routed segment.";
+      };
+
       ha = {
         enable = mkEnableOption "Kea DHCPv4 High Availability (Load Balancing/Failover)";
         thisServerName = mkOption {
@@ -168,6 +226,17 @@ in
         peerAddress = mkOption {
           type = types.str;
           description = "IP address of the peer Kea server.";
+        };
+        localAddress = mkOption {
+          type = types.str;
+          default = "0.0.0.0";
+          example = "192.168.100.100";
+          description = ''
+            IP address this node advertises for its own Kea HA endpoint. In a
+            multi-node deployment this must be reachable by the peer.
+
+            WARNING: Using 127.0.0.1 (previous default) will break HA sync between nodes.
+          '';
         };
         peerName = mkOption {
           type = types.str;
@@ -227,6 +296,16 @@ in
 
   config = mkIf cfg.enable (mkMerge [
   {
+    assertions = [
+      {
+        assertion = !hasAddressQualifiedInterface;
+        message = ''
+          Kea regression check failed: The interface list contains an address qualifier (e.g. eth0/10.0.0.1).
+          Kea 3.x on Linux fails to poll for broadcasts when raw sockets are address-qualified.
+          Use a bare interface name (e.g. "eth0") instead.
+        '';
+      }
+    ];
 
     # ── DHCPv4 ────────────────────────────────────────────────────────────────
 
@@ -252,9 +331,13 @@ in
         interfaces-config = {
           dhcp-socket-type = "raw";
           interfaces = effectiveInterfaces;
+          outbound-interface = cfg.dhcp4.outboundInterface;
         };
 
         hooks-libraries = mkIf cfg.dhcp4.ha.enable [
+          {
+            library = "${pkgs.kea}/lib/kea/hooks/libdhcp_lease_cmds.so";
+          }
           {
             library = "${pkgs.kea}/lib/kea/hooks/libdhcp_ha.so";
             parameters = {
@@ -268,12 +351,12 @@ in
                   peers = [
                     {
                       name = cfg.dhcp4.ha.thisServerName;
-                      url = "http://${if cfg.dhcp4.ha.role == "primary" then "127.0.0.1" else cfg.dhcp4.ha.peerAddress}:8000/";
+                      url = "http://${cfg.dhcp4.ha.localAddress}:8000/";
                       role = cfg.dhcp4.ha.role;
                     }
                     {
                       name = cfg.dhcp4.ha.peerName;
-                      url = "http://${if cfg.dhcp4.ha.role == "secondary" then "127.0.0.1" else cfg.dhcp4.ha.peerAddress}:8000/";
+                      url = "http://${cfg.dhcp4.ha.peerAddress}:8000/";
                       role = if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary";
                     }
                   ];
@@ -288,7 +371,11 @@ in
             id = 1;
             subnet = cfg.dhcp4.subnet;
             pools = map (r: { pool = "${r.start} - ${r.end}"; }) cfg.dhcp4.poolRanges;
+            next-server = mkIf (cfg.dhcp4.pxe.enable && cfg.dhcp4.pxe.bootServerAddress != null) cfg.dhcp4.pxe.bootServerAddress;
             option-data =
+              let
+                pxeCfg = cfg.dhcp4.pxe;
+              in
               optional (cfg.dhcp4.gatewayAddress != "") {
                 name = "routers";
                 data = cfg.dhcp4.gatewayAddress;
@@ -296,13 +383,23 @@ in
               ++ optional (cfg.dhcp4.dnsServers != [ ]) {
                 name = "domain-name-servers";
                 data = concatStringsSep ", " cfg.dhcp4.dnsServers;
+              }
+              ++ optional (pxeCfg.enable && pxeCfg.bootServerName != null) {
+                name = "tftp-server-name";
+                data = pxeCfg.bootServerName;
+              }
+              ++ optional (pxeCfg.enable && pxeCfg.bootFilename != null) {
+                name = "boot-file-name";
+                data = pxeCfg.bootFilename;
               };
-            reservations = map (
+              reservations = map (
               r:
-              { hw-address = r.hw-address; ip-address = r.ip-address; }
+              {
+                hw-address = r.hw-address;
+                ip-address = r.ip-address;
+              }
               // optionalAttrs (r.hostname != null) { hostname = r.hostname; }
-            ) cfg.dhcp4.reservations;
-          }
+              ) cfg.dhcp4.reservations;          }
         ];
       } // optionalAttrs cfg.ddns.enable {
         dhcp-ddns = {
