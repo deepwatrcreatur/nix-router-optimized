@@ -1,6 +1,6 @@
 # Dashboard Remote Admin Tab & Widget
 
-Status: pending
+Status: done
 
 Branch: `feat/dashboard-remote-admin-tab-widget`
 

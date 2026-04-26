@@ -145,6 +145,7 @@ in
 
       gatewayAddress = mkOption {
         type = types.str;
+        default = "";
         example = "10.10.10.1";
         description = "Default gateway advertised to clients (DHCP option 3).";
       };
@@ -178,6 +179,12 @@ in
         type = types.listOf reservationModule;
         default = [ ];
         description = "Static DHCP reservations. Hostnames trigger DDNS A-record registration when DDNS is enabled.";
+      };
+
+      ddnsEnabled = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to send DDNS updates from the DHCP server. Requires services.router-ke.ddns.enable = true.";
       };
 
       pxe = mkOption {
@@ -403,11 +410,11 @@ in
         ];
       } // optionalAttrs cfg.ddns.enable {
         dhcp-ddns = {
-          enable-updates = true;
+          enable-updates = cfg.dhcp4.ddnsEnabled;
           server-ip = "127.0.0.1";
           server-port = 53001;
         };
-        ddns-send-updates = true;
+        ddns-send-updates = cfg.dhcp4.ddnsEnabled;
         ddns-qualifying-suffix = "${cfg.ddns.forwardZone}.";
         ddns-override-client-update = true;
       };

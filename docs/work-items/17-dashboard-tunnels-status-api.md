@@ -1,6 +1,6 @@
 # Dashboard Tunnels Status API
 
-Status: pending
+Status: done
 
 Branch: `feat/dashboard-tunnels-status-api`
 

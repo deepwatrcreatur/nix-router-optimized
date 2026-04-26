@@ -125,4 +125,29 @@ in
       }
     ])
   ];
+
+  router-kea-eval = eval.mkNixosEvalCheck "router-kea" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-kea
+    firewallBase
+    {
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          subnet = "10.10.10.0/24";
+          poolRanges = [ { start = "10.10.10.100"; end = "10.10.10.200"; } ];
+        };
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.kea.dhcp4.enable;
+        message = "router-kea should enable kea-dhcp4.";
+      }
+      {
+        assertion = config.services.kea.dhcp4.settings.subnet4 != [ ];
+        message = "router-kea should configure subnet4.";
+      }
+    ])
+  ];
 }

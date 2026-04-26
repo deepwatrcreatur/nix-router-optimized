@@ -1,6 +1,6 @@
 # Router Remote Admin Module
 
-Status: pending
+Status: done
 
 Branch: `feat/router-remote-admin-module`
 

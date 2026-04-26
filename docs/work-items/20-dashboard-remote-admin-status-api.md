@@ -1,6 +1,6 @@
 # Dashboard Remote Admin Status API
 
-Status: pending
+Status: done
 
 Branch: `feat/dashboard-remote-admin-status-api`
 

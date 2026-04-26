@@ -1,6 +1,6 @@
 # Dashboard Tunnels Tab & Widget
 
-Status: pending
+Status: done
 
 Branch: `feat/dashboard-tunnels-tab-widget`
 
