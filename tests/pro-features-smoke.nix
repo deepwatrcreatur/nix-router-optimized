@@ -150,4 +150,66 @@ in
       }
     ])
   ];
+
+  router-security-hardened-eval = eval.mkNixosEvalCheck "router-security-hardened" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-security-hardened
+    firewallBase
+    {
+      services.router-security-hardened = {
+        enable = true;
+        kernelHardening.enable = true;
+        geoIpBlocking.enable = true;
+        geoIpBlocking.blockedCountries = [ "cn" "ru" ];
+        macSecurity.enable = true;
+        macSecurity.whitelists."lan0" = [ "00:11:22:33:44:55" ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.boot.kernel.sysctl."kernel.randomize_va_space" == 2;
+        message = "router-security-hardened should enable ASLR.";
+      }
+      {
+        assertion = lib.hasInfix "set blocked_countries" config.services.router-firewall.extraFilterTableRules;
+        message = "router-security-hardened should add geoip sets.";
+      }
+      {
+        assertion = config.systemd.services.update-geoip-blocklist.enable;
+        message = "router-security-hardened should enable geoip update service.";
+      }
+      {
+        assertion = lib.hasInfix "set allowed_macs_lan0" config.services.router-firewall.extraFilterTableRules;
+        message = "router-security-hardened should add mac whitelists.";
+      }
+    ])
+  ];
+
+  router-zones-eval = eval.mkNixosEvalCheck "router-zones" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-zones
+    firewallBase
+    {
+      services.router-zones = {
+        enable = true;
+        zones = {
+          wan = { interfaces = [ "wan0" ]; defaultForwardPolicy = "drop"; };
+          lan = { interfaces = [ "lan0" ]; defaultForwardPolicy = "accept"; };
+        };
+        policies = [
+          { fromZone = "lan"; toZone = "wan"; action = "accept"; }
+        ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = lib.hasInfix "chain zone_wan_policy" config.services.router-firewall.extraFilterTableRules;
+        message = "router-zones should add zone chains.";
+      }
+      {
+        assertion = lib.hasInfix "jump zone_lan_policy" config.services.router-firewall.extraForwardRules;
+        message = "router-zones should add jump rules to forward chain.";
+      }
+    ])
+  ];
 }

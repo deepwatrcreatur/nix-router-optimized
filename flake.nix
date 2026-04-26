@@ -89,6 +89,8 @@
             self.nixosModules.router-bgp
             self.nixosModules.router-ha
             self.nixosModules.router-mwan
+            self.nixosModules.router-security-hardened
+            self.nixosModules.router-zones
           ];
         };
 
@@ -131,6 +133,8 @@
         router-bgp = import ./modules/router-bgp.nix;
         router-ha = import ./modules/router-ha.nix;
         router-mwan = import ./modules/router-mwan.nix;
+        router-security-hardened = import ./modules/router-security-hardened.nix;
+        router-zones = import ./modules/router-zones.nix;
       };
 
       # Example configuration for testing

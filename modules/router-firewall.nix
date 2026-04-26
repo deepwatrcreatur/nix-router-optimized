@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 with lib;
 
@@ -7,23 +12,24 @@ let
   optimizationInterfaces = config.services.router-optimizations.interfaces or { };
   routedIfaces = config.services.router-networking.routedInterfaces or { };
 
-  interfaceByRole = role:
+  interfaceByRole =
+    role:
     mapAttrsToList (_name: iface: iface.device) (
       filterAttrs (_name: iface: iface.role == role) optimizationInterfaces
     );
 
-  wanInterfaces =
-    if cfg.wanInterfaces != [ ] then cfg.wanInterfaces else interfaceByRole "wan";
+  wanInterfaces = if cfg.wanInterfaces != [ ] then cfg.wanInterfaces else interfaceByRole "wan";
 
-  lanInterfaces =
-    if cfg.lanInterfaces != [ ] then cfg.lanInterfaces else interfaceByRole "lan";
+  lanInterfaces = if cfg.lanInterfaces != [ ] then cfg.lanInterfaces else interfaceByRole "lan";
 
   managementInterfaces =
     if cfg.managementInterfaces != [ ] then cfg.managementInterfaces else interfaceByRole "management";
 
   trustedInterfaces = unique (cfg.extraTrustedInterfaces ++ lanInterfaces ++ managementInterfaces);
   allRouterInterfaces = unique (wanInterfaces ++ trustedInterfaces);
-  allOverlayInterfaces = unique (cfg.overlayInterfaces ++ optional (cfg.tailscaleInterface != null) cfg.tailscaleInterface);
+  allOverlayInterfaces = unique (
+    cfg.overlayInterfaces ++ optional (cfg.tailscaleInterface != null) cfg.tailscaleInterface
+  );
   effectiveHairpinCidrs =
     if cfg.hairpinNat.ipv4Cidrs != [ ] then
       cfg.hairpinNat.ipv4Cidrs
@@ -35,12 +41,14 @@ let
   tcpPortSet = ports: concatStringsSep ", " (map toString ports);
   cidrSet = cidrs: concatStringsSep ", " cidrs;
 
-  mkInputRule = ifaces: rule:
+  mkInputRule =
+    ifaces: rule:
     optionalString (ifaces != [ ]) ''
       iifname ${maybeSet ifaces} ${rule}
     '';
 
-  mkForwardRule = srcIfaces: dstIfaces: suffix:
+  mkForwardRule =
+    srcIfaces: dstIfaces: suffix:
     optionalString (srcIfaces != [ ] && dstIfaces != [ ]) ''
       iifname ${maybeSet srcIfaces} oifname ${maybeSet dstIfaces} ${suffix}
     '';
@@ -82,7 +90,11 @@ in
     overlayInterfaces = mkOption {
       type = types.listOf types.str;
       default = [ ];
-      example = [ "tailscale0" "nb-router" "ztXXXXXXXX" ];
+      example = [
+        "tailscale0"
+        "nb-router"
+        "ztXXXXXXXX"
+      ];
       description = ''
         Mesh VPN overlay interfaces (Tailscale, Netbird, ZeroTier, etc.) that
         receive router-aware input and forwarding rules.
@@ -128,7 +140,12 @@ in
 
     dnsUdpPorts = mkOption {
       type = types.listOf types.int;
-      default = [ 53 67 68 547 ];
+      default = [
+        53
+        67
+        68
+        547
+      ];
       description = "UDP DNS/DHCP-like ports exposed on dnsInterfaces.";
     };
 
@@ -228,6 +245,12 @@ in
       description = "Extra nftables forward-chain rules appended before final drop.";
     };
 
+    extraFilterTableRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables declarations inserted at table inet filter scope, such as sets and helper chains.";
+    };
+
     extraWanInRules = mkOption {
       type = types.lines;
       default = "";
@@ -272,7 +295,10 @@ in
     tcpMssClamp.enable = mkEnableOption "TCP MSS clamping on forwarded WAN traffic";
 
     tcpMssClamp.value = mkOption {
-      type = types.oneOf [ types.str types.int ];
+      type = types.oneOf [
+        types.str
+        types.int
+      ];
       default = "rt mtu";
       description = ''
         MSS clamp value. Use `"rt mtu"` for path-MTU-aware clamping, or an
@@ -349,6 +375,8 @@ in
       }
 
       table inet filter {
+        ${cfg.extraFilterTableRules}
+
         ${optionalString cfg.flowLogging.enable ''
           chain flow-logger {
             log group ${toString cfg.flowLogging.group}
@@ -373,16 +401,26 @@ in
             tcp dport 22 accept
           ''}
           ${
-            let dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
-            in optionalString (elem "lan" (mapAttrsToList (_name: iface: iface.role) (filterAttrs (n: v: elem v.device lanInterfaces) optimizationInterfaces))) (
-              optionalString (cfg.dnsUdpPorts != [ ]) ''
-                udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
-              '' + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
-                udp sport {67, 68} accept
-              '' + optionalString (cfg.dnsTcpPorts != [ ]) ''
-                tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
-              ''
-            )
+            let
+              dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
+            in
+            optionalString
+              (elem "lan" (
+                mapAttrsToList (_name: iface: iface.role) (
+                  filterAttrs (n: v: elem v.device lanInterfaces) optimizationInterfaces
+                )
+              ))
+              (
+                optionalString (cfg.dnsUdpPorts != [ ]) ''
+                  udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
+                ''
+                + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
+                  udp sport {67, 68} accept
+                ''
+                + optionalString (cfg.dnsTcpPorts != [ ]) ''
+                  tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
+                ''
+              )
           }
           ${optionalString (cfg.trustedTcpPorts != [ ]) ''
             tcp dport {${tcpPortSet cfg.trustedTcpPorts}} accept
@@ -398,16 +436,26 @@ in
             tcp dport 22 accept
           ''}
           ${
-            let dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
-            in optionalString (elem "management" (mapAttrsToList (_name: iface: iface.role) (filterAttrs (n: v: elem v.device managementInterfaces) optimizationInterfaces))) (
-              optionalString (cfg.dnsUdpPorts != [ ]) ''
-                udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
-              '' + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
-                udp sport {67, 68} accept
-              '' + optionalString (cfg.dnsTcpPorts != [ ]) ''
-                tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
-              ''
-            )
+            let
+              dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
+            in
+            optionalString
+              (elem "management" (
+                mapAttrsToList (_name: iface: iface.role) (
+                  filterAttrs (n: v: elem v.device managementInterfaces) optimizationInterfaces
+                )
+              ))
+              (
+                optionalString (cfg.dnsUdpPorts != [ ]) ''
+                  udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
+                ''
+                + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
+                  udp sport {67, 68} accept
+                ''
+                + optionalString (cfg.dnsTcpPorts != [ ]) ''
+                  tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
+                ''
+              )
           }
           ${optionalString (cfg.trustedTcpPorts != [ ]) ''
             tcp dport {${tcpPortSet cfg.trustedTcpPorts}} accept
@@ -437,7 +485,9 @@ in
         }
 
         chain MGMT_IN {
-          ${optionalString cfg.managementToWan (mkForwardRule managementInterfaces wanInterfaces "accept")}
+          ${optionalString cfg.managementToWan (
+            mkForwardRule managementInterfaces wanInterfaces "accept"
+          )}
           ${
             if cfg.allowTrustedInterconnect && managementInterfaces != [ ] then
               ''
@@ -465,7 +515,9 @@ in
 
           ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_LOCAL"}
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_LOCAL"}
-          ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_LOCAL"}
+          ${optionalString (
+            managementInterfaces != [ ]
+          ) "iifname ${maybeSet managementInterfaces} jump MGMT_LOCAL"}
 
           ${concatMapStrings (iface: ''
             iifname "${iface}" accept
@@ -473,11 +525,16 @@ in
 
           ${cfg.extraInputRules}
 
-          ${if cfg.loggingRateLimit.enable then ''
-            limit rate ${cfg.loggingRateLimit.rate} burst ${toString cfg.loggingRateLimit.burst} packets log prefix "${cfg.inputLogPrefix}" level info flags all
-          '' else ''
-            log prefix "${cfg.inputLogPrefix}" level info flags all
-          ''}
+          ${
+            if cfg.loggingRateLimit.enable then
+              ''
+                limit rate ${cfg.loggingRateLimit.rate} burst ${toString cfg.loggingRateLimit.burst} packets log prefix "${cfg.inputLogPrefix}" level info flags all
+              ''
+            else
+              ''
+                log prefix "${cfg.inputLogPrefix}" level info flags all
+              ''
+          }
           drop
         }
 
@@ -491,7 +548,9 @@ in
 
           ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_IN"}
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_IN"}
-          ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_IN"}
+          ${optionalString (
+            managementInterfaces != [ ]
+          ) "iifname ${maybeSet managementInterfaces} jump MGMT_IN"}
 
           ${optionalString (config.services.router-nat64.enable or false) ''
             iifname ${maybeSet trustedInterfaces} oifname "nat64" accept comment "Forward to NAT64"
@@ -509,11 +568,16 @@ in
 
           ${cfg.extraForwardRules}
 
-          ${if cfg.loggingRateLimit.enable then ''
-            limit rate ${cfg.loggingRateLimit.rate} burst ${toString cfg.loggingRateLimit.burst} packets log prefix "${cfg.forwardLogPrefix}" level info flags all
-          '' else ''
-            log prefix "${cfg.forwardLogPrefix}" level info flags all
-          ''}
+          ${
+            if cfg.loggingRateLimit.enable then
+              ''
+                limit rate ${cfg.loggingRateLimit.rate} burst ${toString cfg.loggingRateLimit.burst} packets log prefix "${cfg.forwardLogPrefix}" level info flags all
+              ''
+            else
+              ''
+                log prefix "${cfg.forwardLogPrefix}" level info flags all
+              ''
+          }
           drop
         }
 
@@ -531,16 +595,22 @@ in
           ${optionalString (cfg.enableNat64Masquerade && config.services.router-nat64.enable or false) ''
             ip saddr ${config.services.router-nat64.ipv4Pool} oifname ${maybeSet wanInterfaces} masquerade
           ''}
-          ${optionalString (cfg.hairpinNat.enable && trustedInterfaces != [ ] && effectiveHairpinCidrs != [ ]) ''
-            iifname ${maybeSet trustedInterfaces} oifname ${maybeSet trustedInterfaces} ip daddr { ${cidrSet effectiveHairpinCidrs} } masquerade
-          ''}
+          ${optionalString
+            (cfg.hairpinNat.enable && trustedInterfaces != [ ] && effectiveHairpinCidrs != [ ])
+            ''
+              iifname ${maybeSet trustedInterfaces} oifname ${maybeSet trustedInterfaces} ip daddr { ${cidrSet effectiveHairpinCidrs} } masquerade
+            ''
+          }
         }
       }
     '';
 
     systemd.services.router-firewall-flowtable = mkIf cfg.flowtable.enable {
       description = "Configure nftables flowtable after interfaces are up";
-      after = [ "network-online.target" "nftables.service" ];
+      after = [
+        "network-online.target"
+        "nftables.service"
+      ];
       wants = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
@@ -549,7 +619,8 @@ in
       };
       script =
         let
-          flowIfaces = if cfg.flowtable.interfaces != [ ] then cfg.flowtable.interfaces else allRouterInterfaces;
+          flowIfaces =
+            if cfg.flowtable.interfaces != [ ] then cfg.flowtable.interfaces else allRouterInterfaces;
         in
         ''
           ${pkgs.nftables}/bin/nft 'add flowtable inet filter f { hook ingress priority 0; devices = { ${quotedSet flowIfaces} }; }' 2>/dev/null || true

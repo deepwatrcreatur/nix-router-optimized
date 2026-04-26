@@ -1,6 +1,6 @@
 # Router Zones Policy Validation
 
-Status: `ready`
+Status: `done`
 Priority: `high`
 Branch: `fix/router-zones-policy-validation`
 

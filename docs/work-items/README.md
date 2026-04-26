@@ -18,12 +18,15 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [16-router-tunnels-module](./16-router-tunnels-module.md)
-- [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md)
-- [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md)
-- [19-router-remote-admin-module](./19-router-remote-admin-module.md)
-- [20-dashboard-remote-admin-status-api](./20-dashboard-remote-admin-status-api.md)
-- [21-dashboard-remote-admin-tab-widget](./21-dashboard-remote-admin-tab-widget.md)
+1. [16-router-tunnels-module](./16-router-tunnels-module.md) - done
+2. [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md) - done
+3. [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md) - done
+4. [19-router-remote-admin-module](./19-router-remote-admin-module.md) - done
+5. [20-dashboard-remote-admin-status-api](./20-dashboard-remote-admin-status-api.md) - done
+6. [21-dashboard-remote-admin-tab-widget](./21-dashboard-remote-admin-tab-widget.md) - done
+7. [22-router-security-hardening-validation](./22-router-security-hardening-validation.md) - done
+8. [23-router-zones-policy-validation](./23-router-zones-policy-validation.md) - done
+
 
 ## Why This Structure
 

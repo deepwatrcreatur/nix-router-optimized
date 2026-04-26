@@ -1,6 +1,6 @@
 # Router Security Hardening Validation
 
-Status: `ready`
+Status: `done`
 Priority: `high`
 Branch: `fix/router-security-hardening-validation`
 
