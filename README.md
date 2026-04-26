@@ -596,6 +596,58 @@ services.router-bgp = {
 };
 ```
 
+### router-security-hardened
+Optional "OpenBSD-tier" security hardening for high-risk or public-facing routers:
+- **Kernel Hardening**: ASLR enforcement, restricted dmesg, module disabling, and TCP/IP stack protections.
+- **Geo-IP Blocking**: Declaratively block inbound traffic from specific countries (e.g., `["cn" "ru"]`) using nftables sets.
+- **MAC Security**: Interface-specific MAC-address whitelisting with enforcement or alert-only modes.
+
+Example:
+
+```nix
+services.router-security-hardened = {
+  enable = true;
+  kernelHardening.enable = true;
+  geoIpBlocking = {
+    enable = true;
+    blockedCountries = [ "cn" "ru" ];
+  };
+  macSecurity = {
+    enable = true;
+    whitelists.ens16 = [ "00:11:22:33:44:55" ];
+  };
+};
+```
+
+### router-zones
+Declarative zone-based firewall policy management, simplifying complex VLAN isolation:
+- Defines security "Zones" (WAN, LAN, IoT, Guest) as groups of interfaces.
+- Sets high-level default policies (Accept/Drop/Reject) for input and forward traffic.
+- Implements declarative cross-zone traffic rules.
+
+Example:
+
+```nix
+services.router-zones = {
+  enable = true;
+  zones = {
+    wan = { interfaces = [ "wan0" ]; defaultForwardPolicy = "drop"; };
+    lan = { interfaces = [ "lan0" ]; defaultForwardPolicy = "accept"; };
+    iot = { interfaces = [ "lan0.20" ]; defaultForwardPolicy = "drop"; };
+  };
+  policies = [
+    { fromZone = "lan"; toZone = "wan"; action = "accept"; }
+    { fromZone = "iot"; toZone = "wan"; action = "accept"; }
+    {
+      fromZone = "iot";
+      toZone = "lan";
+      action = "drop";
+      extraRules = "ip daddr 10.10.10.50 tcp dport 8123 accept comment \"Allow IoT to Home Assistant\"";
+    }
+  ];
+};
+```
+
 ## Configuration Examples
 
 See `examples/` directory for complete working configurations.
