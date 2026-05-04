@@ -258,6 +258,18 @@ in
       description = "Masquerade Tayga NAT64 pool traffic exiting WAN interfaces.";
     };
 
+    extraIpv6NatRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables rules for the ip6 nat postrouting chain.";
+    };
+
+    extraIpv6PreroutingRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables rules for the ip6 nat prerouting chain.";
+    };
+
     hairpinNat.enable = mkEnableOption "IPv4 hairpin NAT for trusted segments";
 
     hairpinNat.ipv4Cidrs = mkOption {
@@ -534,6 +546,26 @@ in
           ${optionalString (cfg.hairpinNat.enable && trustedInterfaces != [ ] && effectiveHairpinCidrs != [ ]) ''
             iifname ${maybeSet trustedInterfaces} oifname ${maybeSet trustedInterfaces} ip daddr { ${cidrSet effectiveHairpinCidrs} } masquerade
           ''}
+        }
+      }
+
+      table ip6 nat {
+        chain postrouting {
+          type nat hook postrouting priority 100; policy accept;
+          ${
+            let
+              masqIfaces = filterAttrs (_name: iface: iface.ipv6Masquerade) routedIfaces;
+              mkMasqRule = _name: iface: ''
+                iifname "${iface.device}" oifname ${maybeSet (wanInterfaces ++ optional (iface.vpnExit != null) iface.vpnExit)} masquerade
+              '';
+            in
+            concatStringsSep "\n" (mapAttrsToList mkMasqRule masqIfaces)
+          }
+          ${cfg.extraIpv6NatRules}
+        }
+        chain prerouting {
+          type nat hook prerouting priority -100; policy accept;
+          ${cfg.extraIpv6PreroutingRules}
         }
       }
     '';

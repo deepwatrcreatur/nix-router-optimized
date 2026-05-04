@@ -89,6 +89,7 @@
             self.nixosModules.router-bgp
             self.nixosModules.router-ha
             self.nixosModules.router-mwan
+            self.nixosModules.router-nptv6
           ];
         };
 
@@ -131,6 +132,7 @@
         router-bgp = import ./modules/router-bgp.nix;
         router-ha = import ./modules/router-ha.nix;
         router-mwan = import ./modules/router-mwan.nix;
+        router-nptv6 = import ./modules/router-nptv6.nix;
       };
 
       # Example configuration for testing

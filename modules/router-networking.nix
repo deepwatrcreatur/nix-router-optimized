@@ -284,6 +284,19 @@ let
           description = "Additional policy routing rules for this interface.";
         };
       };
+
+      vpnExit = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "tailscale0";
+        description = "Route all IPv6 traffic from this segment through the specified VPN interface.";
+      };
+
+      ipv6Masquerade = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable IPv6 masquerade (NAT66) for traffic exiting via vpnExit or WAN.";
+      };
     };
   };
 
