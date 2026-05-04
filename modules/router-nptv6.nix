@@ -1,18 +1,21 @@
-{ config, lib, pkgs, ... }:
+{ config, options, lib, pkgs, ... }:
 
 with lib;
 
 let
   cfg = config.services.router-nptv6;
+  hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
 
+  # Fallback to stateful SNAT/DNAT for prefix translation
+  # This avoids the 'npt' keyword which is failing 'No symbol type information' in some environments
   mkNptv6PostroutingRule = rule: ''
-    # Rule for ${rule.internalPrefix} -> ${rule.externalPrefix} on ${rule.externalInterface} (POSTROUTING)
-    ip6 saddr ${rule.internalPrefix} oifname "${rule.externalInterface}" snat to ${rule.externalPrefix} npt
+    # Stateful SNAT for ${rule.internalPrefix} -> ${rule.externalPrefix} on ${rule.externalInterface}
+    ip6 saddr ${rule.internalPrefix} oifname "${rule.externalInterface}" snat to ${rule.externalPrefix}
   '';
 
   mkNptv6PreroutingRule = rule: ''
-    # Rule for ${rule.externalPrefix} -> ${rule.internalPrefix} on ${rule.externalInterface} (PREROUTING)
-    ip6 daddr ${rule.externalPrefix} iifname "${rule.externalInterface}" dnat to ${rule.internalPrefix} npt
+    # Stateful DNAT for ${rule.externalPrefix} -> ${rule.internalPrefix} on ${rule.externalInterface}
+    ip6 daddr ${rule.externalPrefix} iifname "${rule.externalInterface}" dnat to ${rule.internalPrefix}
   '';
 
   ruleset = ''
@@ -30,7 +33,7 @@ let
 in
 {
   options.services.router-nptv6 = {
-    enable = mkEnableOption "NPTv6 (Network Prefix Translation) for IPv6";
+    enable = mkEnableOption "NPTv6 (Network Prefix Translation) for IPv6 (Stateful Fallback)";
 
     rules = mkOption {
       type = types.listOf (types.submodule {
@@ -57,17 +60,21 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    networking.nftables.enable = true;
-    networking.nftables.ruleset = mkIf (!config.services.router-firewall.enable or false) ruleset;
+  config = mkIf cfg.enable (mkMerge [
+    {
+      networking.nftables.enable = true;
+      networking.nftables.ruleset = mkIf (!config.services.router-firewall.enable or false) ruleset;
+    }
 
-    # Integration with router-firewall
-    services.router-firewall.extraIpv6NatRules = mkIf (config.services.router-firewall.enable or false) (
-      concatMapStrings mkNptv6PostroutingRule cfg.rules
-    );
+    (if hasRouterFirewall then {
+      # Integration with router-firewall
+      services.router-firewall.extraIpv6NatRules = mkIf (config.services.router-firewall.enable or false) (
+        concatMapStrings mkNptv6PostroutingRule cfg.rules
+      );
 
-    services.router-firewall.extraIpv6PreroutingRules = mkIf (config.services.router-firewall.enable or false) (
-      concatMapStrings mkNptv6PreroutingRule cfg.rules
-    );
-  };
+      services.router-firewall.extraIpv6PreroutingRules = mkIf (config.services.router-firewall.enable or false) (
+        concatMapStrings mkNptv6PreroutingRule cfg.rules
+      );
+    } else { })
+  ]);
 }

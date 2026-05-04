@@ -22,11 +22,11 @@ let
         filterAttrs (_name: iface: elem iface.role [ "lan" ]) routedIfaces
       );
 
-      # TECHNICAL GUARDRAIL: Kea 3.x on Linux fails to poll the raw socket for
-      # receiving if the interface is bound with an address qualifier (e.g. eth0/10.0.0.1).
-      # We must ensure that in raw mode, only bare interface names are used.
-      hasAddressQualifiedInterface = any (i: strings.hasInfix "/" i) effectiveInterfaces;
-      in
+  # TECHNICAL GUARDRAIL: Kea 3.x on Linux fails to poll the raw socket for
+  # receiving if the interface is bound with an address qualifier (e.g. eth0/10.0.0.1).
+  # We must ensure that in raw mode, only bare interface names are used.
+  hasAddressQualifiedInterface = any (i: strings.hasInfix "/" i) effectiveInterfaces;
+
   reservationModule = types.submodule {
     options = {
       hw-address = mkOption {
@@ -295,162 +295,163 @@ in
   };
 
   config = mkIf cfg.enable (mkMerge [
-  {
-    assertions = [
-      {
-        assertion = !hasAddressQualifiedInterface;
-        message = ''
-          Kea regression check failed: The interface list contains an address qualifier (e.g. eth0/10.0.0.1).
-          Kea 3.x on Linux fails to poll for broadcasts when raw sockets are address-qualified.
-          Use a bare interface name (e.g. "eth0") instead.
-        '';
-      }
-    ];
+    {
+      # Auto-derive LAN interfaces from router-networking when none are specified.
+      assertions = [
+        {
+          assertion = !hasAddressQualifiedInterface;
+          message = ''
+            Kea regression check failed: The interface list contains an address qualifier (e.g. eth0/10.0.0.1).
+            Kea 3.x on Linux fails to poll for broadcasts when raw sockets are address-qualified.
+            Use a bare interface name (e.g. "eth0") instead.
+          '';
+        }
+      ];
 
-    # ── DHCPv4 ────────────────────────────────────────────────────────────────
+      # ── DHCPv4 ────────────────────────────────────────────────────────────────
 
-    services.kea.dhcp4 = {
-      enable = true;
-      settings = {
-        valid-lifetime = cfg.dhcp4.defaultLeaseTimeSec;
-        max-valid-lifetime = cfg.dhcp4.maxLeaseTimeSec;
-        renew-timer = cfg.dhcp4.defaultLeaseTimeSec / 4;
-        rebind-timer = (cfg.dhcp4.defaultLeaseTimeSec * 3) / 4;
+      services.kea.dhcp4 = {
+        enable = true;
+        settings = {
+          valid-lifetime = cfg.dhcp4.defaultLeaseTimeSec;
+          max-valid-lifetime = cfg.dhcp4.maxLeaseTimeSec;
+          renew-timer = cfg.dhcp4.defaultLeaseTimeSec / 4;
+          rebind-timer = (cfg.dhcp4.defaultLeaseTimeSec * 3) / 4;
 
-        lease-database = {
-          type = "memfile";
-          persist = true;
-          name = "/var/lib/kea/dhcp4.leases";
-        };
+          lease-database = {
+            type = "memfile";
+            persist = true;
+            name = "/var/lib/kea/dhcp4.leases";
+          };
 
-        control-socket = {
-          socket-type = "unix";
-          socket-name = "/run/kea/dhcp4.sock";
-        };
+          control-socket = {
+            socket-type = "unix";
+            socket-name = "/run/kea/dhcp4.sock";
+          };
 
-        interfaces-config = {
-          dhcp-socket-type = "raw";
-          interfaces = effectiveInterfaces;
-          outbound-interface = cfg.dhcp4.outboundInterface;
-        };
+          interfaces-config = {
+            dhcp-socket-type = "raw";
+            interfaces = effectiveInterfaces;
+            outbound-interface = cfg.dhcp4.outboundInterface;
+          };
 
-        hooks-libraries = mkIf cfg.dhcp4.ha.enable [
-          {
-            library = "${pkgs.kea}/lib/kea/hooks/libdhcp_lease_cmds.so";
-          }
-          {
-            library = "${pkgs.kea}/lib/kea/hooks/libdhcp_ha.so";
-            parameters = {
-              high-availability = [
-                {
-                  this-server-name = cfg.dhcp4.ha.thisServerName;
-                  mode = "load-balancing";
-                  heartbeat-delay = 10000;
-                  max-response-delay = 60000;
-                  max-unacked-clients = 0;
-                  peers = [
-                    {
-                      name = cfg.dhcp4.ha.thisServerName;
-                      url = "http://${cfg.dhcp4.ha.localAddress}:8000/";
-                      role = cfg.dhcp4.ha.role;
-                    }
-                    {
-                      name = cfg.dhcp4.ha.peerName;
-                      url = "http://${cfg.dhcp4.ha.peerAddress}:8000/";
-                      role = if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary";
-                    }
-                  ];
-                }
-              ];
-            };
-          }
-        ];
-
-        subnet4 = [
-          {
-            id = 1;
-            subnet = cfg.dhcp4.subnet;
-            pools = map (r: { pool = "${r.start} - ${r.end}"; }) cfg.dhcp4.poolRanges;
-            next-server = mkIf (cfg.dhcp4.pxe.enable && cfg.dhcp4.pxe.bootServerAddress != null) cfg.dhcp4.pxe.bootServerAddress;
-            option-data =
-              let
-                pxeCfg = cfg.dhcp4.pxe;
-              in
-              optional (cfg.dhcp4.gatewayAddress != "") {
-                name = "routers";
-                data = cfg.dhcp4.gatewayAddress;
-              }
-              ++ optional (cfg.dhcp4.dnsServers != [ ]) {
-                name = "domain-name-servers";
-                data = concatStringsSep ", " cfg.dhcp4.dnsServers;
-              }
-              ++ optional (pxeCfg.enable && pxeCfg.bootServerName != null) {
-                name = "tftp-server-name";
-                data = pxeCfg.bootServerName;
-              }
-              ++ optional (pxeCfg.enable && pxeCfg.bootFilename != null) {
-                name = "boot-file-name";
-                data = pxeCfg.bootFilename;
+          hooks-libraries = mkIf cfg.dhcp4.ha.enable [
+            {
+              library = "${pkgs.kea}/lib/kea/hooks/libdhcp_lease_cmds.so";
+            }
+            {
+              library = "${pkgs.kea}/lib/kea/hooks/libdhcp_ha.so";
+              parameters = {
+                high-availability = [
+                  {
+                    this-server-name = cfg.dhcp4.ha.thisServerName;
+                    mode = "load-balancing";
+                    heartbeat-delay = 10000;
+                    max-response-delay = 60000;
+                    max-unacked-clients = 0;
+                    peers = [
+                      {
+                        name = cfg.dhcp4.ha.thisServerName;
+                        url = "http://${cfg.dhcp4.ha.localAddress}:8000/";
+                        role = cfg.dhcp4.ha.role;
+                      }
+                      {
+                        name = cfg.dhcp4.ha.peerName;
+                        url = "http://${cfg.dhcp4.ha.peerAddress}:8000/";
+                        role = if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary";
+                      }
+                    ];
+                  }
+                ];
               };
+            }
+          ];
+
+          subnet4 = [
+            {
+              id = 1;
+              subnet = cfg.dhcp4.subnet;
+              pools = map (r: { pool = "${r.start} - ${r.end}"; }) cfg.dhcp4.poolRanges;
+              next-server = mkIf (cfg.dhcp4.pxe.enable && cfg.dhcp4.pxe.bootServerAddress != null) cfg.dhcp4.pxe.bootServerAddress;
+              option-data =
+                let
+                  pxeCfg = cfg.dhcp4.pxe;
+                in
+                optional (cfg.dhcp4.gatewayAddress != "") {
+                  name = "routers";
+                  data = cfg.dhcp4.gatewayAddress;
+                }
+                ++ optional (cfg.dhcp4.dnsServers != [ ]) {
+                  name = "domain-name-servers";
+                  data = concatStringsSep ", " cfg.dhcp4.dnsServers;
+                }
+                ++ optional (pxeCfg.enable && pxeCfg.bootServerName != null) {
+                  name = "tftp-server-name";
+                  data = pxeCfg.bootServerName;
+                }
+                ++ optional (pxeCfg.enable && pxeCfg.bootFilename != null) {
+                  name = "boot-file-name";
+                  data = pxeCfg.bootFilename;
+                };
               reservations = map (
-              r:
-              {
-                hw-address = r.hw-address;
-                ip-address = r.ip-address;
-              }
-              // optionalAttrs (r.hostname != null) { hostname = r.hostname; }
-              ) cfg.dhcp4.reservations;          }
-        ];
-      } // optionalAttrs cfg.ddns.enable {
-        dhcp-ddns = {
-          enable-updates = true;
-          server-ip = "127.0.0.1";
-          server-port = 53001;
+                r:
+                {
+                  hw-address = r.hw-address;
+                  ip-address = r.ip-address;
+                }
+                // optionalAttrs (r.hostname != null) { hostname = r.hostname; }
+              ) cfg.dhcp4.reservations;
+            }
+          ];
+        } // optionalAttrs cfg.ddns.enable {
+          dhcp-ddns = {
+            enable-updates = true;
+            server-ip = "127.0.0.1";
+            server-port = 53001;
+          };
+          ddns-send-updates = true;
+          ddns-qualifying-suffix = "${cfg.ddns.forwardZone}.";
+          ddns-override-client-update = true;
         };
-        ddns-send-updates = true;
-        ddns-qualifying-suffix = "${cfg.ddns.forwardZone}.";
-        ddns-override-client-update = true;
       };
-    };
 
-    # ── DHCP-DDNS (D2) ────────────────────────────────────────────────────────
-    # The TSIG key must not reach the Nix store. We supply a minimal placeholder
-    # to satisfy the NixOS kea module assertion, then override ExecStart so the
-    # real service reads from the runtime-generated config instead.
+      # ── DHCP-DDNS (D2) ────────────────────────────────────────────────────────
+      # The TSIG key must not reach the Nix store. We supply a minimal placeholder
+      # to satisfy the NixOS kea module assertion, then override ExecStart so the
+      # real service reads from the runtime-generated config instead.
 
-    services.kea.dhcp-ddns = mkIf cfg.ddns.enable {
-      enable = true;
-      # Placeholder satisfies `xor (settings == null) (configFile == null)`.
-      # The actual config is written to /run/kea/dhcp-ddns-runtime.conf by
-      # the preStart script below.
-      configFile = pkgs.writeText "kea-dhcp-ddns-placeholder.json" ''{"DhcpDdns": {}}'';
-    };
+      services.kea.dhcp-ddns = mkIf cfg.ddns.enable {
+        enable = true;
+        # Placeholder satisfies `xor (settings == null) (configFile == null)`.
+        # The actual config is written to /run/kea/dhcp-ddns-runtime.conf by
+        # the preStart script below.
+        configFile = pkgs.writeText "kea-dhcp-ddns-placeholder.json" ''{"DhcpDdns": {}}'';
+      };
 
-    systemd.services.kea-dhcp-ddns-server = mkIf cfg.ddns.enable {
-      # Generate the real config (with TSIG secret) before the daemon starts.
-      serviceConfig.ExecStartPre = [ "+${writeD2Config}" ];
-      # Override the ExecStart from the kea module to use our runtime config.
-      serviceConfig.ExecStart = mkForce (
-        lib.escapeShellArgs [
-          "${pkgs.kea}/bin/kea-dhcp-ddns"
-          "-c"
-          "/run/kea/dhcp-ddns-runtime.conf"
-        ]
-      );
-    };
+      systemd.services.kea-dhcp-ddns-server = mkIf cfg.ddns.enable {
+        # Generate the real config (with TSIG secret) before the daemon starts.
+        serviceConfig.ExecStartPre = [ "+${writeD2Config}" ];
+        # Override the ExecStart from the kea module to use our runtime config.
+        serviceConfig.ExecStart = mkForce (
+          lib.escapeShellArgs [
+            "${pkgs.kea}/bin/kea-dhcp-ddns"
+            "-c"
+            "/run/kea/dhcp-ddns-runtime.conf"
+          ]
+        );
+      };
+    }
 
-  }
-
-  # ── Firewall ────────────────────────────────────────────────────────────────
-  # Guard behind hasRouterFirewall so the option is not referenced when
-  # router-firewall is not loaded as a module.
-  (if hasRouterFirewall then {
-    services.router-firewall.trustedUdpPorts = mkIf (
-      config.services.router-firewall.enable or false
-    ) [ 67 68 ];
-    services.router-firewall.trustedTcpPorts = mkIf (
-      config.services.router-firewall.enable or false && cfg.dhcp4.ha.enable
-    ) [ 8000 ];
-  } else {})
-]);
+    # ── Firewall ────────────────────────────────────────────────────────────────
+    # Guard behind hasRouterFirewall so the option is not referenced when
+    # router-firewall is not loaded as a module.
+    (if hasRouterFirewall then {
+      services.router-firewall.trustedUdpPorts = mkIf (
+        config.services.router-firewall.enable or false
+      ) [ 67 68 ];
+      services.router-firewall.trustedTcpPorts = mkIf (
+        config.services.router-firewall.enable or false && cfg.dhcp4.ha.enable
+      ) [ 8000 ];
+    } else { })
+  ]);
 }

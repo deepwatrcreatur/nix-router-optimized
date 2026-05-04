@@ -18,14 +18,14 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [16-router-tunnels-module](./16-router-tunnels-module.md)
-- [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md)
-- [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md)
+- [16-router-tunnels-module](./16-router-tunnels-module.md) — `in-progress` — **Codex**
+- [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md) — `in-progress` — **Codex**
+- [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md) — `in-progress` — **GitHub Copilot**
 - [19-router-remote-admin-module](./19-router-remote-admin-module.md)
 - [20-dashboard-remote-admin-status-api](./20-dashboard-remote-admin-status-api.md)
 - [21-dashboard-remote-admin-tab-widget](./21-dashboard-remote-admin-tab-widget.md)
 - [24-router-nptv6-module](./24-router-nptv6-module.md) — `in-progress` — **Gemini**
-- [25-ipv6-vpn-policy-routing](./25-ipv6-vpn-policy-routing.md)
+- [25-ipv6-vpn-policy-routing](./25-ipv6-vpn-policy-routing.md) — `in-progress` — **Gemini**
 - [26-dynamic-prefix-watch-hook](./26-dynamic-prefix-watch-hook.md)
 - [27-rfc8028-provisioning-domains](./27-rfc8028-provisioning-domains.md)
 
