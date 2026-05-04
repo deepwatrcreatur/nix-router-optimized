@@ -6,6 +6,9 @@ let
   cfg = config.services.router-dns-service;
 
   effectiveNameservers = unique (cfg.listenAddresses ++ cfg.fallbackNameservers);
+  effectiveServiceListenAddresses =
+    if cfg.serviceListenAddresses != [ ] then unique cfg.serviceListenAddresses else cfg.listenAddresses;
+  formatTechnitiumEndPoint = addr: if hasInfix ":" addr then "[${addr}]:53" else "${addr}:53";
 
   resolvConfText =
     let
@@ -34,6 +37,19 @@ in
       type = types.listOf types.str;
       default = [ "127.0.0.1" ];
       description = "Local resolver addresses preferred by the router itself.";
+    };
+
+    serviceListenAddresses = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "127.0.0.1" "10.10.10.1" ];
+      description = ''
+        Addresses the DNS service itself should bind to.
+
+        Leave empty to preserve the provider's default listener behavior.
+        Non-Technitium providers fall back to `listenAddresses`; Technitium only
+        overrides its listeners when this option is set.
+      '';
     };
 
     fallbackNameservers = mkOption {
@@ -134,7 +150,7 @@ in
     router.dns = mkIf (cfg.provider != "technitium") {
       enable = true;
       provider = cfg.provider;
-      listenAddresses = cfg.listenAddresses;
+      listenAddresses = effectiveServiceListenAddresses;
       upstreamServers = cfg.upstreamServers;
       localZones = cfg.localZones;
     };
@@ -147,6 +163,7 @@ in
       extraBlockListUrls = cfg.technitium.extraBlockListUrls;
       blockListUpdateIntervalHours = cfg.technitium.blockListUpdateIntervalHours;
       forceBlockListUpdateOnActivation = cfg.technitium.forceBlockListUpdateOnActivation;
+      listenEndPoints = map formatTechnitiumEndPoint cfg.serviceListenAddresses;
       ntpServers = cfg.ntpServers;
     };
   };

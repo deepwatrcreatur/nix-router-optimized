@@ -5,6 +5,8 @@ with lib;
 let
   cfg = config.services.router-ha;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
+  virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
+  virtualIpIsIpv6 = hasInfix ":" virtualIpAddress;
 in
 {
   options.services.router-ha = {
@@ -72,6 +74,11 @@ in
 
   config = mkIf cfg.enable (mkMerge [
     {
+      boot.kernel.sysctl = {
+        "net.ipv4.ip_nonlocal_bind" = mkIf (!virtualIpIsIpv6) 1;
+        "net.ipv6.ip_nonlocal_bind" = mkIf virtualIpIsIpv6 1;
+      };
+
       # Keepalived for VRRP
       services.keepalived = {
         enable = true;
