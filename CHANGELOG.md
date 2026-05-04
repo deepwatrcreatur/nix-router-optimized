@@ -4,5 +4,6 @@ Release notes are tracked per release under `docs/releases/`.
 
 ## Releases
 
+- [v0.10.0](./docs/releases/v0.10.0.md)
 - [v0.6.0](./docs/releases/v0.6.0.md)
 - [v0.5.0](./docs/releases/v0.5.0.md)
