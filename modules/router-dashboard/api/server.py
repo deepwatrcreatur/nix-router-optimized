@@ -427,12 +427,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         """Build one VPN runtime status row from declarative metadata"""
         kind = entry.get('kind', 'unknown')
         name = entry.get('name') or kind
-        unit = entry.get('unit') or ''
+        systemd_unit = entry.get('systemdUnit') or entry.get('unit') or ''
         interface = entry.get('interface')
 
-        service = self.get_service_status(systemctl, unit) if systemctl and unit else {
-            'name': unit,
-            'unit': unit,
+        service = self.get_service_status(systemctl, systemd_unit) if systemctl and systemd_unit else {
+            'name': systemd_unit,
+            'unit': systemd_unit,
+            'systemdUnit': systemd_unit,
             'status': 'unknown',
             'active': False
         }
@@ -448,7 +449,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         return {
             'kind': kind,
             'name': name,
-            'unit': service.get('unit') or unit,
+            'systemdUnit': service.get('systemdUnit') or service.get('unit') or systemd_unit,
+            'unit': service.get('unit') or systemd_unit,
             'service': service,
             'interface': interface_status,
             'status': status,
@@ -479,13 +481,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         """Build one tunnel runtime status row from declarative metadata"""
         provider = entry.get('provider') or 'other'
         name = entry.get('name') or provider
-        unit = entry.get('unit') or ''
+        systemd_unit = entry.get('systemdUnit') or entry.get('unit') or ''
         public_url = entry.get('publicUrl') or ''
         description = entry.get('description') or ''
 
-        service = self.get_service_status(systemctl, unit) if systemctl and unit else {
-            'name': unit,
-            'unit': unit,
+        service = self.get_service_status(systemctl, systemd_unit) if systemctl and systemd_unit else {
+            'name': systemd_unit,
+            'unit': systemd_unit,
+            'systemdUnit': systemd_unit,
             'status': 'unknown',
             'active': False
         }
@@ -503,7 +506,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         return {
             'provider': provider,
             'name': name,
-            'unit': service.get('unit') or unit,
+            'systemdUnit': service.get('systemdUnit') or service.get('unit') or systemd_unit,
+            'unit': service.get('unit') or systemd_unit,
             'publicUrl': public_url,
             'service': service,
             'status': status,
@@ -537,13 +541,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         """Build one remote admin runtime status row from declarative metadata"""
         kind = entry.get('kind') or 'other'
         name = entry.get('name') or kind
-        unit = entry.get('unit') or ''
+        systemd_unit = entry.get('systemdUnit') or entry.get('unit') or ''
         url = entry.get('url') or ''
         description = entry.get('description') or ''
 
-        service = self.get_service_status(systemctl, unit) if systemctl and unit else {
-            'name': unit,
-            'unit': unit,
+        service = self.get_service_status(systemctl, systemd_unit) if systemctl and systemd_unit else {
+            'name': systemd_unit,
+            'unit': systemd_unit,
+            'systemdUnit': systemd_unit,
             'status': 'unknown',
             'active': False
         }
@@ -561,7 +566,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         return {
             'kind': kind,
             'name': name,
-            'unit': service.get('unit') or unit,
+            'systemdUnit': service.get('systemdUnit') or service.get('unit') or systemd_unit,
+            'unit': service.get('unit') or systemd_unit,
             'url': url,
             'service': service,
             'status': status,
@@ -2052,6 +2058,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return {
                 'name': service,
                 'unit': unit_id or service,
+                'systemdUnit': unit_id or service,
                 'status': active_state or 'unknown',
                 'active': active_state == 'active'
             }
@@ -2059,6 +2066,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         return {
             'name': service,
             'unit': '',
+            'systemdUnit': '',
             'status': 'not-found',
             'active': False
         }

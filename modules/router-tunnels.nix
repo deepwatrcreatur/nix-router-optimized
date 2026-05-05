@@ -13,11 +13,11 @@ let
       };
 
       provider = mkOption {
-        type = types.enum [ "zrok" "ngrok" "cloudflare" "tailscale-funnel" "frp" "inlets" "other" ];
-        description = "Tunnel provider backing this entry (zrok, ngrok, Cloudflare Tunnel, etc.).";
+        type = types.enum [ "zrok" "ngrok" "cloudflare" "other" ];
+        description = "Tunnel provider backing this entry (zrok, ngrok, Cloudflare, etc.).";
       };
 
-      unit = mkOption {
+      systemdUnit = mkOption {
         type = types.str;
         description = "Systemd unit name backing this tunnel (e.g., zrok-share-grafana.service).";
       };
@@ -52,7 +52,7 @@ in
         {
           name = "grafana";
           provider = "zrok";
-          unit = "zrok-share-grafana.service";
+          systemdUnit = "zrok-share-grafana.service";
           publicUrl = "https://example-public.zrok.io";
           description = "Read-only Grafana dashboard share";
         }

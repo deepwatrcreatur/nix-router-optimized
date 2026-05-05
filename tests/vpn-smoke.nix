@@ -200,7 +200,7 @@ in
             vpn:
             vpn.kind == "wireguard"
             && vpn.name == "wg-dashboard"
-            && vpn.unit == "wireguard-wg-dashboard"
+            && vpn.systemdUnit == "wireguard-wg-dashboard"
             && vpn.interface == "wg-dashboard"
           ) vpns;
           message = "router-dashboard should export router-wireguard VPN metadata.";
@@ -209,7 +209,7 @@ in
           assertion = builtins.any (
             vpn:
             vpn.kind == "tailscale"
-            && vpn.unit == "tailscaled"
+            && vpn.systemdUnit == "tailscaled"
             && vpn.interface == "ts-dashboard"
           ) vpns;
           message = "router-dashboard should export router-tailscale VPN metadata.";
@@ -229,14 +229,14 @@ in
           {
             name = "grafana-share";
             provider = "zrok";
-            unit = "zrok-share-grafana.service";
+            systemdUnit = "zrok-share-grafana.service";
             publicUrl = "https://grafana-share.example.zrok.io";
             description = "Read-only Grafana dashboard share";
           }
           {
             name = "guac-ingress";
             provider = "cloudflare";
-            unit = "cloudflared-guac.service";
+            systemdUnit = "cloudflared-guac.service";
             publicUrl = "https://guac.example.com";
             description = "Cloudflare Tunnel for Guacamole";
           }
@@ -258,7 +258,7 @@ in
             tunnel:
             tunnel.provider == "zrok"
             && tunnel.name == "grafana-share"
-            && tunnel.unit == "zrok-share-grafana.service"
+            && tunnel.systemdUnit == "zrok-share-grafana.service"
             && tunnel.publicUrl == "https://grafana-share.example.zrok.io"
           ) tunnels;
           message = "router-dashboard should export router-tunnels zrok metadata.";
@@ -268,7 +268,7 @@ in
             tunnel:
             tunnel.provider == "cloudflare"
             && tunnel.name == "guac-ingress"
-            && tunnel.unit == "cloudflared-guac.service"
+            && tunnel.systemdUnit == "cloudflared-guac.service"
             && tunnel.publicUrl == "https://guac.example.com"
             && tunnel.description == "Cloudflare Tunnel for Guacamole"
           ) tunnels;
@@ -289,14 +289,14 @@ in
           {
             name = "guac";
             kind = "guacamole";
-            unit = "guacd.service";
+            systemdUnit = "guacd.service";
             url = "https://guac.example.com";
             description = "Guacamole gateway for lab machines";
           }
           {
             name = "bastion";
             kind = "ssh";
-            unit = "sshd.service";
+            systemdUnit = "sshd.service";
             url = "ssh://router.example.com";
             description = "Primary SSH bastion";
           }
@@ -319,7 +319,7 @@ in
             entry:
             entry.kind == "guacamole"
             && entry.name == "guac"
-            && entry.unit == "guacd.service"
+            && entry.systemdUnit == "guacd.service"
             && entry.url == "https://guac.example.com"
           ) remoteAdmin;
           message = "router-dashboard should export Guacamole remote-admin metadata.";
@@ -329,7 +329,7 @@ in
             entry:
             entry.kind == "ssh"
             && entry.name == "bastion"
-            && entry.unit == "sshd.service"
+            && entry.systemdUnit == "sshd.service"
             && entry.url == "ssh://router.example.com"
             && entry.description == "Primary SSH bastion"
           ) remoteAdmin;
@@ -374,7 +374,7 @@ in
             tunnel:
             tunnel.provider == "cloudflare"
             && tunnel.name == "grafana"
-            && tunnel.unit == "cloudflared-tunnel-grafana"
+            && tunnel.systemdUnit == "cloudflared-tunnel-grafana"
             && tunnel.publicUrl == "https://grafana.example.com"
           ) tunnels;
           message = "router-cloudflare-tunnel should register dashboard metadata for Cloudflare tunnels.";
@@ -428,7 +428,7 @@ in
           {
             name = "hidden";
             provider = "cloudflare";
-            unit = "cloudflared-hidden.service";
+            systemdUnit = "cloudflared-hidden.service";
             publicUrl = "https://hidden.example.com";
             description = "Should not be exported when router-tunnels is disabled";
           }
@@ -460,7 +460,7 @@ in
           {
             name = "hidden";
             kind = "ssh";
-            unit = "sshd.service";
+            systemdUnit = "sshd.service";
             url = "ssh://hidden.example.com";
             description = "Should not be exported when router-remote-admin is disabled";
           }

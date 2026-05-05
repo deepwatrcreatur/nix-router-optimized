@@ -116,7 +116,7 @@ class TunnelsWidget extends BaseWidget {
         <div class="vpn-row-grid">
           <div>
             <div class="vpn-label">Unit</div>
-            <div class="vpn-value">${this.escape(tunnel.unit || service.unit || '--')}</div>
+            <div class="vpn-value">${this.escape(tunnel.systemdUnit || service.systemdUnit || '--')}</div>
           </div>
           <div>
             <div class="vpn-label">Service</div>

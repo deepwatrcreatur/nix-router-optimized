@@ -188,7 +188,7 @@ in
           inherit (tunnel) description;
           name = name;
           provider = "cloudflare";
-          unit = "cloudflared-tunnel-${name}";
+          systemdUnit = "cloudflared-tunnel-${name}";
           publicUrl = derivedPublicUrl tunnel;
         }) cfg.tunnels
       );

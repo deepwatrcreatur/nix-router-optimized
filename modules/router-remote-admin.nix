@@ -17,7 +17,7 @@ let
         description = "Remote administration tool backing this entry (Guacamole, MeshCentral, SSH, etc.).";
       };
 
-      unit = mkOption {
+      systemdUnit = mkOption {
         type = types.str;
         description = "Systemd unit name backing this entry (e.g., guacd.service, meshcentral.service).";
       };
@@ -52,7 +52,7 @@ in
         {
           name = "guac";
           kind = "guacamole";
-          unit = "guacd.service";
+          systemdUnit = "guacd.service";
           url = "https://guac.example.net";
           description = "Guacamole gateway for lab machines";
         }

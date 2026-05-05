@@ -118,7 +118,7 @@ class VpnWidget extends BaseWidget {
         <div class="vpn-row-grid">
           <div>
             <div class="vpn-label">Unit</div>
-            <div class="vpn-value">${this.escape(vpn.unit || service.unit || '--')}</div>
+            <div class="vpn-value">${this.escape(vpn.systemdUnit || service.systemdUnit || '--')}</div>
           </div>
           <div>
             <div class="vpn-label">Service</div>
