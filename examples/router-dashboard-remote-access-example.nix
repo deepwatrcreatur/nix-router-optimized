@@ -7,14 +7,14 @@
       {
         name = "grafana-share";
         provider = "cloudflare";
-        unit = "cloudflared-grafana.service";
+        systemdUnit = "cloudflared-grafana.service";
         publicUrl = "https://grafana.example.com";
         description = "Cloudflare Tunnel for external Grafana access";
       }
       {
         name = "support-zrok";
         provider = "zrok";
-        unit = "zrok-share-support.service";
+        systemdUnit = "zrok-share-support.service";
         description = "Ephemeral support tunnel";
       }
     ];
@@ -26,14 +26,14 @@
       {
         name = "guac";
         kind = "guacamole";
-        unit = "guacd.service";
+        systemdUnit = "guacd.service";
         url = "https://guac.example.com";
         description = "Browser-based remote desktop gateway";
       }
       {
         name = "bastion";
         kind = "ssh";
-        unit = "sshd.service";
+        systemdUnit = "sshd.service";
         url = "ssh://router.example.com";
         description = "Primary SSH bastion";
       }

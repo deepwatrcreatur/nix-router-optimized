@@ -45,7 +45,7 @@ let
         {
           kind = "wireguard";
           name = config.services.router-wireguard.interfaceName;
-          unit = "wireguard-${config.services.router-wireguard.interfaceName}";
+          systemdUnit = "wireguard-${config.services.router-wireguard.interfaceName}";
           interface = config.services.router-wireguard.interfaceName;
         }
       ]
@@ -54,7 +54,7 @@ let
         (name: instance: {
           kind = "openvpn";
           name = name;
-          unit = "openvpn-${name}";
+          systemdUnit = "openvpn-${name}";
           interface = instance.interfaceName;
         })
         (config.services.router-openvpn.instances or { })
@@ -68,7 +68,7 @@ let
         {
           kind = "tailscale";
           name = "tailscale";
-          unit = "tailscaled";
+          systemdUnit = "tailscaled";
           interface = config.services.router-tailscale.interfaceName;
         }
       ]
@@ -81,7 +81,7 @@ let
         {
           kind = "headscale";
           name = "headscale";
-          unit = "headscale";
+          systemdUnit = "headscale";
           interface = null;
         }
       ]
@@ -94,7 +94,7 @@ let
         {
           kind = "netbird";
           name = config.services.router-netbird.clientName;
-          unit = "netbird-${config.services.router-netbird.clientName}";
+          systemdUnit = "netbird-${config.services.router-netbird.clientName}";
           interface = config.services.router-netbird.interfaceName;
         }
       ]
@@ -107,7 +107,7 @@ let
         {
           kind = "zerotier";
           name = "zerotier";
-          unit = "zerotierone";
+          systemdUnit = "zerotierone";
           interface = config.services.router-zerotier.interfaceName;
         }
       ];
@@ -122,7 +122,7 @@ let
       (map (tunnel: {
         provider = tunnel.provider;
         name = tunnel.name;
-        unit = tunnel.unit;
+        systemdUnit = tunnel.systemdUnit;
         publicUrl = tunnel.publicUrl;
         description = tunnel.description;
       }) (config.services.router-tunnels.tunnels or [ ]));
@@ -137,7 +137,7 @@ let
       (map (entry: {
         kind = entry.kind;
         name = entry.name;
-        unit = entry.unit;
+        systemdUnit = entry.systemdUnit;
         url = entry.url;
         description = entry.description;
       }) (config.services.router-remote-admin.entries or [ ]));
