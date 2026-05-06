@@ -1,6 +1,6 @@
 # Router Remote Admin Module
 
-Status: `in-progress` — **Gemini**
+Status: `done`
 
 Branch: `feat/router-remote-admin-module`
 
