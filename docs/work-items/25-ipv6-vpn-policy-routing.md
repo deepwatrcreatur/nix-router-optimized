@@ -1,6 +1,6 @@
 # 25 — IPv6 VPN Policy Routing & Targeted NAT66
 
-## Status: `todo`
+## Status: `done`
 
 ## Objective
 Enhance `router-networking` and `router-firewall` to support source-based routing decisions and targeted IPv6 masquerading (NAT66).

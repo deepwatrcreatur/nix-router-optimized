@@ -420,7 +420,13 @@ let
   mkRoutedInterface = name: iface: {
     matchConfig.Name = iface.device;
     address = [ iface.ipv4Address ];
-    routes = map mkRoute iface.extraRoutes;
+    routes = (map mkRoute iface.extraRoutes)
+      ++ (optional (iface.vpnExit != null) {
+        Gateway = "::"; # Special value for "on-link" if no gateway is known? No, we want dev.
+        GatewayOnLink = true;
+        Destination = "::/0";
+        Table = 200;
+      });
     linkConfig =
       optionalAttrs (iface.requiredForOnline != null) {
         RequiredForOnline = iface.requiredForOnline;
@@ -463,6 +469,13 @@ let
           IncomingInterface = iface.device;
           Table = iface.policyRouting.table;
           Priority = 100;
+        }
+      )
+      ++ (optional (iface.vpnExit != null)
+        {
+          IncomingInterface = iface.device;
+          Table = 200; # Use table 200 for VPN exit traffic
+          Priority = 50; # Higher priority than default PBR
         }
       )
       ++ (map
@@ -550,6 +563,26 @@ in
           nameValuePair "08-router-parent-${sanitizeName parent}" (mkParentVlanNetwork parent children)
         )
         parentVlans
-      // mapAttrs' (name: iface: nameValuePair "20-router-${name}" (mkRoutedInterface name iface)) cfg.routedInterfaces;
+      // mapAttrs' (name: iface: nameValuePair "20-router-${name}" (mkRoutedInterface name iface)) cfg.routedInterfaces
+      // (
+        let
+          vpnExits = unique (
+            filter (v: v != null) (mapAttrsToList (_name: iface: iface.vpnExit) cfg.routedInterfaces)
+          );
+          mkVpnExitNetwork = ifaceName: {
+            matchConfig.Name = ifaceName;
+            routes = [
+              {
+                Destination = "::/0";
+                Table = 200;
+              }
+            ];
+            # Don't try to manage the interface itself, just add routes when it appears
+            linkConfig.RequiredForOnline = "no";
+            networkConfig.KeepConfiguration = "yes";
+          };
+        in
+        listToAttrs (map (v: nameValuePair "30-router-vpn-exit-${sanitizeName v}" (mkVpnExitNetwork v)) vpnExits)
+      );
   };
 }
