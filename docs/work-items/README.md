@@ -26,7 +26,7 @@ tracked separately from the dashboard planning docs.
 - [21-dashboard-remote-admin-tab-widget](./21-dashboard-remote-admin-tab-widget.md) — `done`
 - [24-router-nptv6-module](./24-router-nptv6-module.md) — `done`
 - [25-ipv6-vpn-policy-routing](./25-ipv6-vpn-policy-routing.md) — `done`
-- [26-dynamic-prefix-watch-hook](./26-dynamic-prefix-watch-hook.md)
+- [26-dynamic-prefix-watch-hook](./26-dynamic-prefix-watch-hook.md) — `in-progress` — **Gemini**
 - [27-rfc8028-provisioning-domains](./27-rfc8028-provisioning-domains.md)
 
 ## Why This Structure
