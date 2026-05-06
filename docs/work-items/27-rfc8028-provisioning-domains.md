@@ -1,6 +1,6 @@
 # 27 — RFC 8028 Provisioning Domains (PvDs) Support
 
-## Status: `todo` (Future/Pure)
+## Status: `in-progress` — **Gemini**
 
 ## Objective
 Implement support for RFC 8028 Provisioning Domains to allow NAT-less IPv6 redirection for modern, PvD-aware clients.
