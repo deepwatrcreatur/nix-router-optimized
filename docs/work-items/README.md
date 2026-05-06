@@ -18,9 +18,9 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [16-router-tunnels-module](./16-router-tunnels-module.md) — `in-progress` — **Codex**
-- [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md) — `in-progress` — **Codex**
-- [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md) — `in-progress` — **GitHub Copilot**
+- [16-router-tunnels-module](./16-router-tunnels-module.md) — `done`
+- [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md) — `done`
+- [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md) — `done`
 - [19-router-remote-admin-module](./19-router-remote-admin-module.md)
 - [20-dashboard-remote-admin-status-api](./20-dashboard-remote-admin-status-api.md)
 - [21-dashboard-remote-admin-tab-widget](./21-dashboard-remote-admin-tab-widget.md)
