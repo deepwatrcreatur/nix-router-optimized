@@ -11,7 +11,7 @@ Introduce a `services.router-remote-admin` NixOS module that models remote admin
 ## Scope
 
 - Define `services.router-remote-admin` options for a list of remote access entries.
-- Each entry captures type (guacamole/meshcentral/ssh/other), name, systemd unit, URL, and description.
+- Each entry captures kind (guacamole/meshcentral/ssh/other), name, systemd unit, URL, and description.
 - Ensure the module is safe to import unconditionally and composes with existing router-* modules.
 
 ## Acceptance Criteria
