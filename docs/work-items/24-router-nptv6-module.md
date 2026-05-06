@@ -1,6 +1,6 @@
 # 24 — NPTv6 Module (Network Prefix Translation)
 
-## Status: `todo`
+## Status: `done`
 
 ## Objective
 Implement a high-level `services.router-nptv6` module that provides a NixOS abstraction for 1:1 IPv6 prefix translation using `nftables`.
