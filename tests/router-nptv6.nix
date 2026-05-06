@@ -29,17 +29,30 @@ in
             externalInterface = "wan0";
             externalPrefix = "2001:db8:1::/64";
           }
+          {
+            internalPrefix = "fd00:2::/64";
+            externalInterface = "tailscale0";
+            autoDetect = true;
+          }
         ];
       };
     }
     ({ config, ... }: assertModule [
       {
         assertion = lib.hasInfix "snat to 2001:db8:1::/64" config.services.router-firewall.extraIpv6NatRules;
-        message = "router-nptv6 should add SNAT rule (stateful fallback).";
+        message = "router-nptv6 should add static SNAT rule.";
       }
       {
-        assertion = lib.hasInfix "dnat to fd00:1::/64" config.services.router-firewall.extraIpv6PreroutingRules;
-        message = "router-nptv6 should add DNAT rule (stateful fallback).";
+        assertion = !lib.hasInfix "fd00:2::/64" config.services.router-firewall.extraIpv6NatRules;
+        message = "router-nptv6 should NOT add autoDetect rules to static firewall string.";
+      }
+      {
+        assertion = config.systemd.services ? router-nptv6-watch;
+        message = "router-nptv6 should enable watch service when autoDetect is used.";
+      }
+      {
+        assertion = lib.elem "VAGLIO_NPT_EXTERNAL_INTERFACES=tailscale0" config.systemd.services.router-nptv6-watch.serviceConfig.Environment;
+        message = "router-nptv6-watch should have VAGLIO_NPT_EXTERNAL_INTERFACES=tailscale0 in Environment.";
       }
     ])
   ];

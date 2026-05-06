@@ -1,6 +1,6 @@
 # 26 — Dynamic Prefix-Watch & Sync Hook
 
-## Status: `in-progress` — **Gemini**
+## Status: `done` — **Gemini**
 
 ## Objective
 Implement a mechanism to automatically update NPTv6 rules and routing tables when dynamic IPv6 prefixes on VPN interfaces change.
