@@ -21,7 +21,7 @@ tracked separately from the dashboard planning docs.
 - [16-router-tunnels-module](./16-router-tunnels-module.md) — `done`
 - [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md) — `done`
 - [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md) — `done`
-- [19-router-remote-admin-module](./19-router-remote-admin-module.md)
+- [19-router-remote-admin-module](./19-router-remote-admin-module.md) — `in-progress` — **Gemini**
 - [20-dashboard-remote-admin-status-api](./20-dashboard-remote-admin-status-api.md)
 - [21-dashboard-remote-admin-tab-widget](./21-dashboard-remote-admin-tab-widget.md)
 - [24-router-nptv6-module](./24-router-nptv6-module.md) — `in-progress` — **Gemini**
