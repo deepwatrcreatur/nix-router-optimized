@@ -38,6 +38,10 @@ let
   nptv6Checks = import ./router-nptv6.nix {
     inherit self lib eval;
   };
+
+  pvdChecks = import ./router-pvd.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -64,6 +68,7 @@ in
 // interfaceFirewallInvariantChecks
 // docExampleChecks
 // nptv6Checks
+// pvdChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (

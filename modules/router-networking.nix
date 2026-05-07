@@ -297,6 +297,58 @@ let
         default = false;
         description = "Enable IPv6 masquerade (NAT66) for traffic exiting via vpnExit or WAN.";
       };
+
+      pvd = mkOption {
+        type = types.nullOr (types.submodule {
+          options = {
+            identifier = mkOption {
+              type = types.str;
+              example = "pvd.example.com";
+              description = "The FQDN identifying the Provisioning Domain (RFC 8801).";
+            };
+
+            hFlag = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Set the H-flag to indicate Additional Information is available via HTTPS.";
+            };
+
+            sequenceNumber = mkOption {
+              type = types.int;
+              default = 1;
+              description = "Sequence number for Additional Information updates.";
+            };
+          };
+        });
+        default = null;
+        description = "DEPRECATED: Use pvds instead. Primary Provisioning Domain (PvD) configuration for this segment.";
+      };
+
+      pvds = mkOption {
+        type = types.listOf (types.submodule {
+          options = {
+            identifier = mkOption {
+              type = types.str;
+              example = "pvd.example.com";
+              description = "The FQDN identifying the Provisioning Domain (RFC 8801).";
+            };
+
+            hFlag = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Set the H-flag to indicate Additional Information is available via HTTPS.";
+            };
+
+            sequenceNumber = mkOption {
+              type = types.int;
+              default = 1;
+              description = "Sequence number for Additional Information updates.";
+            };
+          };
+        });
+        default = [ ];
+        description = "List of Provisioning Domains (PvDs) to advertise on this segment (RFC 8801).";
+      };
     };
   };
 
@@ -456,6 +508,22 @@ let
           OtherInformation = false;
           EmitDNS = iface.dns != [ ];
         };
+    extraConfig =
+      let
+        allPvds = iface.pvds ++ (optional (iface.pvd != null) iface.pvd);
+        mkPvDSection = pvd: ''
+          [IPv6PvD]
+          Identifier=${pvd.identifier}
+          HFlag=${if pvd.hFlag then "yes" else "no"}
+          SequenceNumber=${toString pvd.sequenceNumber}
+        '';
+      in
+      (optionalString (allPvds != [ ]) ''
+        [IPv6SendRA]
+        PvD=yes
+
+        ${concatMapStrings mkPvDSection allPvds}
+      '');
     ipv6Prefixes = [
       {
         Prefix = iface.ipv6Prefix;
