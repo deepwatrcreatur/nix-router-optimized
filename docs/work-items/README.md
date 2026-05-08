@@ -28,6 +28,7 @@ tracked separately from the dashboard planning docs.
 - [25-ipv6-vpn-policy-routing](./25-ipv6-vpn-policy-routing.md) — `done`
 - [26-dynamic-prefix-watch-hook](./26-dynamic-prefix-watch-hook.md) — `done`
 - [27-rfc8028-provisioning-domains](./27-rfc8028-provisioning-domains.md) — `done`
+- [28-opencode-router-dashboard-restyle](./28-opencode-router-dashboard-restyle.md) — `done`
 
 ## Why This Structure
 
