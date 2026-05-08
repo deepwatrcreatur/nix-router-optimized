@@ -1,6 +1,6 @@
 # 28 — Router Dashboard OpenCode Restyle
 
-## Status: `in-progress` — **Codex** — `feat/opencode-dashboard-style`
+## Status: `done` — **Codex** — `feat/opencode-dashboard-style`
 
 ## Objective
 
@@ -38,3 +38,12 @@ generic enterprise panel.
 - [ ] Dashboard uses the OpenCode-inspired palette and typography
 - [ ] Existing widget layout and navigation still work
 - [ ] No widget/API behavior changes are required for the visual restyle
+
+## Outcome
+
+- Restyled the dashboard chrome and widget surfaces to a cream / ink
+  OpenCode-inspired console theme.
+- Updated the shell copy and hierarchy in `index.html` without changing the
+  dashboard tab structure or API contracts.
+- Kept the work CSS-only plus light HTML copy changes so the router dashboard
+  behavior stays intact.
