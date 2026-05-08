@@ -47,7 +47,7 @@ class RemoteAdminWidget extends BaseWidget {
 
   async onTick() {
     try {
-      const data = await this.fetchAPI('/api/remote-admin/status');
+      const data = await this.fetchAPI('/remote-admin/status');
       this.renderSummary(data);
       this.renderEntryList(data.entries || []);
       this.hideLoading();

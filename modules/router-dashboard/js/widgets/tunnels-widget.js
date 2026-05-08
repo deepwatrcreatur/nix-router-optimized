@@ -47,7 +47,7 @@ class TunnelsWidget extends BaseWidget {
 
   async onTick() {
     try {
-      const data = await this.fetchAPI('/api/tunnels/status');
+      const data = await this.fetchAPI('/tunnels/status');
       this.renderSummary(data);
       this.renderTunnelList(data.tunnels || []);
       this.hideLoading();
