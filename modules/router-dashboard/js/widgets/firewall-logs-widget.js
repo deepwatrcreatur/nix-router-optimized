@@ -11,6 +11,7 @@ class FirewallLogsWidget extends BaseWidget {
     this.eventSource = null;
     this.logs = [];
     this.maxEntries = config.maxEntries || 100;
+    this.autoConnect = config.autoConnect === true;
   }
 
   getMarkup() {
@@ -34,12 +35,21 @@ class FirewallLogsWidget extends BaseWidget {
   onMounted() {
     const reconnect = this.container?.querySelector(`#${this.id}-reconnect`);
     if (reconnect) {
-      reconnect.addEventListener('click', () => this.connect());
+      reconnect.addEventListener('click', () => {
+        this.connect();
+        reconnect.textContent = 'Reconnect';
+      });
+      reconnect.textContent = this.autoConnect ? 'Reconnect' : 'Start stream';
+    }
+
+    if (!this.autoConnect) {
+      this.setStatus('Idle', 'warning');
+      this.setMeta('Stream disabled until you click Start stream');
     }
   }
 
   async onTick() {
-    if (!this.eventSource) {
+    if (this.autoConnect && !this.eventSource) {
       this.connect();
     }
   }
