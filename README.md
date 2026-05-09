@@ -46,6 +46,11 @@ If you are assigning or running agents against this repo, start with:
   - **WAN HA**: Integrated "Golden MAC" cloning and interface management for seamless ISP failover when using an unmanaged switch topology.
 - **Multi-WAN Failover**: Automatic health-checking and priority switching between multiple ISP uplinks.
 - **WAN MAC Cloning**: Declarative MAC address spoofing for seamless ISP handover
+- **Security & Hardening**:
+  - **OpenBSD-tier Kernel Tuning**: Restricted dmesg, ASLR enforcement, and TCP/IP stack hardening.
+  - **Geo-IP Blocking**: Declaratively block inbound traffic from specific countries via nftables.
+  - **MAC Security**: Interface-specific MAC-address whitelisting with enforcement or alert policies.
+- **Zone Isolation**: Declarative "Zone-based" security (WAN, LAN, IoT) with high-level cross-zone traffic policies.
 
 ## Quick Start
 

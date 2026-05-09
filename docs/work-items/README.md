@@ -24,6 +24,8 @@ tracked separately from the dashboard planning docs.
 - [19-router-remote-admin-module](./19-router-remote-admin-module.md) — `done`
 - [20-dashboard-remote-admin-status-api](./20-dashboard-remote-admin-status-api.md) — `done`
 - [21-dashboard-remote-admin-tab-widget](./21-dashboard-remote-admin-tab-widget.md) — `done`
+- [22-router-security-hardening-validation](./22-router-security-hardening-validation.md) — `done`
+- [23-router-zones-policy-validation](./23-router-zones-policy-validation.md) — `done`
 - [24-router-nptv6-module](./24-router-nptv6-module.md) — `done`
 - [25-ipv6-vpn-policy-routing](./25-ipv6-vpn-policy-routing.md) — `done`
 - [26-dynamic-prefix-watch-hook](./26-dynamic-prefix-watch-hook.md) — `done`
