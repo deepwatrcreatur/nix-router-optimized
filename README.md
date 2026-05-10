@@ -505,6 +505,8 @@ services.router-kea = {
     subnet = "10.10.0.0/16";
     gatewayAddress = "10.10.10.1";
     dnsServers = [ "10.10.10.1" ];
+    # Optional; defaults to router-dns-service.searchDomains when present.
+    searchDomains = [ "home.example.com" ];
     poolRanges = [{ start = "10.10.10.100"; end = "10.10.10.250"; }];
     reservations = [
       { hw-address = "aa:bb:cc:dd:ee:ff"; ip-address = "10.10.10.50"; hostname = "myhost"; }

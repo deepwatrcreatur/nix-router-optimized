@@ -12,6 +12,7 @@ let
   cfg = config.services.router-kea;
   routedIfaces = config.services.router-networking.routedInterfaces or { };
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
+  hasRouterDnsService = hasAttrByPath [ "services" "router-dns-service" "searchDomains" ] options;
 
   # Auto-derive LAN interfaces from router-networking when none are specified.
   effectiveInterfaces =
@@ -26,6 +27,56 @@ let
   # receiving if the interface is bound with an address qualifier (e.g. eth0/10.0.0.1).
   # We must ensure that in raw mode, only bare interface names are used.
   hasAddressQualifiedInterface = any (i: strings.hasInfix "/" i) effectiveInterfaces;
+
+  servedRoutedInterfaces = filterAttrs (_name: iface: elem iface.device effectiveInterfaces) routedIfaces;
+
+  derivedSearchDomains =
+    unique (flatten (mapAttrsToList (_name: iface: iface.domains or [ ]) servedRoutedInterfaces));
+
+  effectiveSearchDomains =
+    if cfg.dhcp4.searchDomains != [ ] then
+      cfg.dhcp4.searchDomains
+    else if hasRouterDnsService then
+      config.services.router-dns-service.searchDomains
+    else
+      derivedSearchDomains;
+
+  parseInt = s: builtins.fromJSON s;
+
+  parseIPv4 =
+    ip:
+    let
+      octets = splitString "." ip;
+      parsedOctets = map parseInt octets;
+      validOctets = all (o: o >= 0 && o <= 255) parsedOctets;
+    in
+    assert length octets == 4;
+    assert validOctets;
+    ((elemAt parsedOctets 0) * 16777216)
+    + ((elemAt parsedOctets 1) * 65536)
+    + ((elemAt parsedOctets 2) * 256)
+    + (elemAt parsedOctets 3);
+
+  pow2 = n: if n == 0 then 1 else 2 * pow2 (n - 1);
+
+  parseSubnet =
+    cidr:
+    let
+      parts = splitString "/" cidr;
+      prefixLength = parseInt (elemAt parts 1);
+      hostCount = pow2 (32 - prefixLength);
+      network = builtins.div (parseIPv4 (elemAt parts 0)) hostCount * hostCount;
+    in
+    assert length parts == 2;
+    assert prefixLength >= 0 && prefixLength <= 32;
+    {
+      inherit prefixLength hostCount network;
+      broadcast = network + hostCount - 1;
+    };
+
+  subnetInfo = parseSubnet cfg.dhcp4.subnet;
+  inSubnet = ipInt: ipInt >= subnetInfo.network && ipInt <= subnetInfo.broadcast;
+  isUsableHostAddress = ipInt: ipInt > subnetInfo.network && ipInt < subnetInfo.broadcast;
 
   reservationModule = types.submodule {
     options = {
@@ -153,6 +204,17 @@ in
         type = types.listOf types.str;
         default = [ ];
         description = "DNS servers advertised to clients (DHCP option 6).";
+      };
+
+      searchDomains = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [ "deepwatercreature.com" ];
+        description = ''
+          Search domains advertised to clients (DHCP options 15 and 119).
+          Defaults to `services.router-dns-service.searchDomains` when that
+          module is loaded, otherwise to the served routed interface domains.
+        '';
       };
 
       poolRanges = mkOption {
@@ -306,7 +368,33 @@ in
             Use a bare interface name (e.g. "eth0") instead.
           '';
         }
-      ];
+      ]
+      ++ concatMap (
+        r:
+        let
+          startInt = parseIPv4 r.start;
+          endInt = parseIPv4 r.end;
+          poolLabel = "${r.start} - ${r.end}";
+        in
+        [
+          {
+            assertion = inSubnet startInt && inSubnet endInt;
+            message = "router-kea pool ${poolLabel} must stay within subnet ${cfg.dhcp4.subnet}.";
+          }
+          {
+            assertion = startInt <= endInt;
+            message = "router-kea pool ${poolLabel} must not have start after end.";
+          }
+          {
+            assertion = isUsableHostAddress startInt;
+            message = "router-kea pool ${poolLabel} must start on a usable host address, not the subnet network or broadcast address.";
+          }
+          {
+            assertion = isUsableHostAddress endInt;
+            message = "router-kea pool ${poolLabel} must end on a usable host address, not the subnet network or broadcast address.";
+          }
+        ]
+      ) cfg.dhcp4.poolRanges;
 
       # ── DHCPv4 ────────────────────────────────────────────────────────────────
 
@@ -384,6 +472,14 @@ in
                 ++ optional (cfg.dhcp4.dnsServers != [ ]) {
                   name = "domain-name-servers";
                   data = concatStringsSep ", " cfg.dhcp4.dnsServers;
+                }
+                ++ optional (effectiveSearchDomains != [ ]) {
+                  name = "domain-name";
+                  data = head effectiveSearchDomains;
+                }
+                ++ optional (effectiveSearchDomains != [ ]) {
+                  name = "domain-search";
+                  data = concatStringsSep ", " effectiveSearchDomains;
                 }
                 ++ optional (pxeCfg.enable && pxeCfg.bootServerName != null) {
                   name = "tftp-server-name";
