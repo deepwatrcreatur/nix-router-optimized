@@ -18,10 +18,10 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-No `ready` items currently listed.
-
 ## Recently Completed
 
+- [29-router-module-eval-and-smoke-skill](./29-router-module-eval-and-smoke-skill.md) — `done`
+- [30-router-diag-and-boundary-skills](./30-router-diag-and-boundary-skills.md) — `done`
 - [16-router-tunnels-module](./16-router-tunnels-module.md) — `done`
 - [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md) — `done`
 - [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md) — `done`
