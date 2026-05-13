@@ -1,5 +1,7 @@
 ## Discussion 04: Recovered Security/Zones Work Review
 
+**Status:** closed
+
 **Topic:** Review of the recovered `router-security-hardened` and `router-zones` work after reboot recovery and rebase onto current `main`.
 
 **Context:** The recovered work was isolated onto a clean branch based on current `main` and validated with `nix flake check --no-build`. Evaluation passed, but a code review found several runtime and semantics risks that should be resolved before merge.
@@ -65,4 +67,4 @@ The first release should prefer a minimal, internally consistent surface area ov
 3. Narrow `router-security-hardened` claims to match actual enforcement scope, or wire input-path protection explicitly.
 4. Re-run evaluation and a rendered-ruleset inspection after those repairs.
 
-**Closure status:** Open. This discussion should feed a follow-up work item or implementation pass before the recovered modules are merged.
+**Closure status:** Closed. The follow-up implementation pass and validation work were captured after this review; keep this document as the design/review record rather than an active discussion.

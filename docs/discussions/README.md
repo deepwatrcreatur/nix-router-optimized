@@ -6,7 +6,8 @@ This directory contains deliberative transcripts on complex architectural or pro
 |----|-------|------|--------|
 | [01](./01-ipv6-vpn-redirection.md) | IPv6 VPN Redirection & Dynamic Prefix Handling | 2026-05-02 | Closed |
 | [02](./02-ipv6-redirection-standards-vs-pragmatism.md) | Standards vs. Pragmatism in IPv6 Redirection | 2026-05-02 | Closed |
-| [04](./04-router-security-zones-recovery-review.md) | Recovered Security/Zones Work Review | 2026-05-09 | Open |
+| [03](./03-router-backup-standby-and-shared-wan.md) | Router-Backup Standby and Shared-WAN Failure Mode | 2026-05-09 | Closed |
+| [04](./04-router-security-zones-recovery-review.md) | Recovered Security/Zones Work Review | 2026-05-09 | Closed |
 
 ## Methodology
 
