@@ -12,6 +12,8 @@ let
   optimizationInterfaces = config.services.router-optimizations.interfaces or { };
   routedIfaces = config.services.router-networking.routedInterfaces or { };
 
+  cnt = optionalString cfg.useCounters "counter ";
+
   interfaceByRole =
     role:
     mapAttrsToList (_name: iface: iface.device) (
@@ -221,6 +223,12 @@ in
       description = "Extra nftables input-chain rules appended before final drop.";
     };
 
+    extraInputEarlyRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables input-chain rules prepended at the very beginning.";
+    };
+
     extraWanLocalRules = mkOption {
       type = types.lines;
       default = "";
@@ -243,6 +251,12 @@ in
       type = types.lines;
       default = "";
       description = "Extra nftables forward-chain rules appended before final drop.";
+    };
+
+    extraForwardEarlyRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables forward-chain rules prepended at the very beginning.";
     };
 
     extraFilterTableRules = mkOption {
@@ -356,6 +370,12 @@ in
         default = 1;
         description = "NFLOG group ID for flow logging.";
       };
+    };
+
+    useCounters = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Add 'counter' to firewall rules for traffic statistics in the dashboard.";
     };
   };
 
@@ -514,15 +534,16 @@ in
         chain input {
           type filter hook input priority 0; policy drop;
 
+          ${cfg.extraInputEarlyRules}
           ${optionalString cfg.flowLogging.enable "jump flow-logger"}
-          ct state {established, related} accept
-          iifname "lo" accept
+          ct state {established, related} ${cnt}accept
+          iifname "lo" ${cnt}accept
 
-          ip protocol icmp accept
-          ${optionalString cfg.enableIpv6 "ip6 nexthdr icmpv6 accept"}
+          ip protocol icmp ${cnt}accept
+          ${optionalString cfg.enableIpv6 "ip6 nexthdr icmpv6 ${cnt}accept"}
 
           ${optionalString (config.services.router-nat64.enable or false) ''
-            iifname "nat64" accept comment "Allow Tayga NAT64 traffic"
+            iifname "nat64" ${cnt}accept comment "Allow Tayga NAT64 traffic"
           ''}
 
           ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_LOCAL"}
@@ -532,7 +553,7 @@ in
           ) "iifname ${maybeSet managementInterfaces} jump MGMT_LOCAL"}
 
           ${concatMapStrings (iface: ''
-            iifname "${iface}" accept
+            iifname "${iface}" ${cnt}accept
           '') allOverlayInterfaces}
 
           ${cfg.extraInputRules}
@@ -547,16 +568,17 @@ in
                 log prefix "${cfg.inputLogPrefix}" level info flags all
               ''
           }
-          drop
+          ${cnt}drop
         }
 
         chain forward {
           type filter hook forward priority 0; policy drop;
 
+          ${cfg.extraForwardEarlyRules}
           ${optionalString cfg.flowLogging.enable "jump flow-logger"}
-          ct state {established, related} accept
+          ct state {established, related} ${cnt}accept
           ct state invalid log prefix "${cfg.invalidLogPrefix}" level info flags all
-          ct state invalid drop
+          ct state invalid ${cnt}drop
 
           ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_IN"}
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_IN"}
@@ -565,15 +587,15 @@ in
           ) "iifname ${maybeSet managementInterfaces} jump MGMT_IN"}
 
           ${optionalString (config.services.router-nat64.enable or false) ''
-            iifname ${maybeSet trustedInterfaces} oifname "nat64" accept comment "Forward to NAT64"
-            iifname "nat64" oifname ${maybeSet wanInterfaces} accept comment "NAT64 to WAN"
+            iifname ${maybeSet trustedInterfaces} oifname "nat64" ${cnt}accept comment "Forward to NAT64"
+            iifname "nat64" oifname ${maybeSet wanInterfaces} ${cnt}accept comment "NAT64 to WAN"
           ''}
 
           ${optionalString (allOverlayInterfaces != [ ] && allRouterInterfaces != [ ]) (
             concatMapStrings (iface: ''
-              iifname "${iface}" oifname ${maybeSet allRouterInterfaces} accept
+              iifname "${iface}" oifname ${maybeSet allRouterInterfaces} ${cnt}accept
               ${optionalString (trustedInterfaces != [ ]) ''
-                iifname ${maybeSet trustedInterfaces} oifname "${iface}" accept
+                iifname ${maybeSet trustedInterfaces} oifname "${iface}" ${cnt}accept
               ''}
             '') allOverlayInterfaces
           )}
@@ -590,11 +612,12 @@ in
                 log prefix "${cfg.forwardLogPrefix}" level info flags all
               ''
           }
-          drop
+          ${cnt}drop
         }
 
         chain output {
           type filter hook output priority 0; policy accept;
+          ${cnt}accept
         }
       }
 

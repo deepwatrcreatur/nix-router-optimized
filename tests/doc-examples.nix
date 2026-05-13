@@ -467,6 +467,125 @@ in
     }
   ]);
 
+  docs-router-security-hardened-example-eval = mkDocExampleCheck "docs-router-security-hardened-example" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-security-hardened
+    self.nixosModules.router-optimizations
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+      };
+      services.router-security-hardened = {
+        enable = true;
+        kernelHardening.enable = true;
+        geoIpBlocking = {
+          enable = true;
+          blockedCountries = [ "ru" "cn" ];
+        };
+        macSecurity = {
+          enable = true;
+          policy = "enforce";
+          whitelists = {
+            "eth1" = [ "00:11:22:33:44:55" ];
+          };
+        };
+      };
+    }
+  ] (config: [
+    {
+      assertion = builtins.elem "bluetooth" config.boot.blacklistedKernelModules;
+      message = "router-security-hardened example should blacklist bluetooth.";
+    }
+    {
+      assertion = config.boot.kernel.sysctl."kernel.kptr_restrict" == 2;
+      message = "router-security-hardened example should set kptr_restrict to 2.";
+    }
+    {
+      assertion = lib.hasInfix "jump geoip_block" config.networking.nftables.ruleset;
+      message = "router-security-hardened example should render geoip_block jump.";
+    }
+    {
+      assertion = lib.hasInfix "iifname {\"eth0\"} ip saddr @blocked_countries drop" config.networking.nftables.ruleset;
+      message = "router-security-hardened example should render WAN-restricted geoip drop rule.";
+    }
+    {
+      assertion = lib.hasInfix "iifname \"eth1\" ether saddr != @allowed_macs_eth1 log prefix \"MAC-REJECT: \" drop" config.networking.nftables.ruleset;
+      message = "router-security-hardened example should render MAC enforcement rule.";
+    }
+  ]);
+
+  docs-router-zones-example-eval = mkDocExampleCheck "docs-router-zones-example" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-zones
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+      };
+      services.router-zones = {
+        enable = true;
+        zones = {
+          wan.interfaces = [ "eth0" ];
+          lan.interfaces = [ "eth1" ];
+          iot = {
+            interfaces = [ "eth2" ];
+            defaultForwardPolicy = "drop";
+          };
+        };
+        policies = [
+          { fromZone = "lan"; toZone = "wan"; action = "accept"; }
+          { fromZone = "iot"; toZone = "wan"; action = "accept"; }
+          {
+            fromZone = "iot";
+            toZone = "lan";
+            action = "drop";
+            extraRules = "ip daddr 10.10.10.50 tcp dport 8123 accept";
+          }
+        ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = lib.hasInfix "jump zone_lan_forward" config.networking.nftables.ruleset;
+      message = "router-zones example should render lan zone forward jump.";
+    }
+    {
+      assertion = lib.hasInfix "chain zone_iot_forward" config.networking.nftables.ruleset;
+      message = "router-zones example should render iot zone forward chain.";
+    }
+    {
+      assertion =
+        lib.hasInfix "comment \"Policy: iot -> lan\"" config.networking.nftables.ruleset
+        && lib.hasInfix "ip daddr 10.10.10.50 tcp dport 8123 accept" config.networking.nftables.ruleset;
+      message = "router-zones example should render complex policy with extraRules.";
+    }
+    {
+      assertion = lib.hasInfix "jump zone_wan_input" config.networking.nftables.ruleset;
+      message = "router-zones example should render wan zone input jump.";
+    }
+  ]);
+
+  docs-router-firewall-counters-eval = mkDocExampleCheck "docs-router-firewall-counters" [
+    self.nixosModules.router-firewall
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+        useCounters = true;
+      };
+    }
+  ] (config: [
+    {
+      assertion = lib.hasInfix "counter accept" config.networking.nftables.ruleset;
+      message = "router-firewall with useCounters should render counter accept.";
+    }
+    {
+      assertion = lib.hasInfix "counter drop" config.networking.nftables.ruleset;
+      message = "router-firewall with useCounters should render counter drop.";
+    }
+  ]);
+
   docs-router-dashboard-remote-access-example-eval = mkDocExampleCheck "docs-router-dashboard-remote-access-example" [
     self.nixosModules.router-dashboard
     self.nixosModules.router-tunnels

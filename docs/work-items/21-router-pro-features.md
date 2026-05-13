@@ -72,25 +72,25 @@ This document tracks the implementation of advanced routing features for the `ni
   - [x] Implement dynamic route metric switching.
 
 ## 10. Security & Hardening (The "OpenBSD" Tier)
-- **Status**: 🚧 In progress
+- **Status**: ✅ Completed
 - **Goal**: Bring NixOS as close to OpenBSD security standards as possible.
 - **Tasks**:
   - [x] Add `router-security-hardened.nix` module.
   - [x] Implement declarative Geo-IP blocking (via nftables sets).
   - [x] Strict Kernel parameter tuning (ASLR, module disabling, dmesg restriction).
   - [x] MAC-address white-listing/alerting for trusted segments.
-  - [ ] Update project README and documentation to discuss these new security features.
+  - [x] Update project README and documentation to discuss these new security features.
   - [ ] Tag a new release with detailed release notes covering all "Pro-Router" enhancements.
 
 ## 11. Zone Isolation & Policy Engine
-- **Status**: 🚧 In progress
+- **Status**: ✅ Completed
 - **Goal**: Simplify VLAN management by defining security "Zones" (WAN, LAN, IoT, Guest) and declarative traffic policies between them.
 - **Tasks**:
   - [x] Create `modules/router-zones.nix`.
   - [x] Support interface-to-zone mapping.
   - [x] Implement declarative cross-zone traffic rules (Allow/Drop/Reject).
-  - [ ] Integrate with `router-firewall` to generate automated nftables chains.
-  - [ ] Add eval tests and zone reference assertions.
+  - [x] Integrate with `router-firewall` to generate automated nftables chains.
+  - [x] Add eval tests and zone reference assertions.
 
 ---
 

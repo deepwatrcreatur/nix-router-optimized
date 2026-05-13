@@ -1,6 +1,6 @@
 # Router Zones Policy Validation
 
-Status: `ready`
+Status: `done`
 Priority: `high`
 Branch: `fix/router-zones-policy-validation`
 
@@ -16,6 +16,9 @@ before validation. The module now uses the repaired table-scope firewall hook,
 but it still needs policy validation and tests before it should be consumed by
 downstream router configurations.
 
+Discussion context:
+- [`../discussions/04-router-security-zones-recovery-review.md`](../discussions/04-router-security-zones-recovery-review.md)
+
 ## Scope
 
 - Add assertions that every policy `fromZone` and `toZone` exists in
@@ -24,6 +27,8 @@ downstream router configurations.
   rules such as an `oifname` prefix without an action.
 - Decide whether `defaultInputPolicy` is implemented or remove/defer it from
   the public option surface.
+- If `defaultInputPolicy` remains public, wire the generated `zone_*_in` chains
+  into the router input path and validate the rendered ruleset.
 - Add eval tests for basic LAN/WAN, IoT isolation, and invalid zone
   references.
 - Verify generated nftables syntax for policy combinations.
@@ -39,4 +44,3 @@ downstream router configurations.
 - Targeted NixOS eval tests pass.
 - `nix flake check --no-build` gets past router-zones tests.
 - `git diff --check` is clean.
-

@@ -10,6 +10,7 @@ with lib;
 let
   cfg = config.services.router-zones;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
+  firewallEnabled = hasRouterFirewall && (config.services.router-firewall.enable or false);
 
   zoneModule = types.submodule {
     options = {
@@ -71,6 +72,8 @@ let
   # Sanitize name for nftables
   sanitize = name: builtins.replaceStrings [ "." ":" "@" "/" ] [ "-" "-" "-" "-" ] name;
 
+  allInterfaces = concatMap (z: z.interfaces) (attrValues cfg.zones);
+
 in
 {
   options.services.router-zones = {
@@ -121,27 +124,27 @@ in
     };
   };
 
-  config = if hasRouterFirewall then mkIf cfg.enable {
+  config = if hasRouterFirewall then mkIf (firewallEnabled && cfg.enable) {
+    assertions = [
+      {
+        assertion = allUnique allInterfaces;
+        message = "router-zones: Each interface can only belong to one zone. Current assignment: ${
+          concatStringsSep ", " allInterfaces
+        }";
+      }
+    ] ++ (map (p: {
+      assertion = hasAttr p.fromZone cfg.zones;
+      message = "router-zones: Policy source zone '${p.fromZone}' does not exist.";
+    }) cfg.policies) ++ (map (p: {
+      assertion = hasAttr p.toZone cfg.zones;
+      message = "router-zones: Policy destination zone '${p.toZone}' does not exist.";
+    }) cfg.policies);
+
     services.router-firewall.extraFilterTableRules = ''
-      # Zone chains
+      # Zone policy enforcement chains
       ${concatStringsSep "\n" (
         mapAttrsToList (name: zone: ''
-          chain zone_${sanitize name}_in {
-            ${optionalString (zone.interfaces != [ ])
-              "iifname { ${
-                concatStringsSep ", " (map (i: ''"${i}"'') zone.interfaces)
-              } } jump zone_${sanitize name}_policy"
-            }
-          }
-        '') cfg.zones
-      )}
-
-      # Policy enforcement chains
-      ${concatStringsSep "\n" (
-        mapAttrsToList (name: zone: ''
-          chain zone_${sanitize name}_policy {
-            # Established/Related is handled by main firewall, but we can add zone-specific ones here
-
+          chain zone_${sanitize name}_forward {
             # Explicit Policies
             ${concatMapStringsSep "\n" (p: ''
               ${optionalString (p.fromZone == name) (
@@ -150,10 +153,16 @@ in
                 in
                 ''
                   ${optionalString (toZoneCfg.interfaces != [ ]) ''
-                    oifname { ${concatStringsSep ", " (map (i: ''"${i}"'') toZoneCfg.interfaces)} } ${p.extraRules}
-                    oifname { ${
-                      concatStringsSep ", " (map (i: ''"${i}"'') toZoneCfg.interfaces)
-                    } } ${p.action} comment "Policy: ${p.fromZone} -> ${p.toZone}"
+                    oifname { ${concatStringsSep ", " (map (i: ''"${i}"'') toZoneCfg.interfaces)} } ${
+                      if p.extraRules != "" then
+                        ''
+                          {
+                            ${p.extraRules}
+                            ${p.action}
+                          }''
+                      else
+                        p.action
+                    } comment "Policy: ${p.fromZone} -> ${p.toZone}"
                   ''}
                 ''
               )}
@@ -162,19 +171,36 @@ in
             # Default Zone Forward Policy
             ${zone.defaultForwardPolicy} comment "Default Forward Policy for zone ${name}"
           }
+
+          chain zone_${sanitize name}_input {
+            # Default Zone Input Policy
+            ${zone.defaultInputPolicy} comment "Default Input Policy for zone ${name}"
+          }
         '') cfg.zones
       )}
     '';
 
-    # Integrate with the main forward hook
-    services.router-firewall.extraForwardRules = mkBefore ''
+    services.router-firewall.extraForwardEarlyRules = mkBefore ''
       # Dispatch to zone-based policy chains
       ${concatStringsSep "\n" (
         mapAttrsToList (name: zone: ''
           ${optionalString (zone.interfaces != [ ])
             "iifname { ${
               concatStringsSep ", " (map (i: ''"${i}"'') zone.interfaces)
-            } } jump zone_${sanitize name}_policy"
+            } } jump zone_${sanitize name}_forward"
+          }
+        '') cfg.zones
+      )}
+    '';
+
+    services.router-firewall.extraInputEarlyRules = mkBefore ''
+      # Dispatch to zone-based input policy chains
+      ${concatStringsSep "\n" (
+        mapAttrsToList (name: zone: ''
+          ${optionalString (zone.interfaces != [ ])
+            "iifname { ${
+              concatStringsSep ", " (map (i: ''"${i}"'') zone.interfaces)
+            } } jump zone_${sanitize name}_input"
           }
         '') cfg.zones
       )}

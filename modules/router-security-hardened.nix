@@ -11,6 +11,7 @@ with lib;
 let
   cfg = config.services.router-security-hardened;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
+  firewallEnabled = hasRouterFirewall && (config.services.router-firewall.enable or false);
   sanitizeName = name: builtins.replaceStrings [ "." ":" "@" "/" ] [ "-" "-" "-" "-" ] name;
 in
 {
@@ -73,38 +74,38 @@ in
     (mkIf cfg.kernelHardening.enable {
       boot.kernel.sysctl = {
         # --- System Hardening ---
-        "kernel.kptr_restrict" = 2; # Hide kernel pointers
-        "kernel.dmesg_restrict" = if cfg.kernelHardening.restrictDmesg then 1 else 0;
-        "fs.protected_hardlinks" = 1;
-        "fs.protected_symlinks" = 1;
-        "fs.protected_fifos" = 2;
-        "fs.protected_regular" = 2;
-        "kernel.randomize_va_space" = 2; # ASLR
-        "kernel.perf_event_paranoid" = 3; # Restrict perf events
-        "kernel.unprivileged_bpf_disabled" = 1; # Restrict BPF
+        "kernel.kptr_restrict" = mkForce 2; # Hide kernel pointers
+        "kernel.dmesg_restrict" = mkForce (if cfg.kernelHardening.restrictDmesg then 1 else 0);
+        "fs.protected_hardlinks" = mkForce 1;
+        "fs.protected_symlinks" = mkForce 1;
+        "fs.protected_fifos" = mkForce 2;
+        "fs.protected_regular" = mkForce 2;
+        "kernel.randomize_va_space" = mkForce 2; # ASLR
+        "kernel.perf_event_paranoid" = mkForce 3; # Restrict perf events
+        "kernel.unprivileged_bpf_disabled" = mkForce 1; # Restrict BPF
 
         # --- Network Hardening ---
-        "net.ipv4.tcp_syncookies" = 1;
-        "net.ipv4.tcp_rfc1337" = 1; # Protect against time-wait assassination
-        "net.ipv4.conf.all.rp_filter" = 1; # Strict reverse path filtering
-        "net.ipv4.conf.default.rp_filter" = 1;
-        "net.ipv4.conf.all.accept_source_route" = 0;
-        "net.ipv4.conf.default.accept_source_route" = 0;
-        "net.ipv4.conf.all.accept_redirects" = 0;
-        "net.ipv4.conf.default.accept_redirects" = 0;
-        "net.ipv4.conf.all.secure_redirects" = 0;
-        "net.ipv4.conf.default.secure_redirects" = 0;
-        "net.ipv4.conf.all.send_redirects" = 0;
-        "net.ipv4.conf.default.send_redirects" = 0;
-        "net.ipv4.icmp_echo_ignore_all" = if cfg.kernelHardening.allowPing then 0 else 1;
-        "net.ipv4.icmp_echo_ignore_broadcasts" = 1;
-        "net.ipv4.icmp_ignore_bogus_error_responses" = 1;
+        "net.ipv4.tcp_syncookies" = mkForce 1;
+        "net.ipv4.tcp_rfc1337" = mkForce 1; # Protect against time-wait assassination
+        "net.ipv4.conf.all.rp_filter" = mkForce 1; # Strict reverse path filtering
+        "net.ipv4.conf.default.rp_filter" = mkForce 1;
+        "net.ipv4.conf.all.accept_source_route" = mkForce 0;
+        "net.ipv4.conf.default.accept_source_route" = mkForce 0;
+        "net.ipv4.conf.all.accept_redirects" = mkForce 0;
+        "net.ipv4.conf.default.accept_redirects" = mkForce 0;
+        "net.ipv4.conf.all.secure_redirects" = mkForce 0;
+        "net.ipv4.conf.default.secure_redirects" = mkForce 0;
+        "net.ipv4.conf.all.send_redirects" = mkForce 0;
+        "net.ipv4.conf.default.send_redirects" = mkForce 0;
+        "net.ipv4.icmp_echo_ignore_all" = mkForce (if cfg.kernelHardening.allowPing then 0 else 1);
+        "net.ipv4.icmp_echo_ignore_broadcasts" = mkForce 1;
+        "net.ipv4.icmp_ignore_bogus_error_responses" = mkForce 1;
 
         # IPv6 Hardening
-        "net.ipv6.conf.all.accept_redirects" = 0;
-        "net.ipv6.conf.default.accept_redirects" = 0;
-        "net.ipv6.conf.all.accept_source_route" = 0;
-        "net.ipv6.conf.default.accept_source_route" = 0;
+        "net.ipv6.conf.all.accept_redirects" = mkForce 0;
+        "net.ipv6.conf.default.accept_redirects" = mkForce 0;
+        "net.ipv6.conf.all.accept_source_route" = mkForce 0;
+        "net.ipv6.conf.default.accept_source_route" = mkForce 0;
       };
 
       # Disable non-essential kernel modules
@@ -120,7 +121,7 @@ in
       ];
     })
 
-    (if hasRouterFirewall then mkIf cfg.geoIpBlocking.enable {
+    (if hasRouterFirewall then mkIf (firewallEnabled && cfg.geoIpBlocking.enable) {
       # 1. Define the nftables set for blocked IPs
       services.router-firewall.extraFilterTableRules = ''
         set blocked_countries {
@@ -128,16 +129,29 @@ in
           flags interval
         }
         chain geoip_block {
-          ip saddr @blocked_countries drop
+          ${
+            let
+              # Try to get WAN interfaces from firewall config or optimizations
+              fwWan = config.services.router-firewall.wanInterfaces or [ ];
+              optWan = mapAttrsToList (_name: iface: iface.device) (
+                filterAttrs (_name: iface: iface.role == "wan") (
+                  config.services.router-optimizations.interfaces or { }
+                )
+              );
+              wanIfaces = if fwWan != [ ] then fwWan else optWan;
+              maybeSet = ifaces: if ifaces == [ ] then "" else "{${concatStringsSep ", " (map (i: "\"${i}\"") ifaces)}}";
+            in
+            if wanIfaces != [ ] then "iifname ${maybeSet wanIfaces} ip saddr @blocked_countries drop" else ""
+          }
         }
       '';
 
       # 2. Jump to the geoip_block chain in the input hook
-      services.router-firewall.extraInputRules = mkBefore ''
+      services.router-firewall.extraInputEarlyRules = mkBefore ''
         jump geoip_block
       '';
 
-      # 3. Systemd service to populate the set from IPDeny
+      # 3. Systemd service to populate the set from IPDeny (via HTTPS)
       systemd.services.update-geoip-blocklist = {
         description = "Update Geo-IP blocklist from IPDeny";
         after = [ "network-online.target" ];
@@ -149,22 +163,36 @@ in
         script = ''
           echo "Updating Geo-IP blocklist for: ${concatStringsSep ", " cfg.geoIpBlocking.blockedCountries}..."
           TMP_FILE=$(mktemp)
-
-          # Clear the set first
-          ${pkgs.nftables}/bin/nft flush set inet filter blocked_countries
+          SUCCESS_COUNT=0
 
           for country in ${concatStringsSep " " cfg.geoIpBlocking.blockedCountries}; do
             echo "Fetching list for $country..."
-            ${pkgs.curl}/bin/curl -s "http://www.ipdeny.com/ipblocks/data/countries/$country.zone" >> "$TMP_FILE" || true
+            if ${pkgs.curl}/bin/curl -s -f "https://www.ipdeny.com/ipblocks/data/countries/$country.zone" >> "$TMP_FILE"; then
+              SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+            else
+              echo "Warning: Failed to fetch list for $country"
+            fi
           done
 
-          # Batch add to nftables to avoid individual command overhead
-          # Filter empty lines and comments
-          sed -i '/^#/d; /^$/d' "$TMP_FILE"
+          if [ "$SUCCESS_COUNT" -gt 0 ]; then
+            # Filter empty lines and comments
+            sed -i '/^#/d; /^$/d' "$TMP_FILE"
 
-          while read -r line; do
-            ${pkgs.nftables}/bin/nft add element inet filter blocked_countries "{ $line }"
-          done < "$TMP_FILE"
+            # Use a temporary set to ensure atomic update and avoid flushing if download failed
+            ${pkgs.nftables}/bin/nft "add set inet filter blocked_countries_new { type ipv4_addr; flags interval; }"
+            
+            while read -r line; do
+              ${pkgs.nftables}/bin/nft add element inet filter blocked_countries_new "{ $line }"
+            done < "$TMP_FILE"
+
+            # Swap sets
+            ${pkgs.nftables}/bin/nft "replace set inet filter blocked_countries { type ipv4_addr; flags interval; elements = @blocked_countries_new; }"
+            ${pkgs.nftables}/bin/nft "delete set inet filter blocked_countries_new"
+            
+            echo "Successfully updated Geo-IP blocklist with $SUCCESS_COUNT countries."
+          else
+            echo "Error: No country lists could be fetched. Keeping existing blocklist."
+          fi
 
           rm "$TMP_FILE"
         '';
@@ -180,15 +208,15 @@ in
       };
     } else { })
 
-    (if hasRouterFirewall then mkIf cfg.macSecurity.enable {
+    (if hasRouterFirewall then mkIf (firewallEnabled && cfg.macSecurity.enable) {
       services.router-firewall.extraFilterTableRules = ''
         ${concatStringsSep "\n" (
           mapAttrsToList (iface: macs: ''
             set allowed_macs_${sanitizeName iface} {
               type ether_addr
-              elements = { ${concatStringsSep ", " macs} }
+              ${optionalString (macs != [ ]) "elements = { ${concatStringsSep ", " macs} }"}
             }
-          '') cfg.macSecurity.whitelists
+          '') (filterAttrs (n: v: v != [ ]) cfg.macSecurity.whitelists)
         )}
 
         chain mac_security {
@@ -200,12 +228,13 @@ in
                 else
                   "log prefix \"MAC-ALERT: \" accept"
               }
-            '') cfg.macSecurity.whitelists
+            '') (filterAttrs (n: v: v != [ ]) cfg.macSecurity.whitelists)
           )}
         }
       '';
 
-      services.router-firewall.extraForwardRules = mkBefore ''
+      services.router-firewall.extraForwardEarlyRules = mkBefore ''
+        # MAC security for forwarded traffic
         jump mac_security
       '';
     } else { })
