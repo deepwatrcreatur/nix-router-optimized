@@ -9,6 +9,7 @@ import socketserver
 import subprocess
 import json
 import os
+import csv
 import re
 import shlex
 import socket
@@ -76,6 +77,12 @@ CADDY_DNS_CACHE = {
 TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
 TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
 TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
+KEA_LEASE_FILES = [
+    Path('/var/lib/private/kea/dhcp4.leases.2'),
+    Path('/var/lib/private/kea/dhcp4.leases'),
+    Path('/var/lib/kea/dhcp4.leases.2'),
+    Path('/var/lib/kea/dhcp4.leases'),
+]
 
 # Speed test state
 SPEEDTEST_STATE = {
@@ -1124,21 +1131,62 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             rules_count = 0
             flowtable_active = False
             offloaded_flows = 0
+            chains_info = []
 
             for item in data.get('nftables', []):
                 if 'rule' in item:
                     rules_count += 1
                 if 'flowtable' in item:
                     flowtable_active = True
+                if 'chain' in item:
+                    chain = item['chain']
+                    chain_data = {
+                        'table': chain.get('table'),
+                        'name': chain.get('name'),
+                        'packets': 0,
+                        'bytes': 0,
+                        'rules': 0
+                    }
+                    chains_info.append(chain_data)
+
+            # Map rules to chains and sum counters
+            for item in data.get('nftables', []):
+                if 'rule' in item:
+                    rule = item['rule']
+                    table_name = rule.get('table')
+                    chain_name = rule.get('chain')
+                    
+                    for ci in chains_info:
+                        if ci['table'] == table_name and ci['name'] == chain_name:
+                            ci['rules'] += 1
+                            # Check for counters in rule expressions
+                            for expr in rule.get('expr', []):
+                                if 'counter' in expr:
+                                    ci['packets'] += expr['counter'].get('packets', 0)
+                                    ci['bytes'] += expr['counter'].get('bytes', 0)
+                            break
 
             # Get flowtable flow count if available
             try:
-                ft_result = subprocess.run(
-                    ['conntrack', '-L', '-o', 'extended'],
-                    capture_output=True, text=True, timeout=3
+                # Use conntrack count for efficiency if possible
+                count_result = subprocess.run(
+                    ['conntrack', '-C'],
+                    capture_output=True, text=True, timeout=2
                 )
-                # Count flows with offload mark (simplified - actual implementation may vary)
-                offloaded_flows = ft_result.stdout.count('[OFFLOAD]')
+                if count_result.returncode == 0:
+                    total_conns = int(count_result.stdout.strip())
+                    
+                    # Estimate offloaded from total if we can't grep (high volume grepping is slow)
+                    # For now, stick to sample grep if count is reasonable
+                    if total_conns < 5000:
+                        ft_result = subprocess.run(
+                            ['conntrack', '-L', '-o', 'extended'],
+                            capture_output=True, text=True, timeout=3
+                        )
+                        offloaded_flows = ft_result.stdout.count('[OFFLOAD]')
+                    else:
+                        # Fallback for high volume
+                        offloaded_flows = -1 # Indicates "too many to count accurately"
             except:
                 pass
 
@@ -1146,7 +1194,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             packets_in = 0
             packets_out = 0
             try:
-                for iface in ['ens16', 'ens17', 'ens18']:
+                # Try DASHBOARD_INTERFACES first
+                tracked_ifaces = [iface.get('device') for iface in DASHBOARD_INTERFACES if iface.get('device')]
+                # Fallback to some defaults if none configured
+                if not tracked_ifaces:
+                    tracked_ifaces = ['eth0', 'eth1', 'wan', 'lan']
+
+                for iface in tracked_ifaces:
                     rx = self.read_file(f'/sys/class/net/{iface}/statistics/rx_packets')
                     tx = self.read_file(f'/sys/class/net/{iface}/statistics/tx_packets')
                     if rx:
@@ -1161,7 +1215,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'flowtable_active': flowtable_active,
                 'offloaded_flows': offloaded_flows,
                 'packets_in': packets_in,
-                'packets_out': packets_out
+                'packets_out': packets_out,
+                'chains': sorted(chains_info, key=lambda x: x['packets'], reverse=True)
             })
         except Exception as e:
             self.send_error_json(500, str(e))
@@ -1473,38 +1528,46 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             })
 
     def handle_dhcp_leases(self):
-        """Get DHCP lease information from Technitium"""
+        """Get DHCP lease information from Technitium or local Kea lease state"""
         try:
+            kea_leases = self.get_kea_dhcp_leases()
             token = self.get_technitium_token()
-            if not token:
+            scopes = []
+
+            if token:
+                # Get DHCP scopes
+                scopes_url = f"{TECHNITIUM_URL}/api/dhcp/scopes/list?token={token}"
+                scopes_data = self.fetch_technitium_api(scopes_url)
+
+                if self.technitium_response_ok(scopes_data):
+                    scopes = scopes_data.get('response', {}).get('scopes', [])
+                elif not kea_leases:
+                    self.send_json({
+                        'available': False,
+                        'message': self.technitium_error_message(scopes_data, 'Failed to get DHCP scopes')
+                    })
+                    return
+            elif not kea_leases:
                 self.send_json({
                     'available': False,
                     'message': 'Technitium DNS not configured or unavailable'
                 })
                 return
 
-            # Get DHCP scopes
-            scopes_url = f"{TECHNITIUM_URL}/api/dhcp/scopes/list?token={token}"
-            scopes_data = self.fetch_technitium_api(scopes_url)
-
-            if not self.technitium_response_ok(scopes_data):
-                self.send_json({
-                    'available': False,
-                    'message': self.technitium_error_message(scopes_data, 'Failed to get DHCP scopes')
-                })
-                return
-
-            scopes = scopes_data.get('response', {}).get('scopes', [])
             all_leases = []
             scope_stats = []
             sections = []
 
-            # Get all leases (single API call for all scopes)
-            leases_url = f"{TECHNITIUM_URL}/api/dhcp/leases/list?token={token}"
-            leases_data = self.fetch_technitium_api(leases_url)
             all_raw_leases = []
-            if self.technitium_response_ok(leases_data):
-                all_raw_leases = leases_data.get('response', {}).get('leases', [])
+            if token:
+                leases_url = f"{TECHNITIUM_URL}/api/dhcp/leases/list?token={token}"
+                leases_data = self.fetch_technitium_api(leases_url)
+                if self.technitium_response_ok(leases_data):
+                    all_raw_leases = leases_data.get('response', {}).get('leases', [])
+
+            if kea_leases and not all_raw_leases:
+                self.send_kea_dhcp_leases(kea_leases, scopes)
+                return
 
             for scope in scopes:
                 scope_name = scope.get('name', 'unknown')
@@ -1572,6 +1635,106 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'available': False,
                 'message': str(e)
             })
+
+    def get_kea_dhcp_leases(self):
+        leases_by_address = {}
+        now = int(time.time())
+
+        for lease_file in KEA_LEASE_FILES:
+            if not lease_file.exists():
+                continue
+
+            try:
+                with lease_file.open(newline='') as handle:
+                    reader = csv.DictReader(handle)
+                    for row in reader:
+                        if not row:
+                            continue
+
+                        address = (row.get('address') or '').strip()
+                        if not address:
+                            continue
+
+                        try:
+                            state = int((row.get('state') or '0').strip() or '0')
+                        except ValueError:
+                            state = 0
+
+                        try:
+                            expire_epoch = int((row.get('expire') or '0').strip() or '0')
+                        except ValueError:
+                            expire_epoch = 0
+
+                        if state != 0 or expire_epoch <= now:
+                            continue
+
+                        existing = leases_by_address.get(address)
+                        if existing and existing['expire_epoch'] >= expire_epoch:
+                            continue
+
+                        hostname = (row.get('hostname') or '').strip()
+                        if hostname.endswith('.'):
+                            hostname = hostname[:-1]
+
+                        leases_by_address[address] = {
+                            'address': address,
+                            'hostname': hostname,
+                            'hardwareAddress': (row.get('hwaddr') or '').strip(),
+                            'leaseExpires': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(expire_epoch)),
+                            'expire_epoch': expire_epoch,
+                            'scope': 'LAN',
+                            'interface': 'Kea DHCP',
+                        }
+            except OSError:
+                continue
+
+        return sorted(
+            leases_by_address.values(),
+            key=lambda lease: lease['address']
+        )
+
+    def send_kea_dhcp_leases(self, leases, scopes):
+        scope = scopes[0] if scopes else {}
+        scope_name = scope.get('name', 'LAN')
+        interface_name = (
+            scope.get('interface')
+            or scope.get('interfaceName')
+            or scope.get('networkInterface')
+            or scope.get('adapter')
+            or 'Kea DHCP'
+        )
+
+        for lease in leases:
+            lease['scope'] = scope_name
+            lease['interface'] = interface_name
+
+        section = {
+            'id': scope_name,
+            'title': interface_name if interface_name != scope_name else scope_name,
+            'scope': scope_name,
+            'interface': interface_name,
+            'enabled': scope.get('enabled', True),
+            'startAddress': scope.get('startingAddress', ''),
+            'endAddress': scope.get('endingAddress', ''),
+            'leaseCount': len(leases),
+            'leases': leases[:50],
+        }
+
+        self.send_json({
+            'available': True,
+            'scopes': [{
+                'name': scope_name,
+                'interface': interface_name,
+                'enabled': scope.get('enabled', True),
+                'startAddress': scope.get('startingAddress', ''),
+                'endAddress': scope.get('endingAddress', ''),
+                'leaseCount': len(leases),
+            }],
+            'leases': leases[:100],
+            'sections': [section],
+            'totalLeases': len(leases),
+            'displayedLeases': min(len(leases), 100),
+        })
 
     def handle_fail2ban_status(self):
         """Get Fail2ban jail status and banned IPs"""
