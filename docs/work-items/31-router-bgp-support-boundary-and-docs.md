@@ -1,6 +1,6 @@
 # 31 - Router BGP Support Boundary and Docs
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -17,24 +17,24 @@ the README, so documentation needs to catch up to the real support boundary.
 
 ## Requirements
 
-- [ ] Add `docs/router-bgp.md`
-- [ ] Document:
+- [x] Add `docs/router-bgp.md`
+- [x] Document:
   - what the wrapper currently does
   - the intended target user
   - the current limitations
   - operational verification steps for FRR/BGP peering
-- [ ] Add at least one realistic BGP example that future users can adapt
-- [ ] Update the BGP section in `README.md` to link to the dedicated doc
-- [ ] Make the current support stance explicit in docs:
+- [x] Add at least one realistic BGP example that future users can adapt
+- [x] Update the BGP section in `README.md` to link to the dedicated doc
+- [x] Make the current support stance explicit in docs:
   - advanced / experimental opt-in
   - not yet validated as HA-ready
 
 ## Verification
 
-- [ ] A contributor can find a dedicated BGP doc without reading module source
-- [ ] README does not overstate BGP maturity
-- [ ] The docs clearly distinguish current capability from future roadmap
-- [ ] The docs explain how to verify a working BGP session operationally
+- [x] A contributor can find a dedicated BGP doc without reading module source
+- [x] README does not overstate BGP maturity
+- [x] The docs clearly distinguish current capability from future roadmap
+- [x] The docs explain how to verify a working BGP session operationally
 
 ## Notes
 
