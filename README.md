@@ -39,7 +39,7 @@ If you are assigning or running agents against this repo, start with:
 - **SQM**: Script-based smart queue management (fq_codel/CAKE) for WAN shaping
 - **mDNS Reflector**: Avahi mDNS reflector for cross-VLAN service discovery
 - **UPnP/NAT-PMP**: miniupnpd with nftables jump-rule integration
-- **BGP**: FRR bgpd with declarative neighbor configuration
+- **BGP**: Advanced / experimental FRR bgpd wrapper for declarative internal peering
 - **High Availability (HA)**: 
   - **VRRP (Keepalived)**: Virtual IP (VIP) sharing between master and backup router nodes.
   - **Kea DHCP HA**: Load-balancing and failover support for Kea DHCPv4.
@@ -588,7 +588,10 @@ services.router-upnp = {
 ```
 
 ### router-bgp
-FRR bgpd with declarative neighbor configuration. Opens TCP 179 in `networking.firewall`.
+Advanced / experimental FRR bgpd wrapper with declarative neighbor configuration.
+Currently intended for advanced opt-in use, not yet validated as HA-ready.
+See `docs/router-bgp.md` for support boundaries, verification steps, and a
+realistic example.
 
 ```nix
 services.router-bgp = {
@@ -607,6 +610,7 @@ Additional docs:
 - `docs/IMPLEMENTATION-STATUS.md` for current module maturity
 - `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
 - `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
+- `docs/router-bgp.md` for BGP support boundaries, examples, and operational verification
 
 ## PPPoE Example
 
