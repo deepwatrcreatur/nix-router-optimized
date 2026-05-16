@@ -18,7 +18,7 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `ready`
+- [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `in-progress`
 - [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `ready`
 - [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `ready`
 
