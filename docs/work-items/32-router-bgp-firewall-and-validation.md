@@ -1,6 +1,6 @@
 # 32 - Router BGP Firewall and Validation
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -16,24 +16,24 @@ validation so the module's behavior is less implicit.
 
 ## Requirements
 
-- [ ] Update `modules/router-bgp.nix` to integrate with `router-firewall` when it
+- [x] Update `modules/router-bgp.nix` to integrate with `router-firewall` when it
       is imported and enabled
-- [ ] Keep native `networking.firewall` fallback when `router-firewall` is not
+- [x] Keep native `networking.firewall` fallback when `router-firewall` is not
       present
-- [ ] Preserve import safety when optional peer modules are absent
-- [ ] Add focused eval coverage for:
+- [x] Preserve import safety when optional peer modules are absent
+- [x] Add focused eval coverage for:
   - standalone BGP enablement
   - BGP with `router-firewall`
   - any new assertions or defaults added by this change
-- [ ] Add or validate a repo example that exercises the supported configuration
+- [x] Add or validate a repo example that exercises the supported configuration
       shape
 
 ## Verification
 
-- [ ] `router-bgp` opens TCP `179` through the appropriate firewall path
-- [ ] The module still evaluates cleanly without `router-firewall`
-- [ ] New eval checks are exported from `tests/default.nix`
-- [ ] The example/doc configuration remains eval-safe
+- [x] `router-bgp` opens TCP `179` through the appropriate firewall path
+- [x] The module still evaluates cleanly without `router-firewall`
+- [x] New eval checks are exported from `tests/default.nix`
+- [x] The example/doc configuration remains eval-safe
 
 ## Notes
 

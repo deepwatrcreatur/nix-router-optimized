@@ -29,7 +29,10 @@
 
   services.router-firewall = {
     enable = true;
+    wanInterfaces = [ "enp1s0" ];
+    lanInterfaces = [ "br-lan" ];
     wanTcpPorts = [ 22 ];
+    extraTrustedInterfaces = [ "enp2s0" ];
   };
 
   services.router-bgp = {

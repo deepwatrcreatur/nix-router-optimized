@@ -275,6 +275,69 @@ in
     }
   ]);
 
+  docs-router-bgp-proxmox-lab-eval = mkDocExampleCheck "docs-router-bgp-proxmox-lab" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-firewall
+    self.nixosModules.router-bgp
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "enp1s0";
+
+        routedInterfaces = {
+          lan = {
+            device = "br-lan";
+            ipv4Address = "10.10.20.1/24";
+            dns = [ "10.10.20.1" ];
+            requiredForOnline = "routable";
+          };
+
+          transit = {
+            device = "enp2s0";
+            ipv4Address = "10.10.254.1/30";
+            requiredForOnline = "carrier";
+          };
+        };
+      };
+
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "enp1s0" ];
+        lanInterfaces = [ "br-lan" ];
+        wanTcpPorts = [ 22 ];
+        extraTrustedInterfaces = [ "enp2s0" ];
+      };
+
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.20.1";
+        neighbors."10.10.254.2" = {
+          remoteAs = 65010;
+          description = "proxmox-frr";
+          nextHopSelf = true;
+        };
+        networks = [
+          "10.10.20.0/24"
+          "10.10.30.0/24"
+        ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.services.frr.bgpd.enable;
+      message = "router-bgp Proxmox lab example should enable FRR bgpd.";
+    }
+    {
+      assertion = builtins.elem 179 config.services.router-firewall.trustedTcpPorts;
+      message = "router-bgp Proxmox lab example should expose TCP 179 through router-firewall trustedTcpPorts.";
+    }
+    {
+      assertion = builtins.elem "enp2s0" config.services.router-firewall.extraTrustedInterfaces;
+      message = "router-bgp Proxmox lab example should mark the transit interface as trusted.";
+    }
+  ]);
+
   docs-router-headscale-example-eval = mkDocExampleCheck "docs-router-headscale-example" [
     self.nixosModules.caddy-reverse-proxy
     self.nixosModules.router-headscale

@@ -136,6 +136,36 @@ in
     ])
   ];
 
+  router-bgp-firewall-eval = eval.mkNixosEvalCheck "router-bgp-firewall" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-bgp
+    firewallBase
+    {
+      services.router-firewall.extraTrustedInterfaces = [ "transit0" ];
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.20.1";
+        neighbors."10.10.254.2" = { remoteAs = 65010; };
+        networks = [ "10.10.20.0/24" ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.frr.bgpd.enable;
+        message = "router-bgp should still enable frr bgpd when router-firewall is enabled.";
+      }
+      {
+        assertion = builtins.elem 179 config.services.router-firewall.trustedTcpPorts;
+        message = "router-bgp should register TCP 179 in router-firewall trustedTcpPorts.";
+      }
+      {
+        assertion = !(builtins.elem 179 config.networking.firewall.allowedTCPPorts);
+        message = "router-bgp should not use native allowedTCPPorts when router-firewall is enabled.";
+      }
+    ])
+  ];
+
   router-ha-dns-unbound-eval = eval.mkNixosEvalCheck "router-ha-dns-unbound" [
     self.nixosModules.router-ha
     self.nixosModules.router-dns-service
