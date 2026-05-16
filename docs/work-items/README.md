@@ -18,6 +18,11 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
+- [31-router-bgp-support-boundary-and-docs](./31-router-bgp-support-boundary-and-docs.md) — `ready`
+- [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `ready`
+- [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `ready`
+- [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `ready`
+
 ## Recently Completed
 
 - [29-router-module-eval-and-smoke-skill](./29-router-module-eval-and-smoke-skill.md) — `done`
