@@ -42,6 +42,10 @@ let
   pvdChecks = import ./router-pvd.nix {
     inherit self lib eval;
   };
+
+  keaChecks = import ./router-kea-eval.nix {
+    inherit self eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -69,6 +73,7 @@ in
 // docExampleChecks
 // nptv6Checks
 // pvdChecks
+// keaChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (

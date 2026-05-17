@@ -39,13 +39,18 @@ If you are assigning or running agents against this repo, start with:
 - **SQM**: Script-based smart queue management (fq_codel/CAKE) for WAN shaping
 - **mDNS Reflector**: Avahi mDNS reflector for cross-VLAN service discovery
 - **UPnP/NAT-PMP**: miniupnpd with nftables jump-rule integration
-- **BGP**: FRR bgpd with declarative neighbor configuration
+- **BGP**: Advanced / experimental FRR bgpd wrapper for declarative internal peering
 - **High Availability (HA)**: 
   - **VRRP (Keepalived)**: Virtual IP (VIP) sharing between master and backup router nodes.
   - **Kea DHCP HA**: Load-balancing and failover support for Kea DHCPv4.
   - **WAN HA**: Integrated "Golden MAC" cloning and interface management for seamless ISP failover when using an unmanaged switch topology.
 - **Multi-WAN Failover**: Automatic health-checking and priority switching between multiple ISP uplinks.
 - **WAN MAC Cloning**: Declarative MAC address spoofing for seamless ISP handover
+- **Security & Hardening**:
+  - **OpenBSD-tier Kernel Tuning**: Restricted dmesg, ASLR enforcement, and TCP/IP stack hardening.
+  - **Geo-IP Blocking**: Declaratively block inbound traffic from specific countries via nftables.
+  - **MAC Security**: Interface-specific MAC-address whitelisting with enforcement or alert policies.
+- **Zone Isolation**: Declarative "Zone-based" security (WAN, LAN, IoT) with high-level cross-zone traffic policies.
 
 ## Quick Start
 
@@ -500,6 +505,8 @@ services.router-kea = {
     subnet = "10.10.0.0/16";
     gatewayAddress = "10.10.10.1";
     dnsServers = [ "10.10.10.1" ];
+    # Optional; defaults to router-dns-service.searchDomains when present.
+    searchDomains = [ "home.example.com" ];
     poolRanges = [{ start = "10.10.10.100"; end = "10.10.10.250"; }];
     reservations = [
       { hw-address = "aa:bb:cc:dd:ee:ff"; ip-address = "10.10.10.50"; hostname = "myhost"; }
@@ -581,7 +588,10 @@ services.router-upnp = {
 ```
 
 ### router-bgp
-FRR bgpd with declarative neighbor configuration. Opens TCP 179 in `networking.firewall`.
+Advanced / experimental FRR bgpd wrapper with declarative neighbor configuration.
+Currently intended for advanced opt-in use, not yet validated as HA-ready.
+See `docs/router-bgp.md` for support boundaries, verification steps, and a
+realistic example.
 
 ```nix
 services.router-bgp = {
@@ -600,6 +610,7 @@ Additional docs:
 - `docs/IMPLEMENTATION-STATUS.md` for current module maturity
 - `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
 - `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
+- `docs/router-bgp.md` for BGP support boundaries, examples, and operational verification
 
 ## PPPoE Example
 

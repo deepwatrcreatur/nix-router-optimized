@@ -1,6 +1,6 @@
 # Router Security Hardening Validation
 
-Status: `ready`
+Status: `done`
 Priority: `high`
 Branch: `fix/router-security-hardening-validation`
 
@@ -17,6 +17,9 @@ nonexistent `services.router-firewall.extraRules` option. The immediate repair
 added a table-scope firewall extension point, but the module still needs a
 focused validation pass before it should be treated as complete.
 
+Discussion context:
+- [`../discussions/04-router-security-zones-recovery-review.md`](../discussions/04-router-security-zones-recovery-review.md)
+
 ## Scope
 
 - Validate `services.router-firewall.extraFilterTableRules` as the correct API
@@ -28,6 +31,13 @@ focused validation pass before it should be treated as complete.
 - Verify generated nftables syntax for empty and non-empty country/MAC lists.
 - Decide whether Geo-IP population should fail closed or tolerate download
   failures.
+- Resolve the review finding that Geo-IP filtering currently appears wired to
+  generic input handling instead of explicit WAN ingress only.
+- Resolve the review finding that MAC security currently appears scoped to
+  forwarded traffic rather than router-local input, or narrow the feature
+  contract/documentation accordingly.
+- Replace plain-HTTP Geo-IP source downloads with an authenticated transport or
+  another trustworthy source.
 - Update README/release notes only after tests pass.
 
 ## Non-Goals
@@ -42,4 +52,3 @@ focused validation pass before it should be treated as complete.
   option errors.
 - Generated nftables ruleset parses for representative configurations.
 - `git diff --check` is clean.
-

@@ -12,6 +12,8 @@ let
   secretName = cfg.apiKeySecretName;
   ageSecrets = config.age.secrets or { };
   hasApiSecret = secretName != null && hasAttr secretName ageSecrets;
+  configuredApiTokenPath = if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent";
+  runtimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
   exclusionModule = types.submodule {
     options = {
       startingAddress = mkOption {
@@ -234,6 +236,24 @@ let
     };
   };
   commonShellHelpers = ''
+    resolve_api_token_file() {
+      if [ -f "${runtimeApiTokenPath}" ]; then
+        printf '%s' "${runtimeApiTokenPath}"
+        return 0
+      fi
+      if [ -f "${configuredApiTokenPath}" ]; then
+        printf '%s' "${configuredApiTokenPath}"
+        return 0
+      fi
+      return 1
+    }
+
+    read_api_token() {
+      local token_file
+      token_file="$(resolve_api_token_file)" || return 1
+      ${pkgs.coreutils}/bin/tr -d '\r\n' < "$token_file"
+    }
+
     # Helper to wrap curl requests and check for Technitium API error status.
     # Technitium returns HTTP 200 even for most logical errors, so we MUST
     # parse the JSON 'status' field.
@@ -296,9 +316,9 @@ let
   ntpSyncScript = pkgs.writeShellScript "technitium-sync-ntp-option" ''
     set -euo pipefail
 
-    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${
-      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
-    }" ]; then
+    ${commonShellHelpers}
+
+    if ! resolve_api_token_file >/dev/null; then
       echo "Technitium API token file not found; cannot sync NTP option 42" >&2
       exit 1
     fi
@@ -311,14 +331,12 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/cat "${
-      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
-    }")"
+    TOKEN="$(read_api_token)"
     NTP_SERVERS="${concatStringsSep "," cfg.ntpServers}"
 
-    ${commonShellHelpers}
-
-    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/dhcp/scopes/list")"
     SCOPES=$(echo "$SCOPES_JSON" | ${pkgs.jq}/bin/jq -r '(.response.scopes // [])[]?.name // empty')
 
     if [ -z "$SCOPES" ]; then
@@ -343,9 +361,9 @@ let
   listenerSyncScript = pkgs.writeShellScript "technitium-sync-listeners" ''
     set -euo pipefail
 
-    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${
-      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
-    }" ]; then
+    ${commonShellHelpers}
+
+    if ! resolve_api_token_file >/dev/null; then
       echo "Technitium API token file not found; cannot sync DNS listeners" >&2
       exit 1
     fi
@@ -358,12 +376,8 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/cat "${
-      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
-    }")"
+    TOKEN="$(read_api_token)"
     DESIRED_ENDPOINTS="${concatStringsSep "," cfg.listenEndPoints}"
-
-    ${commonShellHelpers}
 
     SETTINGS_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
       --data-urlencode "token=$TOKEN" \
@@ -403,9 +417,9 @@ let
   dhcpScopeScript = pkgs.writeShellScript "technitium-sync-dhcp-scopes" ''
     set -euo pipefail
 
-    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${
-      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
-    }" ]; then
+    ${commonShellHelpers}
+
+    if ! resolve_api_token_file >/dev/null; then
       echo "Technitium API token file not found; cannot sync DHCP scopes" >&2
       exit 1
     fi
@@ -418,13 +432,11 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/cat "${
-      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
-    }")"
+    TOKEN="$(read_api_token)"
 
-    ${commonShellHelpers}
-
-    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/dhcp/scopes/list")"
 
     ${pkgs.jq}/bin/jq -c '.[]' ${dhcpScopesJson} | while read -r scope; do
       desired_name="$(${pkgs.jq}/bin/jq -r '.name' <<<"$scope")"
@@ -487,7 +499,9 @@ let
       cmd+=( "http://127.0.0.1:5380/api/dhcp/scopes/set" )
       technitium_request "''${cmd[@]}" >/dev/null
 
-      SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+      SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/dhcp/scopes/list")"
       actual_name="$(resolve_scope_name "$desired_name" || true)"
       if [ -z "$actual_name" ]; then
         echo "Declarative scope '$desired_name' did not exist before sync and is still unavailable afterwards" >&2
@@ -519,9 +533,9 @@ let
   dhcpReservationScript = pkgs.writeShellScript "technitium-sync-dhcp-reservations" ''
     set -euo pipefail
 
-    if [ -z "${if hasApiSecret then config.age.secrets.${secretName}.path else ""}" ] || [ ! -f "${
-      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
-    }" ]; then
+    ${commonShellHelpers}
+
+    if ! resolve_api_token_file >/dev/null; then
       echo "Technitium API token file not found; cannot sync DHCP reservations" >&2
       exit 1
     fi
@@ -534,13 +548,11 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/cat "${
-      if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent"
-    }")"
+    TOKEN="$(read_api_token)"
 
-    ${commonShellHelpers}
-
-    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/dhcp/scopes/list?token=$TOKEN")"
+    SCOPES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/dhcp/scopes/list")"
 
     normalize_mac() {
       printf '%s' "$1" | ${pkgs.coreutils}/bin/tr '[:lower:]' '[:upper:]' | ${pkgs.gnused}/bin/sed 's/[:-]//g'
@@ -561,8 +573,10 @@ let
       normalized_mac="$(normalize_mac "$mac")"
 
       existing="$(
-        technitium_request ${pkgs.curl}/bin/curl -fsS \
-        "http://127.0.0.1:5380/api/dhcp/scopes/get?token=$TOKEN&name=$actual_scope" \
+        technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+        --data-urlencode "token=$TOKEN" \
+        --data-urlencode "name=$actual_scope" \
+        "http://127.0.0.1:5380/api/dhcp/scopes/get" \
         | ${pkgs.jq}/bin/jq -c --arg mac "$normalized_mac" '
             .response.reservedLeases // []
             | map(select(((.hardwareAddress // "") | ascii_upcase | gsub("[:-]"; "")) == $mac))
