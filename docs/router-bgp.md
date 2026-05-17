@@ -28,12 +28,16 @@ When enabled, the module:
     imported and enabled
   - `networking.firewall.allowedTCPPorts` otherwise
 
-The current module does **not** yet provide:
+The current module now provides a first serious production-oriented slice:
 
-- neighbor authentication such as MD5/TCP-AO
-- explicit IPv6 AFI / SAFI controls
-- route maps, prefix lists, or policy primitives
-- focused integration with `router-firewall`
+- per-neighbor runtime `passwordFile` support
+- explicit `ipv4-unicast` and `ipv6-unicast` address-family controls
+- bounded import/export policy controls for common small-scale routing cases
+
+The module still does **not** yet provide:
+
+- raw FRR policy-language passthrough as a first-class wrapper surface
+- broader AFI / SAFI support beyond IPv4/IPv6 unicast
 - promotion-aware ownership behavior with `router-ha`
 
 ## Intended User
@@ -77,6 +81,53 @@ Poor current fit:
 }
 ```
 
+## Authenticated Dual-Stack Example
+
+```nix
+{
+  imports = [
+    router-optimized.nixosModules.router-bgp
+  ];
+
+  services.router-bgp = {
+    enable = true;
+    asn = 65001;
+    routerId = "10.10.20.1";
+
+    addressFamilies = {
+      ipv4Unicast = {
+        enable = true;
+        networks = [ "10.10.20.0/24" ];
+      };
+      ipv6Unicast = {
+        enable = true;
+        networks = [ "fd00:20::/64" ];
+      };
+    };
+
+    neighbors."10.10.254.2" = {
+      remoteAs = 65010;
+      passwordFile = "/run/agenix/bgp-proxmox-password";
+      addressFamilies = [
+        "ipv4-unicast"
+        "ipv6-unicast"
+      ];
+
+      importPolicy.ipv4Unicast = {
+        allowCidrs = [ "10.10.0.0/16" ];
+        defaultAction = "deny";
+      };
+
+      exportPolicy.ipv6Unicast = {
+        allowCidrs = [ "fd00:20::/64" ];
+        denyCidrs = [ "::/0" ];
+        defaultAction = "deny";
+      };
+    };
+  };
+}
+```
+
 ## Realistic Lab Example
 
 See [examples/router-bgp-proxmox-lab.nix](../examples/router-bgp-proxmox-lab.nix)
@@ -97,8 +148,35 @@ for a fuller example showing:
 | `services.router-bgp.enable` | Enable the wrapper and FRR `bgpd`. |
 | `services.router-bgp.asn` | Local autonomous system number. |
 | `services.router-bgp.routerId` | Optional router ID, typically a stable IPv4 address. |
-| `services.router-bgp.neighbors` | Per-neighbor map of remote ASN, description, and `nextHopSelf`. |
-| `services.router-bgp.networks` | Prefixes advertised with `network` statements. |
+| `services.router-bgp.neighbors` | Per-neighbor map of remote ASN, description, runtime auth file, AFI activation, and bounded policies. |
+| `services.router-bgp.networks` | Legacy IPv4 prefixes to advertise when `addressFamilies.ipv4Unicast.networks` is empty. |
+| `services.router-bgp.addressFamilies.ipv4Unicast` | Explicit IPv4 unicast enablement and advertised networks. |
+| `services.router-bgp.addressFamilies.ipv6Unicast` | Explicit IPv6 unicast enablement and advertised networks. |
+
+## Configuration Model
+
+The wrapper now uses three layers:
+
+1. **Base router identity**
+   - local ASN
+   - optional router ID
+
+2. **Per-neighbor transport and activation**
+   - remote ASN
+   - optional runtime `passwordFile`
+   - which address families the peer should activate
+   - optional `nextHopSelf`
+
+3. **Bounded route policy**
+   - per-neighbor import/export policy
+   - per address family
+   - allow list
+   - deny list
+   - default action
+
+This is intentionally narrower than full FRR policy language. It is meant to
+cover common small-scale routing needs without forcing users to hand-write
+raw route-map syntax everywhere.
 
 ## Operational Verification
 

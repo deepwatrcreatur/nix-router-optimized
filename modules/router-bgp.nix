@@ -2,6 +2,7 @@
   config,
   lib,
   options,
+  pkgs,
   ...
 }:
 
@@ -16,6 +17,246 @@ let
   routerHaEnabled =
     hasRouterOption [ "services" "router-ha" "enable" ]
     && (config.services.router-ha.enable or false);
+
+  sanitize = value: replaceStrings [ "." ":" "/" "-" ] [ "_" "_" "_" "_" ] value;
+
+  afiHeading =
+    afi:
+    if afi == "ipv4-unicast" then
+      "ipv4 unicast"
+    else
+      "ipv6 unicast";
+
+  prefixListCommand =
+    afi:
+    if afi == "ipv4-unicast" then
+      "ip prefix-list"
+    else
+      "ipv6 prefix-list";
+
+  policySubmodule =
+    types.submodule {
+      options = {
+        allowCidrs = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Prefixes explicitly permitted by this policy.";
+        };
+
+        denyCidrs = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Prefixes explicitly denied by this policy.";
+        };
+
+        defaultAction = mkOption {
+          type = types.enum [
+            "permit"
+            "deny"
+          ];
+          default = "deny";
+          description = "Default action after the explicit allow/deny lists.";
+        };
+      };
+    };
+
+  policyFamilySubmodule =
+    types.submodule {
+      options = {
+        ipv4Unicast = mkOption {
+          type = types.nullOr policySubmodule;
+          default = null;
+          description = "Bounded policy for IPv4 unicast.";
+        };
+
+        ipv6Unicast = mkOption {
+          type = types.nullOr policySubmodule;
+          default = null;
+          description = "Bounded policy for IPv6 unicast.";
+        };
+      };
+    };
+
+  enabledAddressFamilies =
+    filter
+      (
+        afi:
+        if afi == "ipv4-unicast" then
+          cfg.addressFamilies.ipv4Unicast.enable || cfg.networks != [ ]
+        else
+          cfg.addressFamilies.ipv6Unicast.enable
+      )
+      [
+        "ipv4-unicast"
+        "ipv6-unicast"
+      ];
+
+  ipv4Networks =
+    if cfg.addressFamilies.ipv4Unicast.networks != [ ] then
+      cfg.addressFamilies.ipv4Unicast.networks
+    else
+      cfg.networks;
+
+  ipv6Networks = cfg.addressFamilies.ipv6Unicast.networks;
+
+  mkPolicyBlocks =
+    neighborIp: direction: afi: policy:
+    let
+      neighborToken = sanitize neighborIp;
+      afiToken = sanitize afi;
+      routeMapName = "RBGP_${neighborToken}_${afiToken}_${direction}";
+      allowListName = "${routeMapName}_ALLOW";
+      denyListName = "${routeMapName}_DENY";
+      prefixCmd = prefixListCommand afi;
+      mkPrefixLines =
+        listName: action: cidrs:
+        concatStringsSep "\n" (
+          imap0 (idx: cidr: "${prefixCmd} ${listName} seq ${toString ((idx + 1) * 10)} ${action} ${cidr}") cidrs
+        );
+      matchKeyword =
+        if afi == "ipv4-unicast" then
+          "match ip address prefix-list"
+        else
+          "match ipv6 address prefix-list";
+    in
+    ''
+      ${optionalString (policy.denyCidrs != [ ]) (mkPrefixLines denyListName "permit" policy.denyCidrs)}
+      ${optionalString (policy.allowCidrs != [ ]) (mkPrefixLines allowListName "permit" policy.allowCidrs)}
+      route-map ${routeMapName} deny 10
+       ${optionalString (policy.denyCidrs != [ ]) "${matchKeyword} ${denyListName}"}
+      ${optionalString (policy.allowCidrs != [ ]) ''
+        route-map ${routeMapName} permit 20
+         ${matchKeyword} ${allowListName}
+      ''}
+      route-map ${routeMapName} ${policy.defaultAction} 100
+    '';
+
+  mkNeighborPolicyReference =
+    neighborIp: direction: afi: policy:
+    let
+      routeMapName = "RBGP_${sanitize neighborIp}_${sanitize afi}_${direction}";
+    in
+    optionalString (policy != null) "neighbor ${neighborIp} route-map ${routeMapName} ${direction}";
+
+  neighborSecrets =
+    concatMap
+      (
+        entry:
+        let
+          ip = entry.name;
+          neighbor = entry.value;
+        in
+        optional (neighbor.passwordFile != null) {
+          inherit ip;
+          passwordFile = neighbor.passwordFile;
+          placeholder = "__ROUTER_BGP_SECRET_${sanitize ip}__";
+        }
+      )
+      (attrsToList cfg.neighbors);
+
+  staticConfig = ''
+    router bgp ${toString cfg.asn}
+      ${optionalString (cfg.routerId != null) "bgp router-id ${cfg.routerId}"}
+      ${concatStringsSep "\n" (mapAttrsToList (ip: neighbor: ''
+        neighbor ${ip} remote-as ${toString neighbor.remoteAs}
+        ${optionalString (neighbor.description != "") "neighbor ${ip} description ${neighbor.description}"}
+        ${optionalString (neighbor.passwordFile != null) "neighbor ${ip} password __ROUTER_BGP_SECRET_${sanitize ip}__"}
+      '') cfg.neighbors)}
+      ${concatStringsSep "\n" (
+        concatMap
+          (
+            entry:
+            let
+              ip = entry.name;
+              neighbor = entry.value;
+            in
+            concatMap
+              (
+                afi:
+                let
+                  importPolicy =
+                    if afi == "ipv4-unicast" then
+                      neighbor.importPolicy.ipv4Unicast
+                    else
+                      neighbor.importPolicy.ipv6Unicast;
+                  exportPolicy =
+                    if afi == "ipv4-unicast" then
+                      neighbor.exportPolicy.ipv4Unicast
+                    else
+                      neighbor.exportPolicy.ipv6Unicast;
+                in
+                optionals (builtins.elem afi neighbor.addressFamilies) (
+                  optional (importPolicy != null) (mkPolicyBlocks ip "in" afi importPolicy)
+                  ++ optional (exportPolicy != null) (mkPolicyBlocks ip "out" afi exportPolicy)
+                )
+              )
+              enabledAddressFamilies
+          )
+          (attrsToList cfg.neighbors)
+      )}
+      ${concatStringsSep "\n" (map (afi: ''
+        address-family ${afiHeading afi}
+          ${concatStringsSep "\n" (
+            concatMap
+              (
+                entry:
+                let
+                  ip = entry.name;
+                  neighbor = entry.value;
+                  importPolicy =
+                    if afi == "ipv4-unicast" then
+                      neighbor.importPolicy.ipv4Unicast
+                    else
+                      neighbor.importPolicy.ipv6Unicast;
+                  exportPolicy =
+                    if afi == "ipv4-unicast" then
+                      neighbor.exportPolicy.ipv4Unicast
+                    else
+                      neighbor.exportPolicy.ipv6Unicast;
+                in
+                optionals (builtins.elem afi neighbor.addressFamilies) [
+                  "neighbor ${ip} activate"
+                  (optionalString neighbor.nextHopSelf "neighbor ${ip} next-hop-self")
+                  (mkNeighborPolicyReference ip "in" afi importPolicy)
+                  (mkNeighborPolicyReference ip "out" afi exportPolicy)
+                ]
+              )
+              (attrsToList cfg.neighbors)
+          )}
+          ${concatStringsSep "\n" (
+            map
+              (network: "network ${network}")
+              (
+                if afi == "ipv4-unicast" then
+                  ipv4Networks
+                else
+                  ipv6Networks
+              )
+          )}
+        exit-address-family
+      '') enabledAddressFamilies)}
+    !
+  '';
+
+  preStartSecretMaterialization =
+    optionalString (neighborSecrets != [ ]) ''
+      cp /etc/frr/frr.conf /run/frr/frr.conf
+      chmod 0640 /run/frr/frr.conf
+      chown frr:frr /run/frr/frr.conf
+      ${concatStringsSep "\n" (map (secret: ''
+        secret_value="$(${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg secret.passwordFile})"
+        ${pkgs.python3Minimal}/bin/python - "$secret_value" ${escapeShellArg secret.placeholder} /run/frr/frr.conf <<'PY'
+import pathlib
+import sys
+
+value, placeholder, path = sys.argv[1:]
+target = pathlib.Path(path)
+target.write_text(target.read_text().replace(placeholder, value))
+PY
+      '') neighborSecrets)}
+      rm -f /etc/frr/frr.conf
+      ln -s /run/frr/frr.conf /etc/frr/frr.conf
+    '';
 in
 {
   options.services.router-bgp = {
@@ -51,6 +292,27 @@ in
             default = false;
             description = "Whether to set next-hop-self for this neighbor.";
           };
+          passwordFile = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            example = "/run/agenix/bgp-upstream-password";
+            description = "Runtime file containing the neighbor password.";
+          };
+          addressFamilies = mkOption {
+            type = types.listOf (types.enum [ "ipv4-unicast" "ipv6-unicast" ]);
+            default = [ "ipv4-unicast" ];
+            description = "Address families activated for this neighbor.";
+          };
+          importPolicy = mkOption {
+            type = policyFamilySubmodule;
+            default = { };
+            description = "Bounded per-neighbor import policy by address family.";
+          };
+          exportPolicy = mkOption {
+            type = policyFamilySubmodule;
+            default = { };
+            description = "Bounded per-neighbor export policy by address family.";
+          };
         };
       });
       default = { };
@@ -58,6 +320,11 @@ in
         "10.10.11.50" = {
           remoteAs = 65002;
           description = "Proxmox Node 1";
+          passwordFile = "/run/agenix/proxmox-bgp-password";
+          addressFamilies = [
+            "ipv4-unicast"
+            "ipv6-unicast"
+          ];
         };
       };
       description = "BGP neighbors to peer with.";
@@ -67,34 +334,54 @@ in
       type = types.listOf types.str;
       default = [ ];
       example = [ "10.10.0.0/16" ];
-      description = "Network prefixes to advertise via BGP.";
+      description = "Legacy IPv4 network prefixes to advertise via BGP.";
     };
-  };
 
-  config = mkIf cfg.enable (
-    {
-      services = {
-        frr = {
-          bgpd.enable = true;
-          config = ''
-            router bgp ${toString cfg.asn}
-              ${optionalString (cfg.routerId != null) "bgp router-id ${cfg.routerId}"}
-              ${concatStringsSep "\n" (mapAttrsToList (ip: neighbor: ''
-                neighbor ${ip} remote-as ${toString neighbor.remoteAs}
-                ${optionalString (neighbor.description != "") "neighbor ${ip} description ${neighbor.description}"}
-                ${optionalString neighbor.nextHopSelf "neighbor ${ip} next-hop-self"}
-              '') cfg.neighbors)}
-              ${concatStringsSep "\n" (map (network: "network ${network}") cfg.networks)}
-            !
-          '';
+    addressFamilies = {
+      ipv4Unicast = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Enable IPv4 unicast address-family rendering.";
         };
-      } // optionalAttrs (hasRouterOption [ "services" "router-firewall" "trustedTcpPorts" ]) {
-        router-firewall = mkIf firewallEnabled {
-          trustedTcpPorts = [ 179 ];
+
+        networks = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "IPv4 prefixes to advertise inside address-family ipv4 unicast.";
         };
       };
 
-      assertions = [
+      ipv6Unicast = {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Enable IPv6 unicast address-family rendering.";
+        };
+
+        networks = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "IPv6 prefixes to advertise inside address-family ipv6 unicast.";
+        };
+      };
+    };
+  };
+
+  config = mkIf cfg.enable {
+    services = {
+      frr = {
+        bgpd.enable = true;
+        config = staticConfig;
+      };
+    } // optionalAttrs (hasRouterOption [ "services" "router-firewall" "trustedTcpPorts" ]) {
+      router-firewall = mkIf firewallEnabled {
+        trustedTcpPorts = [ 179 ];
+      };
+    };
+
+    assertions =
+      [
         {
           assertion = !routerHaEnabled;
           message = ''
@@ -104,9 +391,38 @@ in
             blocked for now instead of being implied as failover-ready.
           '';
         }
-      ];
+      ]
+      ++ concatMap
+        (
+          entry:
+          let
+            ip = entry.name;
+            neighbor = entry.value;
+            checkPolicy =
+              afi: policy:
+              optional (policy != null) {
+                assertion = builtins.elem afi neighbor.addressFamilies && builtins.elem afi enabledAddressFamilies;
+                message = "router-bgp neighbor ${ip} defines ${afi} policy without activating that address family.";
+              };
+          in
+          (map
+            (afi: {
+              assertion = builtins.elem afi enabledAddressFamilies;
+              message = "router-bgp neighbor ${ip} activates ${afi} but that address family is not enabled globally.";
+            })
+            neighbor.addressFamilies)
+          ++ checkPolicy "ipv4-unicast" neighbor.importPolicy.ipv4Unicast
+          ++ checkPolicy "ipv6-unicast" neighbor.importPolicy.ipv6Unicast
+          ++ checkPolicy "ipv4-unicast" neighbor.exportPolicy.ipv4Unicast
+          ++ checkPolicy "ipv6-unicast" neighbor.exportPolicy.ipv6Unicast
+        )
+        (attrsToList cfg.neighbors);
 
-      networking.firewall.allowedTCPPorts = mkIf (!firewallEnabled) [ 179 ];
-    }
-  );
+    networking.firewall.allowedTCPPorts = mkIf (!firewallEnabled) [ 179 ];
+
+    systemd.services.frr = mkIf (neighborSecrets != [ ]) {
+      preStart = preStartSecretMaterialization;
+      restartTriggers = map (secret: secret.passwordFile) neighborSecrets;
+    };
+  };
 }
