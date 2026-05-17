@@ -1,6 +1,6 @@
 # 34 - Router BGP Auth, AFI, and Policy
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -17,21 +17,21 @@ exported.
 
 ## Requirements
 
-- [ ] Add per-neighbor authentication support that can consume secrets from
+- [x] Add per-neighbor authentication support that can consume secrets from
       runtime files rather than embedding credentials in the Nix store
-- [ ] Add explicit address-family support for at least IPv4 and IPv6 unicast
-- [ ] Add a bounded import/export policy surface suitable for common small-scale
+- [x] Add explicit address-family support for at least IPv4 and IPv6 unicast
+- [x] Add a bounded import/export policy surface suitable for common small-scale
       routing use without forcing raw FRR policy language everywhere
-- [ ] Document the resulting configuration model
-- [ ] Add focused eval coverage for the new option shapes
+- [x] Document the resulting configuration model
+- [x] Add focused eval coverage for the new option shapes
 
 ## Verification
 
-- [ ] A user can configure authenticated BGP peering without storing secrets in
+- [x] A user can configure authenticated BGP peering without storing secrets in
       the Nix store
-- [ ] Dual-stack or explicit AFI routing is representable in module options
-- [ ] Route import/export behavior is no longer all-or-nothing by default
-- [ ] Docs and tests cover the new surface
+- [x] Dual-stack or explicit AFI routing is representable in module options
+- [x] Route import/export behavior is no longer all-or-nothing by default
+- [x] Docs and tests cover the new surface
 
 ## Notes
 
