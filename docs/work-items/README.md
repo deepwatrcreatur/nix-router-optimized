@@ -18,7 +18,7 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `ready`
+- [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `in-progress`
 - [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `ready`
 
 ## Recently Completed
