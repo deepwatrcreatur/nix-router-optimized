@@ -1,9 +1,18 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  options,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.router-bgp;
+  hasRouterOption = path: hasAttrByPath path options;
+  firewallEnabled =
+    hasRouterOption [ "services" "router-firewall" "enable" ]
+    && (config.services.router-firewall.enable or false);
 in
 {
   options.services.router-bgp = {
@@ -59,23 +68,30 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    services.frr = {
-      bgpd.enable = true;
-      config = ''
-        router bgp ${toString cfg.asn}
-          ${optionalString (cfg.routerId != null) "bgp router-id ${cfg.routerId}"}
-          ${concatStringsSep "\n" (mapAttrsToList (ip: neighbor: ''
-            neighbor ${ip} remote-as ${toString neighbor.remoteAs}
-            ${optionalString (neighbor.description != "") "neighbor ${ip} description ${neighbor.description}"}
-            ${optionalString neighbor.nextHopSelf "neighbor ${ip} next-hop-self"}
-          '') cfg.neighbors)}
-          ${concatStringsSep "\n" (map (network: "network ${network}") cfg.networks)}
-        !
-      '';
-    };
+  config = mkIf cfg.enable (
+    {
+      services = {
+        frr = {
+          bgpd.enable = true;
+          config = ''
+            router bgp ${toString cfg.asn}
+              ${optionalString (cfg.routerId != null) "bgp router-id ${cfg.routerId}"}
+              ${concatStringsSep "\n" (mapAttrsToList (ip: neighbor: ''
+                neighbor ${ip} remote-as ${toString neighbor.remoteAs}
+                ${optionalString (neighbor.description != "") "neighbor ${ip} description ${neighbor.description}"}
+                ${optionalString neighbor.nextHopSelf "neighbor ${ip} next-hop-self"}
+              '') cfg.neighbors)}
+              ${concatStringsSep "\n" (map (network: "network ${network}") cfg.networks)}
+            !
+          '';
+        };
+      } // optionalAttrs (hasRouterOption [ "services" "router-firewall" "trustedTcpPorts" ]) {
+        router-firewall = mkIf firewallEnabled {
+          trustedTcpPorts = [ 179 ];
+        };
+      };
 
-    # Open BGP port in firewall
-    networking.firewall.allowedTCPPorts = [ 179 ];
-  };
+      networking.firewall.allowedTCPPorts = mkIf (!firewallEnabled) [ 179 ];
+    }
+  );
 }

@@ -23,7 +23,10 @@ When enabled, the module:
   - optional neighbor descriptions
   - optional per-neighbor `next-hop-self`
   - a list of advertised `network` prefixes
-- opens TCP `179` through the native NixOS firewall path
+- opens TCP `179` through:
+  - `services.router-firewall.trustedTcpPorts` when `router-firewall` is
+    imported and enabled
+  - `networking.firewall.allowedTCPPorts` otherwise
 
 The current module does **not** yet provide:
 
@@ -81,8 +84,10 @@ for a fuller example showing:
 
 - `router-networking`
 - `router-firewall`
+- explicit WAN/LAN firewall interface declarations
 - a routed LAN subnet
 - a dedicated lab transit link
+- the transit link marked as a trusted router-facing interface
 - an internal BGP peer such as a Proxmox or FRR node
 
 ## Options Summary
