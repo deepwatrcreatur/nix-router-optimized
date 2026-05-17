@@ -160,11 +160,32 @@ Current assumption:
 That means you should **not** assume two `router-ha` peers can safely advertise
 the same routing identity or take over cleanly without additional design.
 
-Until the HA guardrail work lands:
+Current short-term policy:
 
-- treat `router-bgp` + `router-ha` as an advanced manual integration
-- do not assume standby nodes should advertise active BGP identity
-- do not market this as a failover-ready peering solution
+- `router-bgp` + `router-ha` is blocked by assertion
+- the repo intentionally refuses the combination instead of implying that two HA
+  peers can casually own active BGP identity
+
+This is intentionally conservative. The repo does not yet have a real
+promotion-aware ownership signal for BGP sessions, and it should not present
+VRRP failover as equivalent to safe dynamic-routing ownership.
+
+## What Future Promotion-Aware BGP Ownership Would Need
+
+Before the repo can safely allow `router-bgp` with `router-ha`, it would need at
+least:
+
+- a single-active-owner signal that other modules can consume declaratively
+- a clear rule for when FRR `bgpd` should start, stop, or withhold peering on
+  standby nodes
+- an explicit decision on whether standby nodes should:
+  - keep FRR installed but inactive
+  - keep peering config rendered but the service disabled
+  - or participate in a different promotion-aware routing design
+- operational validation that failover does not briefly create split-brain
+  routing identity
+- docs that explain exactly what ownership transition behavior users should
+  expect
 
 ## Roadmap Boundary
 

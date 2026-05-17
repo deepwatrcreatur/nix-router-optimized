@@ -1,6 +1,6 @@
 # 33 - Router BGP HA Boundaries and Guardrails
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -16,22 +16,22 @@ single active owner." BGP needs an explicit position inside that model.
 
 ## Requirements
 
-- [ ] Decide the short-term support policy for `router-bgp` + `router-ha`:
+- [x] Decide the short-term support policy for `router-bgp` + `router-ha`:
   - hard assertion
   - explicit warning/documented incompatibility
   - or gated ownership if the required active-owner signal already exists
-- [ ] Ensure the chosen policy is encoded in repo docs and module behavior
-- [ ] Prevent the repo from implying that two HA peers can both own active BGP
+- [x] Ensure the chosen policy is encoded in repo docs and module behavior
+- [x] Prevent the repo from implying that two HA peers can both own active BGP
       routing identity casually
-- [ ] Add targeted eval coverage for the chosen guardrail behavior
-- [ ] Document what future promotion-aware BGP ownership would need
+- [x] Add targeted eval coverage for the chosen guardrail behavior
+- [x] Document what future promotion-aware BGP ownership would need
 
 ## Verification
 
-- [ ] The combined BGP/HA story is explicit rather than implicit
-- [ ] Future contributors can tell whether the combo is blocked, warned, or
+- [x] The combined BGP/HA story is explicit rather than implicit
+- [x] Future contributors can tell whether the combo is blocked, warned, or
       gated
-- [ ] Eval/tests cover the intended guardrail
+- [x] Eval/tests cover the intended guardrail
 
 ## Notes
 
