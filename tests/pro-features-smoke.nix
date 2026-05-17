@@ -166,6 +166,26 @@ in
     ])
   ];
 
+  router-bgp-ha-blocked-eval = eval.mkNixosEvalFailureCheck "router-bgp-ha-blocked" [
+    self.nixosModules.router-ha
+    self.nixosModules.router-bgp
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "lan0";
+      };
+
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.10.1";
+        neighbors."10.10.10.2" = { remoteAs = 65002; };
+      };
+    }
+  ];
+
   router-ha-dns-unbound-eval = eval.mkNixosEvalCheck "router-ha-dns-unbound" [
     self.nixosModules.router-ha
     self.nixosModules.router-dns-service
