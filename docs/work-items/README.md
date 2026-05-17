@@ -18,7 +18,7 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `ready`
+- [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `in-progress`
 
 ## Recently Completed
 

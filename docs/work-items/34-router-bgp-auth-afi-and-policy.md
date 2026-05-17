@@ -1,6 +1,6 @@
 # 34 - Router BGP Auth, AFI, and Policy
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
