@@ -1,6 +1,6 @@
 # 37 - Declarative CLAT Design and Incubation
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -84,3 +84,7 @@ Nix-native design effort that invites further contribution.
 Initial design artifact drafted in `docs/DECLARATIVE_CLAT.md`. Follow-on
 implementation work should proceed through further discussion checkpoints rather
 than treating the design as frozen.
+
+Discussion 09 then pressure-tested that draft and converged on the next split:
+keep this item as the design/incubation boundary setter, and move the first
+implementation-ready contract tightening into follow-on work item `38`.
