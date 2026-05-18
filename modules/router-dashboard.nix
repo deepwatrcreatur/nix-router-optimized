@@ -12,6 +12,7 @@ with lib;
 
 let
   cfg = config.services.router-dashboard;
+  technitiumRuntimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
   hasRouterOption = path: hasAttrByPath path options;
   optimizationInterfaces =
     if hasRouterOption [ "services" "router-optimizations" "interfaces" ] then
@@ -375,6 +376,7 @@ in {
           DASHBOARD_NAT64_PREFIX = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv6Prefix else "";
           DASHBOARD_NAT64_POOL = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv4Pool else "";
           TECHNITIUM_URL = "http://localhost:5380";
+          TECHNITIUM_RUNTIME_API_KEY_FILE = technitiumRuntimeApiTokenPath;
           TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
             then config.age.secrets.technitium-api-key.path
             else "";
@@ -410,7 +412,7 @@ in {
             "/sys/class/net"
             "/var/log/journal"
             "/run/agenix"
-          ];
+          ] ++ lib.optional (config.services.router-technitium.enable or false) technitiumRuntimeApiTokenPath;
         };
 
         path = with pkgs; [

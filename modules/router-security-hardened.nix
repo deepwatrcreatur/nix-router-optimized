@@ -163,6 +163,7 @@ in
         script = ''
           echo "Updating Geo-IP blocklist for: ${concatStringsSep ", " cfg.geoIpBlocking.blockedCountries}..."
           TMP_FILE=$(mktemp)
+          NFT_BATCH=$(mktemp)
           SUCCESS_COUNT=0
 
           for country in ${concatStringsSep " " cfg.geoIpBlocking.blockedCountries}; do
@@ -178,23 +179,27 @@ in
             # Filter empty lines and comments
             sed -i '/^#/d; /^$/d' "$TMP_FILE"
 
-            # Use a temporary set to ensure atomic update and avoid flushing if download failed
-            ${pkgs.nftables}/bin/nft "add set inet filter blocked_countries_new { type ipv4_addr; flags interval; }"
-            
+            # Build a single nft batch file so the flush + reload happens as one
+            # validated transaction rather than by mutating the live set
+            # incrementally.
+            cat > "$NFT_BATCH" <<'EOF'
+flush set inet filter blocked_countries
+EOF
+
             while read -r line; do
-              ${pkgs.nftables}/bin/nft add element inet filter blocked_countries_new "{ $line }"
+              printf 'add element inet filter blocked_countries { %s }\n' "$line" >> "$NFT_BATCH"
             done < "$TMP_FILE"
 
-            # Swap sets
-            ${pkgs.nftables}/bin/nft "replace set inet filter blocked_countries { type ipv4_addr; flags interval; elements = @blocked_countries_new; }"
-            ${pkgs.nftables}/bin/nft "delete set inet filter blocked_countries_new"
-            
+            ${pkgs.nftables}/bin/nft -c -f "$NFT_BATCH"
+            ${pkgs.nftables}/bin/nft -f "$NFT_BATCH"
+
             echo "Successfully updated Geo-IP blocklist with $SUCCESS_COUNT countries."
           else
             echo "Error: No country lists could be fetched. Keeping existing blocklist."
           fi
 
           rm "$TMP_FILE"
+          rm "$NFT_BATCH"
         '';
       };
 

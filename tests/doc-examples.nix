@@ -621,4 +621,26 @@ in
       message = "Dashboard remote access example should include the documented SSH endpoint.";
     }
   ]);
+
+  docs-router-dashboard-technitium-token-resolution-eval = mkDocExampleCheck "docs-router-dashboard-technitium-token-resolution" [
+    self.nixosModules.router-dashboard
+    self.nixosModules.router-technitium
+    {
+      services.router-dashboard.enable = true;
+      services.router-technitium.enable = true;
+    }
+  ] (config: [
+    {
+      assertion =
+        config.systemd.services.router-dashboard.environment.TECHNITIUM_RUNTIME_API_KEY_FILE
+        == "/var/lib/private/technitium-dns-server/nix-router-api-token";
+      message = "router-dashboard should export the runtime-first Technitium token path.";
+    }
+    {
+      assertion =
+        lib.elem "/var/lib/private/technitium-dns-server/nix-router-api-token"
+          config.systemd.services.router-dashboard.serviceConfig.ReadOnlyPaths;
+      message = "router-dashboard should be allowed to read the Technitium runtime token path.";
+    }
+  ]);
 }
