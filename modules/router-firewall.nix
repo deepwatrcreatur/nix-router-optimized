@@ -204,6 +204,12 @@ in
       description = "Extra nftables input-chain rules appended before final drop.";
     };
 
+    extraFilterTableRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables declarations inserted at table inet filter scope.";
+    };
+
     extraWanLocalRules = mkOption {
       type = types.lines;
       default = "";
@@ -226,6 +232,12 @@ in
       type = types.lines;
       default = "";
       description = "Extra nftables forward-chain rules appended before final drop.";
+    };
+
+    extraForwardEarlyRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables forward-chain rules prepended before built-in forwarding policy.";
     };
 
     extraWanInRules = mkOption {
@@ -361,6 +373,8 @@ in
       }
 
       table inet filter {
+        ${cfg.extraFilterTableRules}
+
         ${optionalString cfg.flowLogging.enable ''
           chain flow-logger {
             log group ${toString cfg.flowLogging.group}
@@ -496,6 +510,7 @@ in
         chain forward {
           type filter hook forward priority 0; policy drop;
 
+          ${cfg.extraForwardEarlyRules}
           ${optionalString cfg.flowLogging.enable "jump flow-logger"}
           ct state {established, related} accept
           ct state invalid log prefix "${cfg.invalidLogPrefix}" level info flags all

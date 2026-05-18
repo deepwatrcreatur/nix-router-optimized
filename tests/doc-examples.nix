@@ -222,6 +222,67 @@ in
     }
   ]);
 
+  docs-router-zones-example-eval = mkDocExampleCheck "docs-router-zones-example" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-zones
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+      };
+
+      services.router-zones = {
+        enable = true;
+        zones = {
+          wan.interfaces = [ "eth0" ];
+          lan.interfaces = [ "eth1" ];
+          iot = {
+            interfaces = [ "eth2" ];
+            defaultForwardAction = "drop";
+          };
+        };
+        policies = [
+          {
+            fromZone = "lan";
+            toZone = "wan";
+            action = "accept";
+          }
+          {
+            fromZone = "iot";
+            toZone = "wan";
+            action = "accept";
+          }
+          {
+            fromZone = "iot";
+            toZone = "lan";
+            action = "drop";
+          }
+        ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = lib.hasInfix ''iifname { "eth1" } jump zone_lan_forward'' config.networking.nftables.ruleset;
+      message = "router-zones example should dispatch lan traffic into the zone chain.";
+    }
+    {
+      assertion = lib.hasInfix ''oifname { "eth0" } accept comment "router-zones lan->wan"'' config.networking.nftables.ruleset;
+      message = "router-zones example should render the explicit lan-to-wan policy.";
+    }
+    {
+      assertion = lib.hasInfix ''oifname { "eth1" } drop comment "router-zones iot->lan"'' config.networking.nftables.ruleset;
+      message = "router-zones example should render the explicit iot-to-lan drop policy.";
+    }
+    {
+      assertion = lib.hasInfix ''return comment "router-zones default for lan"'' config.networking.nftables.ruleset;
+      message = "router-zones example should keep the base firewall in control by default.";
+    }
+    {
+      assertion = !(lib.hasInfix "zone_lan_input" config.networking.nftables.ruleset);
+      message = "router-zones example must stay forward-only and not create input-zone chains.";
+    }
+  ]);
+
   readme-common-wan-policy-eval = mkDocExampleCheck "readme-common-wan-policy" [
     self.nixosModules.router-firewall
     {

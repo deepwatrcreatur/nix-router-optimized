@@ -90,6 +90,7 @@
             self.nixosModules.router-ha
             self.nixosModules.router-mwan
             self.nixosModules.router-nptv6
+            self.nixosModules.router-zones
           ];
         };
 
@@ -133,6 +134,7 @@
         router-ha = import ./modules/router-ha.nix;
         router-mwan = import ./modules/router-mwan.nix;
         router-nptv6 = import ./modules/router-nptv6.nix;
+        router-zones = import ./modules/router-zones.nix;
       };
 
       # Example configuration for testing
