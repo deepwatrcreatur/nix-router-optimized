@@ -1,16 +1,31 @@
 # Router Zones
 
-The `router-zones` module provides a zone-based firewall policy management layer on top of `router-firewall`. It allows grouping interfaces into security zones and defining high-level policies for traffic between them.
+`router-zones` is a forward-only policy layer for `router-firewall`.
 
-## Features
+It is intentionally narrow:
 
-- **Zone Definition**: Group multiple interfaces (physical, VLANs, overlays) into a single security zone.
-- **Inter-Zone Policies**: Define explicit actions (accept, drop, reject) for traffic flowing from one zone to another.
-- **Intra-Zone Policy**: Traffic within the same zone is subject to the zone's default forward policy unless explicit rules are added.
-- **Input Policy**: Define default behavior for traffic destined for the router itself on a per-zone basis.
-- **Extra Rules**: Attach specific nftables rule fragments to inter-zone policies for granular control (e.g., restricted port access).
+- it only governs forwarded traffic
+- it does not manage router-local input
+- it does not accept raw nftables fragments
+- unmatched traffic falls back to the base `router-firewall` policy by default
 
-## Configuration
+That support boundary is deliberate. The goal of the first release is safe
+composition, not a broad zone language.
+
+## Composition Contract
+
+- `services.router-firewall.enable = true` is required.
+- `router-zones` dispatches in the `forward` chain based on ingress interface,
+  after the base conntrack safety rules and before role-specific forwarding
+  chains.
+- A zone can take one of four default actions for unmatched forwarded traffic:
+  `accept`, `drop`, `reject`, or `return`.
+- The default is `return`, which hands control back to the base
+  `router-firewall` policy.
+- Router-local input is still owned by `router-firewall` and its role-specific
+  chains (`WAN_LOCAL`, `LAN_LOCAL`, `MGMT_LOCAL`).
+
+## Supported Surface
 
 ```nix
 services.router-zones = {
@@ -19,14 +34,12 @@ services.router-zones = {
   zones = {
     wan.interfaces = [ "eth0" ];
     lan = {
-      interfaces = [ "eth1" "eth2" ];
-      defaultForwardPolicy = "accept";
-      defaultInputPolicy = "accept";
+      interfaces = [ "eth1" ];
+      defaultForwardAction = "return";
     };
     iot = {
-      interfaces = [ "eth3" ];
-      defaultForwardPolicy = "drop";
-      defaultInputPolicy = "drop";
+      interfaces = [ "eth2" ];
+      defaultForwardAction = "drop";
     };
   };
 
@@ -45,31 +58,17 @@ services.router-zones = {
       fromZone = "iot";
       toZone = "lan";
       action = "drop";
-      extraRules = "ip daddr 10.10.10.50 tcp dport 8123 accept comment \"Allow IoT to Home Assistant\"";
     }
   ];
 };
 ```
 
-## Options
+## What It Does Not Do Yet
 
-### `services.router-zones.zones`
-An attribute set of zone definitions.
+- no router-local per-zone input policy
+- no per-policy port matching
+- no raw `extraRules` passthrough
+- no HA-aware ownership model
 
-- `interfaces`: List of interface names. Each interface can belong to at most one zone.
-- `defaultInputPolicy`: Action for traffic to the router (`accept`, `drop`, `reject`). Default: `drop`.
-- `defaultForwardPolicy`: Action for traffic passing through the router (`accept`, `drop`, `reject`). Default: `drop`.
-
-### `services.router-zones.policies`
-A list of policy objects.
-
-- `fromZone`: Source zone name.
-- `toZone`: Destination zone name.
-- `action`: Action for matching traffic (`accept`, `drop`, `reject`). Default: `accept`.
-- `extraRules`: Raw nftables rules to insert before the action.
-
-## Integration Notes
-
-- Requires `services.router-firewall.enable = true`.
-- Zone policies are enforced early in the `input` and `forward` chains using `extraInputEarlyRules` and `extraForwardEarlyRules`.
-- Established and related traffic is still handled by the main firewall's stateful tracking before zone policies are evaluated.
+Those are follow-on design questions. This module is meant to be correct and
+explicit before it grows.
