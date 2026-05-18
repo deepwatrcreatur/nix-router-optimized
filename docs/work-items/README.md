@@ -19,6 +19,7 @@ tracked separately from the dashboard planning docs.
 ## Current Ranked Queue
 
 - [35-router-zones-composition-reset](./35-router-zones-composition-reset.md) — `in-progress`
+- [37-declarative-clat-design-and-incubation](./37-declarative-clat-design-and-incubation.md) — `ready`
 - [36-recent-correctness-fixes-geoip-and-runtime-token-alignment](./36-recent-correctness-fixes-geoip-and-runtime-token-alignment.md) — `ready`
 - [31-router-bgp-support-boundary-and-docs](./31-router-bgp-support-boundary-and-docs.md) — `ready`
 - [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `ready`
