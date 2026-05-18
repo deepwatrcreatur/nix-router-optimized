@@ -12,6 +12,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [06](./06-recent-work-code-review-and-refactor-boundary.md) | Recent Work Code Review and Refactor Boundary | 2026-05-17 | Closed |
 | [07](./07-styx46-incorporation-boundary.md) | Whether `styx46` Should Enter the Flake Boundary | 2026-05-18 | Closed |
 | [08](./08-styx46-incorporation-strategy-and-project-identity.md) | Best Incorporation Strategy for `styx46`-Style Functionality | 2026-05-18 | Closed |
+| [09](./09-declarative-clat-design-review-and-first-slice-boundary.md) | Declarative CLAT Design Review and First-Slice Boundary | 2026-05-18 | Closed |
 
 ## Methodology
 
