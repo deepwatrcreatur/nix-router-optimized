@@ -128,29 +128,39 @@ in
     };
   };
 
-  config =
-    if hasRouterFirewall then
-      mkIf (cfg.enable && firewallEnabled) {
-        assertions =
-          [
-            {
-              assertion = cfg.zones != { };
-              message = "router-zones: define at least one zone when enabling the module.";
-            }
-            {
-              assertion = allUnique allInterfaces;
-              message = "router-zones: each interface can only belong to one zone.";
-            }
-          ]
-          ++ map (policy: {
-            assertion = hasAttr policy.fromZone cfg.zones;
-            message = "router-zones: policy source zone '${policy.fromZone}' does not exist.";
-          }) cfg.policies
-          ++ map (policy: {
-            assertion = hasAttr policy.toZone cfg.zones;
-            message = "router-zones: policy destination zone '${policy.toZone}' does not exist.";
-          }) cfg.policies;
+  config = mkMerge [
+    (mkIf cfg.enable {
+      assertions =
+        [
+          {
+            assertion = hasRouterFirewall;
+            message = "router-zones: import router-firewall before enabling router-zones.";
+          }
+          {
+            assertion = firewallEnabled;
+            message = "router-zones: services.router-firewall.enable must be true when router-zones is enabled.";
+          }
+          {
+            assertion = cfg.zones != { };
+            message = "router-zones: define at least one zone when enabling the module.";
+          }
+          {
+            assertion = allUnique allInterfaces;
+            message = "router-zones: each interface can only belong to one zone.";
+          }
+        ]
+        ++ map (policy: {
+          assertion = hasAttr policy.fromZone cfg.zones;
+          message = "router-zones: policy source zone '${policy.fromZone}' does not exist.";
+        }) cfg.policies
+        ++ map (policy: {
+          assertion = hasAttr policy.toZone cfg.zones;
+          message = "router-zones: policy destination zone '${policy.toZone}' does not exist.";
+        }) cfg.policies;
+    })
 
+    (if hasRouterFirewall then
+      mkIf (cfg.enable && firewallEnabled) {
         services.router-firewall.extraFilterTableRules = mkAfter ''
           ${concatStringsSep "\n" (
             mapAttrsToList (
@@ -181,5 +191,6 @@ in
         '';
       }
     else
-      { };
+      { })
+  ];
 }

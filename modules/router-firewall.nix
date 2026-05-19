@@ -237,7 +237,10 @@ in
     extraForwardEarlyRules = mkOption {
       type = types.lines;
       default = "";
-      description = "Extra nftables forward-chain rules prepended before built-in forwarding policy.";
+      description = ''
+        Extra nftables forward-chain rules inserted after base conntrack safety
+        handling and before built-in interface dispatch.
+      '';
     };
 
     extraWanInRules = mkOption {
@@ -510,12 +513,12 @@ in
         chain forward {
           type filter hook forward priority 0; policy drop;
 
-          ${cfg.extraForwardEarlyRules}
           ${optionalString cfg.flowLogging.enable "jump flow-logger"}
           ct state {established, related} accept
           ct state invalid log prefix "${cfg.invalidLogPrefix}" level info flags all
           ct state invalid drop
 
+          ${cfg.extraForwardEarlyRules}
           ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_IN"}
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_IN"}
           ${optionalString (managementInterfaces != [ ]) "iifname ${maybeSet managementInterfaces} jump MGMT_IN"}

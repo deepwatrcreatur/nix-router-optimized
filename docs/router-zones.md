@@ -15,8 +15,9 @@ composition, not a broad zone language.
 ## Composition Contract
 
 - `services.router-firewall.enable = true` is required.
-- `router-zones` dispatches early in the `forward` chain based on ingress
-  interface.
+- `router-zones` dispatches in the `forward` chain based on ingress interface,
+  after the base conntrack safety rules and before role-specific forwarding
+  chains.
 - A zone can take one of four default actions for unmatched forwarded traffic:
   `accept`, `drop`, `reject`, or `return`.
 - The default is `return`, which hands control back to the base
