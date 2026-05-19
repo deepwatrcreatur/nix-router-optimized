@@ -12,6 +12,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [06](./06-recent-work-code-review-and-refactor-boundary.md) | Recent Work Code Review and Refactor Boundary | 2026-05-17 | Closed |
 | [07](./07-styx46-incorporation-boundary.md) | Whether `styx46` Should Enter the Flake Boundary | 2026-05-18 | Closed |
 | [08](./08-styx46-incorporation-strategy-and-project-identity.md) | Best Incorporation Strategy for `styx46`-Style Functionality | 2026-05-18 | Closed |
+| [09](./09-phpipam-vs-repo-native-host-inventory.md) | Whether `phpIPAM` Should Organize IP-to-Host Inventory | 2026-05-19 | Closed |
 
 ## Methodology
 
@@ -20,5 +21,9 @@ These discussions are conducted using a multi-agent deliberation protocol:
 2.  **Gemini**: Focuses on user-centric use cases (e.g., travel routers) and high-level UX.
 3.  **GitHub Copilot**: Focuses on developer experience and integration patterns.
 4.  **Codex**: Focuses on the low-level implementation details (nftables, systemd-networkd, kernel hooks).
+
+Some discussions may also include additional real seats such as Claude or an
+OpenCode/free-model enrichment voice when they add value. If they are used, the
+discussion note should record them honestly.
 
 Results from these discussions are used to generate declarative work items in `docs/work-items/`.
