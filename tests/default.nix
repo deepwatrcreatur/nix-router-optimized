@@ -46,6 +46,10 @@ let
   keaChecks = import ./router-kea-eval.nix {
     inherit self eval;
   };
+
+  routerZonesChecks = import ./router-zones.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -84,6 +88,7 @@ in
 // nptv6Checks
 // pvdChecks
 // keaChecks
+// routerZonesChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (
