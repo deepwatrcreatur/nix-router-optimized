@@ -52,6 +52,16 @@ in
     self.nixosModules.default
   ];
 
+  router-zones-requires-router-firewall-fails-eval = eval.mkNixosEvalFailureCheck "router-zones-requires-router-firewall" [
+    self.nixosModules.router-zones
+    {
+      services.router-zones = {
+        enable = true;
+        zones.lan.interfaces = [ "eth1" ];
+      };
+    }
+  ];
+
   exported-module-list-eval = eval.mkNixosEvalCheck "exported-module-list" [
     {
       assertions = [
