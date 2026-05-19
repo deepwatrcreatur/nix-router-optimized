@@ -1,6 +1,6 @@
 # Router Zones Policy Validation
 
-Status: `ready`
+Status: `in-progress`
 Priority: `high`
 Branch: `fix/router-zones-policy-validation`
 
@@ -18,15 +18,15 @@ downstream router configurations.
 
 ## Scope
 
-- Add assertions that every policy `fromZone` and `toZone` exists in
-  `services.router-zones.zones`.
-- Define behavior for empty `extraRules`; avoid generating invalid nftables
-  rules such as an `oifname` prefix without an action.
-- Decide whether `defaultInputPolicy` is implemented or remove/defer it from
-  the public option surface.
-- Add eval tests for basic LAN/WAN, IoT isolation, and invalid zone
-  references.
-- Verify generated nftables syntax for policy combinations.
+- [x] Add assertions that every policy `fromZone` and `toZone` exists in
+      `services.router-zones.zones`.
+- [x] Define behavior for empty `extraRules`; avoid generating invalid nftables
+      rules such as an `oifname` prefix without an action.
+- [x] Decide whether `defaultInputPolicy` is implemented or remove/defer it from
+      the public option surface.
+- [x] Add eval tests for basic LAN/WAN, IoT isolation, and invalid zone
+      references.
+- [x] Verify generated nftables syntax for policy combinations.
 
 ## Non-Goals
 
@@ -36,7 +36,6 @@ downstream router configurations.
 
 ## Validation
 
-- Targeted NixOS eval tests pass.
-- `nix flake check --no-build` gets past router-zones tests.
-- `git diff --check` is clean.
-
+- [x] Targeted NixOS eval tests pass.
+- [x] `nix flake check --no-build` gets past router-zones tests.
+- [x] `git diff --check` is clean.
