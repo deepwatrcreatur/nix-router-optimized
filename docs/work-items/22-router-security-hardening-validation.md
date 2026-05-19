@@ -1,6 +1,6 @@
 # Router Security Hardening Validation
 
-Status: `ready`
+Status: `in-progress`
 Priority: `high`
 Branch: `fix/router-security-hardening-validation`
 
@@ -42,4 +42,3 @@ focused validation pass before it should be treated as complete.
   option errors.
 - Generated nftables ruleset parses for representative configurations.
 - `git diff --check` is clean.
-

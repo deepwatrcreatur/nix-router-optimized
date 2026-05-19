@@ -204,6 +204,12 @@ in
       description = "Extra nftables input-chain rules appended before final drop.";
     };
 
+    extraInputEarlyRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables input-chain rules prepended before built-in router-local policy.";
+    };
+
     extraFilterTableRules = mkOption {
       type = types.lines;
       default = "";
@@ -478,6 +484,7 @@ in
         chain input {
           type filter hook input priority 0; policy drop;
 
+          ${cfg.extraInputEarlyRules}
           ${optionalString cfg.flowLogging.enable "jump flow-logger"}
           ct state {established, related} accept
           iifname "lo" accept

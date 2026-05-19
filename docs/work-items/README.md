@@ -19,6 +19,7 @@ tracked separately from the dashboard planning docs.
 ## Current Ranked Queue
 
 - [35-router-zones-composition-reset](./35-router-zones-composition-reset.md) — `in-progress`
+- [22-router-security-hardening-validation](./22-router-security-hardening-validation.md) — `in-progress`
 - [16-router-tunnels-module](./16-router-tunnels-module.md) — `done`
 - [17-dashboard-tunnels-status-api](./17-dashboard-tunnels-status-api.md) — `done`
 - [18-dashboard-tunnels-tab-widget](./18-dashboard-tunnels-tab-widget.md) — `done`

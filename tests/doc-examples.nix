@@ -283,6 +283,44 @@ in
     }
   ]);
 
+  docs-router-security-hardened-example-eval = mkDocExampleCheck "docs-router-security-hardened-example" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-security-hardened
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+      };
+
+      services.router-security-hardened = {
+        enable = true;
+        kernelHardening.enable = true;
+        geoIpBlocking = {
+          enable = true;
+          blockedCountries = [ "ru" "cn" ];
+        };
+        macSecurity = {
+          enable = true;
+          policy = "enforce";
+          whitelists.br-lan = [ "00:11:22:33:44:55" ];
+        };
+      };
+    }
+  ] (config: [
+    {
+      assertion = lib.hasInfix ''jump geoip_block'' config.networking.nftables.ruleset;
+      message = "router-security-hardened example should insert the Geo-IP chain.";
+    }
+    {
+      assertion = lib.hasInfix ''iifname {"eth0"} ip saddr @blocked_countries drop'' config.networking.nftables.ruleset;
+      message = "router-security-hardened example should scope Geo-IP blocking to WAN ingress.";
+    }
+    {
+      assertion = lib.hasInfix ''log prefix "MAC-REJECT: " drop'' config.networking.nftables.ruleset;
+      message = "router-security-hardened example should render MAC enforcement.";
+    }
+  ]);
+
   readme-common-wan-policy-eval = mkDocExampleCheck "readme-common-wan-policy" [
     self.nixosModules.router-firewall
     {
