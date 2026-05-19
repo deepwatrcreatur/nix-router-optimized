@@ -18,6 +18,8 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
+- [35-router-zones-composition-reset](./35-router-zones-composition-reset.md) — `in-progress`
+
 ## Recently Completed
 
 - [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `done`
