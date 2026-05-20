@@ -345,4 +345,53 @@ in
       }
     ])
   ];
+
+  router-technitium-encrypted-dns-eval = eval.mkNixosEvalCheck "router-technitium-encrypted-dns" [
+    ageSecretStub
+    self.nixosModules.router-technitium
+    {
+      age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
+      services.router-technitium = {
+        enable = true;
+        encryptedDns = {
+          enable = true;
+          enableDnsOverHttps = true;
+          dnsTlsCertificatePath = "/run/agenix/dns-encrypted.pfx";
+          dnsTlsCertificatePasswordFile = "/run/agenix/dns-encrypted-password";
+          webServiceTlsCertificatePath = "/run/agenix/dns-web.pfx";
+          webServiceTlsCertificatePasswordFile = "/run/agenix/dns-web-password";
+        };
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.systemd.services.technitium-sync-encrypted-dns.wantedBy == [ "multi-user.target" ];
+        message = "router-technitium should create an encrypted DNS sync service when encryptedDns is enabled.";
+      }
+      {
+        assertion = config.services.router-technitium.encryptedDns.enableDnsOverHttps;
+        message = "router-technitium encrypted DNS should preserve the configured DoH toggle.";
+      }
+      {
+        assertion = !config.services.router-technitium.encryptedDns.enableDnsOverTls;
+        message = "router-technitium encrypted DNS should default DoT off for a DoH-first baseline.";
+      }
+    ])
+  ];
+
+  router-technitium-encrypted-dns-cert-assertion = eval.mkNixosEvalFailureCheck "router-technitium-encrypted-dns-cert-assertion" [
+    ageSecretStub
+    self.nixosModules.router-technitium
+    {
+      age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
+      services.router-technitium = {
+        enable = true;
+        encryptedDns = {
+          enable = true;
+          enableDnsOverTls = true;
+          enableDnsOverHttps = false;
+        };
+      };
+    }
+  ];
 }
