@@ -18,6 +18,10 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
+- [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `pending`
+- [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `pending`
+- [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `pending`
+
 ## Recently Completed
 
 - [39-router-clat-post-landing-cleanup-and-boundary-surfacing](./39-router-clat-post-landing-cleanup-and-boundary-surfacing.md) — `done`
