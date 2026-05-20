@@ -15,7 +15,7 @@ metadata from the router-tunnels module.
 - Accept tunnel metadata from the dashboard service environment (JSON), similar
   to `DASHBOARD_VPNS`.
 - Implement `/api/tunnels/status` returning configured/active/warning/down
-  counts and a list of tunnels with provider, name, unit, public URL, and
+  counts and a list of tunnels with provider, name, systemd unit, public URL, and
   status.
 - Derive runtime health from systemd unit state and presence of a public URL,
   without calling provider APIs.

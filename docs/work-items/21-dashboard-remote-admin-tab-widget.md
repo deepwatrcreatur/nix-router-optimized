@@ -12,7 +12,7 @@ Add a dedicated Remote Admin tab to the router dashboard with a widget that disp
 
 - Add a "Remote Admin" tab and page container to the dashboard shell.
 - Implement a `RemoteAdminWidget` that consumes `/api/remote-admin/status` and renders configured/active/warning/down counts.
-- Show per-entry rows with type, name, systemd unit, URL, and description, plus empty-state guidance when no entries exist.
+- Show per-entry rows with kind, name, systemd unit, URL, and description, plus empty-state guidance when no entries exist.
 
 ## Acceptance Criteria
 

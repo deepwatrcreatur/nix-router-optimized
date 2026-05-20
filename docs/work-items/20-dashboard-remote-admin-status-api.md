@@ -11,7 +11,7 @@ Expose a `/api/remote-admin/status` endpoint in the router dashboard API that su
 ## Scope
 
 - Accept remote-admin metadata from the dashboard service environment (JSON), similar to `DASHBOARD_VPNS` and `DASHBOARD_TUNNELS`.
-- Implement `/api/remote-admin/status` returning configured/active/warning/down counts and a list of entries with type, name, unit, URL, and status.
+- Implement `/api/remote-admin/status` returning configured/active/warning/down counts and a list of entries with kind, name, systemd unit, URL, and status.
 - Derive runtime health from systemd unit state and reachability hints without calling upstream provider APIs.
 
 ## Acceptance Criteria
