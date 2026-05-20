@@ -12,32 +12,29 @@ let
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   firewallEnabled = hasRouterFirewall && (config.services.router-firewall.enable or false);
 
+  sanitize = name: builtins.replaceStrings [ "." ":" "@" "/" ] [ "-" "-" "-" "-" ] name;
+
   zoneModule = types.submodule {
     options = {
       interfaces = mkOption {
         type = types.listOf types.str;
         default = [ ];
-        description = "List of interface names belonging to this zone.";
+        description = "Interfaces assigned to this zone.";
       };
 
-      defaultInputPolicy = mkOption {
+      defaultForwardAction = mkOption {
         type = types.enum [
           "accept"
           "drop"
           "reject"
+          "return"
         ];
-        default = "drop";
-        description = "Default policy for traffic destined for the router itself from this zone.";
-      };
-
-      defaultForwardPolicy = mkOption {
-        type = types.enum [
-          "accept"
-          "drop"
-          "reject"
-        ];
-        default = "drop";
-        description = "Default policy for traffic originating from this zone destined for other zones.";
+        default = "return";
+        description = ''
+          Action taken for forwarded traffic from this zone when no explicit
+          zone-to-zone policy matches. The default `return` keeps the base
+          `router-firewall` forwarding policy in control.
+        '';
       };
     };
   };
@@ -48,10 +45,12 @@ let
         type = types.str;
         description = "Source zone name.";
       };
+
       toZone = mkOption {
         type = types.str;
         description = "Destination zone name.";
       };
+
       action = mkOption {
         type = types.enum [
           "accept"
@@ -59,44 +58,53 @@ let
           "reject"
         ];
         default = "accept";
-        description = "Action to take for traffic between these zones.";
-      };
-      extraRules = mkOption {
-        type = types.lines;
-        default = "";
-        description = "Extra nftables rules for this specific zone pair (e.g., port restrictions).";
+        description = ''
+          Forwarding action for traffic from `fromZone` to `toZone`.
+        '';
       };
     };
   };
 
-  # Sanitize name for nftables
-  sanitize = name: builtins.replaceStrings [ "." ":" "@" "/" ] [ "-" "-" "-" "-" ] name;
+  allInterfaces = concatMap (zone: zone.interfaces) (attrValues cfg.zones);
 
-  allInterfaces = concatMap (z: z.interfaces) (attrValues cfg.zones);
+  renderInterfaceSet =
+    interfaces:
+    concatStringsSep ", " (map (iface: ''"${iface}"'') interfaces);
 
+  renderPoliciesForZone =
+    zoneName:
+    concatMapStringsSep "\n" (
+      policy:
+      let
+        destinationZone = cfg.zones.${policy.toZone} or { interfaces = [ ]; };
+      in
+      optionalString (policy.fromZone == zoneName && destinationZone.interfaces != [ ]) ''
+        oifname { ${renderInterfaceSet destinationZone.interfaces} } ${policy.action} comment "router-zones ${policy.fromZone}->${policy.toZone}"
+      ''
+    ) cfg.policies;
 in
 {
   options.services.router-zones = {
-    enable = mkEnableOption "Zone-based firewall policy management";
+    enable = mkEnableOption "forward-only zone composition for router-firewall";
 
     zones = mkOption {
       type = types.attrsOf zoneModule;
       default = { };
       example = {
-        wan = {
-          interfaces = [ "enp6s17" ];
-          defaultForwardPolicy = "drop";
-        };
         lan = {
-          interfaces = [ "enp6s16" ];
-          defaultForwardPolicy = "accept";
+          interfaces = [ "br-lan" ];
+          defaultForwardAction = "return";
         };
         iot = {
-          interfaces = [ "enp6s16.20" ];
-          defaultForwardPolicy = "drop";
+          interfaces = [ "br-iot" ];
+          defaultForwardAction = "drop";
         };
+        wan.interfaces = [ "pppoe-wan" ];
       };
-      description = "Definition of security zones.";
+      description = ''
+        Forwarding zones keyed by name. Each interface may belong to at most one
+        zone.
+      '';
     };
 
     policies = mkOption {
@@ -110,100 +118,83 @@ in
         }
         {
           fromZone = "iot";
-          toZone = "wan";
-          action = "accept";
-        }
-        {
-          fromZone = "iot";
           toZone = "lan";
           action = "drop";
-          extraRules = "ip daddr 10.10.10.50 tcp dport 8123 accept comment \"Allow IoT to Home Assistant\"";
         }
       ];
-      description = "Explicit traffic policies between zones.";
+      description = ''
+        Explicit forwarding policies between source and destination zones.
+      '';
     };
   };
 
-  config = if hasRouterFirewall then mkIf (firewallEnabled && cfg.enable) {
-    assertions = [
-      {
-        assertion = allUnique allInterfaces;
-        message = "router-zones: Each interface can only belong to one zone. Current assignment: ${
-          concatStringsSep ", " allInterfaces
-        }";
+  config = mkMerge [
+    (mkIf cfg.enable {
+      assertions =
+        [
+          {
+            assertion = hasRouterFirewall;
+            message = "router-zones: import router-firewall before enabling router-zones.";
+          }
+          {
+            assertion = firewallEnabled;
+            message = "router-zones: services.router-firewall.enable must be true when router-zones is enabled.";
+          }
+          {
+            assertion = cfg.zones != { };
+            message = "router-zones: define at least one zone when enabling the module.";
+          }
+          {
+            assertion = allUnique allInterfaces;
+            message = "router-zones: each interface can only belong to one zone.";
+          }
+          {
+            assertion = allUnique (map sanitize (attrNames cfg.zones));
+            message = "router-zones: zone names must be unique after sanitization (special characters like . : @ / are replaced with -).";
+          }
+        ]
+        ++ map (policy: {
+          assertion = hasAttr policy.fromZone cfg.zones;
+          message = "router-zones: policy source zone '${policy.fromZone}' does not exist.";
+        }) cfg.policies
+        ++ map (policy: {
+          assertion = hasAttr policy.toZone cfg.zones;
+          message = "router-zones: policy destination zone '${policy.toZone}' does not exist.";
+        }) cfg.policies;
+    })
+
+    (if hasRouterFirewall then
+      mkIf (cfg.enable && firewallEnabled) {
+        services.router-firewall.extraFilterTableRules = mkAfter ''
+          ${concatStringsSep "\n" (
+            mapAttrsToList (
+              name: zone:
+              let
+                chainName = "zone_${sanitize name}_forward";
+                policyRules = renderPoliciesForZone name;
+              in
+              ''
+                chain ${chainName} {
+                  ${optionalString (policyRules != "") policyRules}
+                  ${zone.defaultForwardAction} comment "router-zones default for ${name}"
+                }
+              ''
+            ) cfg.zones
+          )}
+        '';
+
+        services.router-firewall.extraForwardEarlyRules = mkBefore ''
+          ${concatStringsSep "\n" (
+            mapAttrsToList (
+              name: zone:
+              optionalString (zone.interfaces != [ ]) ''
+                iifname { ${renderInterfaceSet zone.interfaces} } jump zone_${sanitize name}_forward
+              ''
+            ) cfg.zones
+          )}
+        '';
       }
-    ] ++ (map (p: {
-      assertion = hasAttr p.fromZone cfg.zones;
-      message = "router-zones: Policy source zone '${p.fromZone}' does not exist.";
-    }) cfg.policies) ++ (map (p: {
-      assertion = hasAttr p.toZone cfg.zones;
-      message = "router-zones: Policy destination zone '${p.toZone}' does not exist.";
-    }) cfg.policies);
-
-    services.router-firewall.extraFilterTableRules = ''
-      # Zone policy enforcement chains
-      ${concatStringsSep "\n" (
-        mapAttrsToList (name: zone: ''
-          chain zone_${sanitize name}_forward {
-            # Explicit Policies
-            ${concatMapStringsSep "\n" (p: ''
-              ${optionalString (p.fromZone == name) (
-                let
-                  toZoneCfg = cfg.zones.${p.toZone};
-                in
-                ''
-                  ${optionalString (toZoneCfg.interfaces != [ ]) ''
-                    oifname { ${concatStringsSep ", " (map (i: ''"${i}"'') toZoneCfg.interfaces)} } ${
-                      if p.extraRules != "" then
-                        ''
-                          {
-                            ${p.extraRules}
-                            ${p.action}
-                          }''
-                      else
-                        p.action
-                    } comment "Policy: ${p.fromZone} -> ${p.toZone}"
-                  ''}
-                ''
-              )}
-            '') cfg.policies}
-
-            # Default Zone Forward Policy
-            ${zone.defaultForwardPolicy} comment "Default Forward Policy for zone ${name}"
-          }
-
-          chain zone_${sanitize name}_input {
-            # Default Zone Input Policy
-            ${zone.defaultInputPolicy} comment "Default Input Policy for zone ${name}"
-          }
-        '') cfg.zones
-      )}
-    '';
-
-    services.router-firewall.extraForwardEarlyRules = mkBefore ''
-      # Dispatch to zone-based policy chains
-      ${concatStringsSep "\n" (
-        mapAttrsToList (name: zone: ''
-          ${optionalString (zone.interfaces != [ ])
-            "iifname { ${
-              concatStringsSep ", " (map (i: ''"${i}"'') zone.interfaces)
-            } } jump zone_${sanitize name}_forward"
-          }
-        '') cfg.zones
-      )}
-    '';
-
-    services.router-firewall.extraInputEarlyRules = mkBefore ''
-      # Dispatch to zone-based input policy chains
-      ${concatStringsSep "\n" (
-        mapAttrsToList (name: zone: ''
-          ${optionalString (zone.interfaces != [ ])
-            "iifname { ${
-              concatStringsSep ", " (map (i: ''"${i}"'') zone.interfaces)
-            } } jump zone_${sanitize name}_input"
-          }
-        '') cfg.zones
-      )}
-    '';
-  } else { };
+    else
+      { })
+  ];
 }

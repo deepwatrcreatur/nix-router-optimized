@@ -226,6 +226,67 @@ in
     }
   ]);
 
+  docs-router-zones-example-eval = mkDocExampleCheck "docs-router-zones-example" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-zones
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+      };
+
+      services.router-zones = {
+        enable = true;
+        zones = {
+          wan.interfaces = [ "eth0" ];
+          lan.interfaces = [ "eth1" ];
+          iot = {
+            interfaces = [ "eth2" ];
+            defaultForwardAction = "drop";
+          };
+        };
+        policies = [
+          {
+            fromZone = "lan";
+            toZone = "wan";
+            action = "accept";
+          }
+          {
+            fromZone = "iot";
+            toZone = "wan";
+            action = "accept";
+          }
+          {
+            fromZone = "iot";
+            toZone = "lan";
+            action = "drop";
+          }
+        ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = lib.hasInfix ''iifname { "eth1" } jump zone_lan_forward'' config.networking.nftables.ruleset;
+      message = "router-zones example should dispatch lan traffic into the zone chain.";
+    }
+    {
+      assertion = lib.hasInfix ''oifname { "eth0" } accept comment "router-zones lan->wan"'' config.networking.nftables.ruleset;
+      message = "router-zones example should render the explicit lan-to-wan policy.";
+    }
+    {
+      assertion = lib.hasInfix ''oifname { "eth1" } drop comment "router-zones iot->lan"'' config.networking.nftables.ruleset;
+      message = "router-zones example should render the explicit iot-to-lan drop policy.";
+    }
+    {
+      assertion = lib.hasInfix ''return comment "router-zones default for lan"'' config.networking.nftables.ruleset;
+      message = "router-zones example should keep the base firewall in control by default.";
+    }
+    {
+      assertion = !(lib.hasInfix "zone_lan_input" config.networking.nftables.ruleset);
+      message = "router-zones example must stay forward-only and not create input-zone chains.";
+    }
+  ]);
+
   readme-common-wan-policy-eval = mkDocExampleCheck "readme-common-wan-policy" [
     self.nixosModules.router-firewall
     {
@@ -276,6 +337,69 @@ in
     {
       assertion = builtins.elem "--ssh" config.services.tailscale.extraUpFlags;
       message = "router-tailscale docs example should render SSH up flag.";
+    }
+  ]);
+
+  docs-router-bgp-proxmox-lab-eval = mkDocExampleCheck "docs-router-bgp-proxmox-lab" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-firewall
+    self.nixosModules.router-bgp
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "enp1s0";
+
+        routedInterfaces = {
+          lan = {
+            device = "br-lan";
+            ipv4Address = "10.10.20.1/24";
+            dns = [ "10.10.20.1" ];
+            requiredForOnline = "routable";
+          };
+
+          transit = {
+            device = "enp2s0";
+            ipv4Address = "10.10.254.1/30";
+            requiredForOnline = "carrier";
+          };
+        };
+      };
+
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "enp1s0" ];
+        lanInterfaces = [ "br-lan" ];
+        wanTcpPorts = [ 22 ];
+        extraTrustedInterfaces = [ "enp2s0" ];
+      };
+
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.20.1";
+        neighbors."10.10.254.2" = {
+          remoteAs = 65010;
+          description = "proxmox-frr";
+          nextHopSelf = true;
+        };
+        networks = [
+          "10.10.20.0/24"
+          "10.10.30.0/24"
+        ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.services.frr.bgpd.enable;
+      message = "router-bgp Proxmox lab example should enable FRR bgpd.";
+    }
+    {
+      assertion = builtins.elem 179 config.services.router-firewall.trustedTcpPorts;
+      message = "router-bgp Proxmox lab example should expose TCP 179 through router-firewall trustedTcpPorts.";
+    }
+    {
+      assertion = builtins.elem "enp2s0" config.services.router-firewall.extraTrustedInterfaces;
+      message = "router-bgp Proxmox lab example should mark the transit interface as trusted.";
     }
   ]);
 
@@ -516,57 +640,6 @@ in
     {
       assertion = lib.hasInfix "iifname \"eth1\" ether saddr != @allowed_macs_eth1 log prefix \"MAC-REJECT: \" drop" config.networking.nftables.ruleset;
       message = "router-security-hardened example should render MAC enforcement rule.";
-    }
-  ]);
-
-  docs-router-zones-example-eval = mkDocExampleCheck "docs-router-zones-example" [
-    self.nixosModules.router-firewall
-    self.nixosModules.router-zones
-    {
-      services.router-firewall = {
-        enable = true;
-        wanInterfaces = [ "eth0" ];
-      };
-      services.router-zones = {
-        enable = true;
-        zones = {
-          wan.interfaces = [ "eth0" ];
-          lan.interfaces = [ "eth1" ];
-          iot = {
-            interfaces = [ "eth2" ];
-            defaultForwardPolicy = "drop";
-          };
-        };
-        policies = [
-          { fromZone = "lan"; toZone = "wan"; action = "accept"; }
-          { fromZone = "iot"; toZone = "wan"; action = "accept"; }
-          {
-            fromZone = "iot";
-            toZone = "lan";
-            action = "drop";
-            extraRules = "ip daddr 10.10.10.50 tcp dport 8123 accept";
-          }
-        ];
-      };
-    }
-  ] (config: [
-    {
-      assertion = lib.hasInfix "jump zone_lan_forward" config.networking.nftables.ruleset;
-      message = "router-zones example should render lan zone forward jump.";
-    }
-    {
-      assertion = lib.hasInfix "chain zone_iot_forward" config.networking.nftables.ruleset;
-      message = "router-zones example should render iot zone forward chain.";
-    }
-    {
-      assertion =
-        lib.hasInfix "comment \"Policy: iot -> lan\"" config.networking.nftables.ruleset
-        && lib.hasInfix "ip daddr 10.10.10.50 tcp dport 8123 accept" config.networking.nftables.ruleset;
-      message = "router-zones example should render complex policy with extraRules.";
-    }
-    {
-      assertion = lib.hasInfix "jump zone_wan_input" config.networking.nftables.ruleset;
-      message = "router-zones example should render wan zone input jump.";
     }
   ]);
 

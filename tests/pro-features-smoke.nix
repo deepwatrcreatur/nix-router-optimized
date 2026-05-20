@@ -136,6 +136,113 @@ in
     ])
   ];
 
+  router-bgp-firewall-eval = eval.mkNixosEvalCheck "router-bgp-firewall" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-bgp
+    firewallBase
+    {
+      services.router-firewall.extraTrustedInterfaces = [ "transit0" ];
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.20.1";
+        neighbors."10.10.254.2" = { remoteAs = 65010; };
+        networks = [ "10.10.20.0/24" ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.frr.bgpd.enable;
+        message = "router-bgp should still enable frr bgpd when router-firewall is enabled.";
+      }
+      {
+        assertion = builtins.elem 179 config.services.router-firewall.trustedTcpPorts;
+        message = "router-bgp should register TCP 179 in router-firewall trustedTcpPorts.";
+      }
+      {
+        assertion = !(builtins.elem 179 config.networking.firewall.allowedTCPPorts);
+        message = "router-bgp should not use native allowedTCPPorts when router-firewall is enabled.";
+      }
+    ])
+  ];
+
+  router-bgp-ha-blocked-eval = eval.mkNixosEvalFailureCheck "router-bgp-ha-blocked" [
+    self.nixosModules.router-ha
+    self.nixosModules.router-bgp
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "lan0";
+      };
+
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.10.1";
+        neighbors."10.10.10.2" = { remoteAs = 65002; };
+      };
+    }
+  ];
+
+  router-bgp-auth-afi-policy-eval = eval.mkNixosEvalCheck "router-bgp-auth-afi-policy" [
+    self.nixosModules.router-bgp
+    {
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.20.1";
+        addressFamilies = {
+          ipv4Unicast = {
+            enable = true;
+            networks = [ "10.10.20.0/24" ];
+          };
+          ipv6Unicast = {
+            enable = true;
+            networks = [ "fd00:20::/64" ];
+          };
+        };
+        neighbors."10.10.254.2" = {
+          remoteAs = 65010;
+          description = "proxmox-frr";
+          passwordFile = "/run/agenix/bgp-proxmox-password";
+          addressFamilies = [
+            "ipv4-unicast"
+            "ipv6-unicast"
+          ];
+          importPolicy.ipv4Unicast = {
+            allowCidrs = [ "10.10.0.0/16" ];
+            defaultAction = "deny";
+          };
+          exportPolicy.ipv6Unicast = {
+            allowCidrs = [ "fd00:20::/64" ];
+            denyCidrs = [ "::/0" ];
+            defaultAction = "deny";
+          };
+        };
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = lib.hasInfix "neighbor 10.10.254.2 password __ROUTER_BGP_SECRET_10_10_254_2__" config.services.frr.config;
+        message = "router-bgp should render a runtime secret placeholder instead of embedding the BGP password.";
+      }
+      {
+        assertion = lib.hasInfix "address-family ipv6 unicast" config.services.frr.config;
+        message = "router-bgp should render explicit IPv6 unicast address-family config.";
+      }
+      {
+        assertion = lib.hasInfix "route-map RBGP_10_10_254_2_ipv6_unicast_out deny 10" config.services.frr.config;
+        message = "router-bgp should render bounded route-map policy blocks.";
+      }
+      {
+        assertion = lib.hasInfix "/run/agenix/bgp-proxmox-password" config.systemd.services.frr.preStart;
+        message = "router-bgp should consume BGP neighbor secrets from runtime files in frr preStart.";
+      }
+    ])
+  ];
+
   router-ha-dns-unbound-eval = eval.mkNixosEvalCheck "router-ha-dns-unbound" [
     self.nixosModules.router-ha
     self.nixosModules.router-dns-service

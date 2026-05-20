@@ -19,16 +19,16 @@ tracked separately from the dashboard planning docs.
 ## Current Ranked Queue
 
 - [35-router-zones-composition-reset](./35-router-zones-composition-reset.md) — `in-progress`
-- [31-router-bgp-support-boundary-and-docs](./31-router-bgp-support-boundary-and-docs.md) — `in-progress`
-- [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `in-progress`
-- [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `in-progress`
-- [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `in-progress`
 
 ## Recently Completed
 
 - [38-router-clat-first-slice-contract-and-assertions](./38-router-clat-first-slice-contract-and-assertions.md) — `done`
 - [37-declarative-clat-design-and-incubation](./37-declarative-clat-design-and-incubation.md) — `done`
 - [36-recent-correctness-fixes-geoip-and-runtime-token-alignment](./36-recent-correctness-fixes-geoip-and-runtime-token-alignment.md) — `done`
+- [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `done`
+- [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `done`
+- [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `done`
+- [31-router-bgp-support-boundary-and-docs](./31-router-bgp-support-boundary-and-docs.md) — `done`
 - [29-router-module-eval-and-smoke-skill](./29-router-module-eval-and-smoke-skill.md) — `done`
 - [30-router-diag-and-boundary-skills](./30-router-diag-and-boundary-skills.md) — `done`
 - [16-router-tunnels-module](./16-router-tunnels-module.md) — `done`
