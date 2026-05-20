@@ -14,6 +14,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [08](./08-styx46-incorporation-strategy-and-project-identity.md) | Best Incorporation Strategy for `styx46`-Style Functionality | 2026-05-18 | Closed |
 | [09](./09-declarative-clat-design-review-and-first-slice-boundary.md) | Declarative CLAT Design Review and First-Slice Boundary | 2026-05-18 | Closed |
 | [10](./10-clat-first-slice-lessons-cleanup-and-refinement.md) | CLAT First-Slice Lessons, Cleanup, and Refinement | 2026-05-20 | Closed |
+| [11](./11-phpipam-vs-repo-native-host-inventory.md) | Whether `phpIPAM` Should Organize IP-to-Host Inventory | 2026-05-19 | Closed |
 
 ## Methodology
 
