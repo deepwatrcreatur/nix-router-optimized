@@ -19,6 +19,7 @@ tracked separately from the dashboard planning docs.
 ## Current Ranked Queue
 
 - [35-router-zones-composition-reset](./35-router-zones-composition-reset.md) — `in-progress`
+- [39-router-clat-post-landing-cleanup-and-boundary-surfacing](./39-router-clat-post-landing-cleanup-and-boundary-surfacing.md) — `pending`
 
 ## Recently Completed
 
