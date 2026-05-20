@@ -36,6 +36,7 @@ If you are assigning or running agents against this repo, start with:
 - **Router NTP**: Chrony-based NTP server with per-subnet access controls and firewall integration
 - **NAT64**: Tayga-based stateless NAT64 with automatic firewall forward rules
 - **DNS64**: Unbound dns64-module wiring for AAAA synthesis from A records
+- **CLAT (Experimental First Slice)**: Contract-oriented legacy IPv4 to IPv6 translation surface with assertions, firewall hooks, and intentionally narrow non-HA scope
 - **SQM**: Script-based smart queue management (fq_codel/CAKE) for WAN shaping
 - **mDNS Reflector**: Avahi mDNS reflector for cross-VLAN service discovery
 - **UPnP/NAT-PMP**: miniupnpd with nftables jump-rule integration
@@ -559,6 +560,29 @@ Pair with `router-dns64` for full NAT64 operation (requires `router-dns-service.
 services.router-dns64.enable = true;
 # prefix auto-derives from router-nat64.ipv6Prefix
 ```
+
+### router-clat
+Experimental first-slice CLAT-style surface for legacy IPv4 clients on IPv6-capable uplinks:
+- exports a bounded declarative contract under `services.router-clat`
+- validates listen/upstream topology and overlap hazards early
+- can add narrow `router-firewall` allowances for the declared CLAT path
+- does **not** yet claim a full router-grade runtime translation/backend story
+- should currently be treated as a single-router, non-HA feature with a provisional name
+
+Example:
+
+```nix
+services.router-clat = {
+  enable = true;
+  upstreamInterface = "wan";
+  listenInterfaces = [ "lan" ];
+};
+```
+
+If you enable `router-clat`, read [`docs/DECLARATIVE_CLAT.md`](./docs/DECLARATIVE_CLAT.md)
+for the current boundary. The present slice is contract-heavy on purpose: it
+surfaces assumptions and safety checks before the repo claims a complete CLAT
+runtime implementation.
 
 ### router-sqm
 Smart queue management for WAN uplink shaping. Wraps `tc` with fq_codel/CAKE via a

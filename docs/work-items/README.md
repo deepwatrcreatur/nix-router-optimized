@@ -18,11 +18,10 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [35-router-zones-composition-reset](./35-router-zones-composition-reset.md) — `in-progress`
-- [39-router-clat-post-landing-cleanup-and-boundary-surfacing](./39-router-clat-post-landing-cleanup-and-boundary-surfacing.md) — `pending`
-
 ## Recently Completed
 
+- [39-router-clat-post-landing-cleanup-and-boundary-surfacing](./39-router-clat-post-landing-cleanup-and-boundary-surfacing.md) — `done`
+- [35-router-zones-composition-reset](./35-router-zones-composition-reset.md) — `done`
 - [38-router-clat-first-slice-contract-and-assertions](./38-router-clat-first-slice-contract-and-assertions.md) — `done`
 - [37-declarative-clat-design-and-incubation](./37-declarative-clat-design-and-incubation.md) — `done`
 - [36-recent-correctness-fixes-geoip-and-runtime-token-alignment](./36-recent-correctness-fixes-geoip-and-runtime-token-alignment.md) — `done`

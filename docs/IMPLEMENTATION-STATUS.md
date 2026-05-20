@@ -1,6 +1,29 @@
 # Implementation Status
 
-Last updated: 2026-03-14
+Last updated: 2026-05-20
+
+## Experimental Router Modules
+
+### `router-clat` - FIRST SLICE ONLY
+
+`router-clat` now exists in the exported module set, but it should not be read
+as a fully mature transition feature.
+
+Current state:
+
+- declarative option surface exists under `services.router-clat`
+- assertion coverage exists for listen/upstream topology and NAT64 overlap
+- optional `router-firewall` hooks exist for the bounded CLAT path
+- enable-time warnings now call out the experimental and non-HA boundary
+
+What it does **not** yet claim:
+
+- a complete runtime translation backend story
+- mature operator guidance for broad deployment
+- HA/active-owner failover support
+- stable final naming beyond the current provisional `router-clat` label
+
+For the actual design and boundary, see [`DECLARATIVE_CLAT.md`](./DECLARATIVE_CLAT.md).
 
 ## Phase 1: Core Dashboard - COMPLETE
 
