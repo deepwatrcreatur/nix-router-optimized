@@ -15,12 +15,12 @@ Tightens kernel parameters to reduce attack surface:
 
 ### Geo-IP Blocking
 Declarative blocking of entire countries using `nftables` sets and the IPDeny data source.
-- Automatic daily updates of IP sets.
+- Automatic boot-time and daily updates of IP sets.
 - Early drop in the `input` chain before any services are reached.
 
 ### MAC Security
 Interface-specific MAC address whitelisting.
-- **Alert mode**: Log unknown MAC addresses but allow traffic.
+- **Alert mode**: Log unknown MAC addresses and continue normal forward-policy evaluation.
 - **Enforce mode**: Log and drop traffic from unknown MAC addresses.
 - Early enforcement in the `forward` chain.
 
@@ -68,5 +68,5 @@ services.router-security-hardened = {
 ## Integration Notes
 
 - Requires `services.router-firewall.enable = true` for Geo-IP and MAC security.
-- Geo-IP blocking depends on `http://www.ipdeny.com` for IP zone files.
+- Geo-IP blocking depends on `https://www.ipdeny.com` for IP zone files.
 - MAC security enforces whitelists on the `forward` chain (traffic passing through the router).

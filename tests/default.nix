@@ -47,6 +47,10 @@ let
     inherit self eval;
   };
 
+  routerSecurityHardeningChecks = import ./router-security-hardened.nix {
+    inherit self lib eval;
+  };
+
   routerZonesChecks = import ./router-zones.nix {
     inherit self lib eval;
   };
@@ -88,6 +92,7 @@ in
 // nptv6Checks
 // pvdChecks
 // keaChecks
+// routerSecurityHardeningChecks
 // routerZonesChecks
 // lib.mapAttrs' (
   name: module:
