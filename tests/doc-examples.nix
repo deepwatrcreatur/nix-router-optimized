@@ -662,6 +662,10 @@ in
       assertion = lib.hasInfix "CLAT DNS listener" config.networking.nftables.ruleset;
       message = "router-clat should inject DNS listener input rules.";
     }
+    {
+      assertion = lib.hasInfix "CLAT: WAN to translation (return)" config.networking.nftables.ruleset;
+      message = "router-clat should inject return-path forward rules.";
+    }
   ]);
 
   docs-router-clat-reject-loop-topology-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-loop-topology" [
@@ -729,6 +733,23 @@ in
         upstreamInterface = "eth0";
         listenInterfaces = [ "eth1" ];
         legacyIpv4Pool = "192.168.255.0/24";
+      };
+      services.router-nat64 = {
+        enable = true;
+        ipv4Pool = "192.168.255.0/24";
+      };
+    }
+  ];
+
+  docs-router-clat-reject-nat64-pool-subset-overlap-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-nat64-pool-subset-overlap" [
+    self.nixosModules.router-clat
+    self.nixosModules.router-nat64
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+        legacyIpv4Pool = "192.168.255.128/25";
       };
       services.router-nat64 = {
         enable = true;
