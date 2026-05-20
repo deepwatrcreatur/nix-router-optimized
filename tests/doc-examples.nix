@@ -7,6 +7,10 @@
 }:
 
 let
+  eval = import ./nixos-eval.nix {
+    inherit lib pkgs nixpkgs system;
+  };
+
   baseModule = {
     networking.hostName = "router-check";
     system.stateVersion = "25.11";
@@ -692,6 +696,160 @@ in
       assertion =
         lib.hasInfix "ssh://router.example.com" config.systemd.services.router-dashboard.environment.DASHBOARD_REMOTE_ADMIN;
       message = "Dashboard remote access example should include the documented SSH endpoint.";
+    }
+  ]);
+
+  # ── router-clat contract assertions ──────────────────────────────────
+
+  docs-router-clat-valid-minimal-eval = mkDocExampleCheck "docs-router-clat-valid-minimal" [
+    self.nixosModules.router-clat
+    self.nixosModules.router-firewall
+    self.nixosModules.router-optimizations
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+      };
+      services.router-firewall.enable = true;
+      services.router-optimizations = {
+        enable = true;
+        interfaces.wan = { device = "eth0"; role = "wan"; label = "WAN"; };
+        interfaces.lan = { device = "eth1"; role = "lan"; label = "LAN"; };
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.boot.kernel.sysctl."net.ipv4.ip_forward" == 1;
+      message = "router-clat should declare ipv4 forwarding.";
+    }
+    {
+      assertion = config.boot.kernel.sysctl."net.ipv6.conf.all.forwarding" == 1;
+      message = "router-clat should declare ipv6 forwarding.";
+    }
+    {
+      assertion = lib.hasInfix "clat0" config.networking.nftables.ruleset;
+      message = "router-clat should inject firewall forward rules for clat0.";
+    }
+    {
+      assertion = lib.hasInfix "CLAT DNS listener" config.networking.nftables.ruleset;
+      message = "router-clat should inject DNS listener input rules.";
+    }
+    {
+      assertion = lib.hasInfix "CLAT: WAN to translation (return)" config.networking.nftables.ruleset;
+      message = "router-clat should inject return-path forward rules.";
+    }
+  ]);
+
+  docs-router-clat-reject-loop-topology-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-loop-topology" [
+    self.nixosModules.router-clat
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth0" "eth1" ];
+      };
+    }
+  ];
+
+  docs-router-clat-reject-empty-listen-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-empty-listen" [
+    self.nixosModules.router-clat
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [];
+      };
+    }
+  ];
+
+  docs-router-clat-reject-gc-exceeds-ttl-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-gc-exceeds-ttl" [
+    self.nixosModules.router-clat
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+        mappingTtl = 30;
+        gcInterval = 60;
+      };
+    }
+  ];
+
+  docs-router-clat-coexist-nat64-valid-eval = mkDocExampleCheck "docs-router-clat-coexist-nat64-valid" [
+    self.nixosModules.router-clat
+    self.nixosModules.router-nat64
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+        legacyIpv4Pool = "100.64.46.0/24";
+        mappingPrefix6 = "fd46:ca17:1::/96";
+      };
+      services.router-nat64 = {
+        enable = true;
+        ipv4Pool = "192.168.255.0/24";
+        ipv6Prefix = "64:ff9b::/96";
+      };
+    }
+  ] (_config: [
+    # Non-overlapping pools — this should pass all assertions.
+  ]);
+
+  docs-router-clat-reject-nat64-pool-overlap-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-nat64-pool-overlap" [
+    self.nixosModules.router-clat
+    self.nixosModules.router-nat64
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+        legacyIpv4Pool = "192.168.255.0/24";
+      };
+      services.router-nat64 = {
+        enable = true;
+        ipv4Pool = "192.168.255.0/24";
+      };
+    }
+  ];
+
+  docs-router-clat-reject-nat64-pool-subset-overlap-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-nat64-pool-subset-overlap" [
+    self.nixosModules.router-clat
+    self.nixosModules.router-nat64
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+        legacyIpv4Pool = "192.168.255.128/25";
+      };
+      services.router-nat64 = {
+        enable = true;
+        ipv4Pool = "192.168.255.0/24";
+      };
+    }
+  ];
+
+  docs-router-dashboard-technitium-token-resolution-eval = mkDocExampleCheck "docs-router-dashboard-technitium-token-resolution" [
+    self.nixosModules.router-dashboard
+    self.nixosModules.router-technitium
+    {
+      services.router-dashboard.enable = true;
+      services.router-technitium.enable = true;
+    }
+  ] (config: [
+    {
+      assertion =
+        config.systemd.services.router-dashboard.environment.TECHNITIUM_RUNTIME_API_KEY_FILE
+        == "/var/lib/private/technitium-dns-server/nix-router-api-token";
+      message = "router-dashboard should export the runtime-first Technitium token path.";
+    }
+    {
+      assertion =
+        lib.elem "/var/lib/private/technitium-dns-server/nix-router-api-token"
+          config.systemd.services.router-dashboard.serviceConfig.ReadOnlyPaths;
+      message = "router-dashboard should be allowed to read the Technitium runtime token path.";
     }
   ]);
 }

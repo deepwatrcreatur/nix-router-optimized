@@ -22,6 +22,9 @@ tracked separately from the dashboard planning docs.
 
 ## Recently Completed
 
+- [38-router-clat-first-slice-contract-and-assertions](./38-router-clat-first-slice-contract-and-assertions.md) — `done`
+- [37-declarative-clat-design-and-incubation](./37-declarative-clat-design-and-incubation.md) — `done`
+- [36-recent-correctness-fixes-geoip-and-runtime-token-alignment](./36-recent-correctness-fixes-geoip-and-runtime-token-alignment.md) — `done`
 - [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `done`
 - [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `done`
 - [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `done`

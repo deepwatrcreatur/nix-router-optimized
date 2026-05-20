@@ -382,7 +382,8 @@ firewall wiring.
 ### router-technitium
 Opt-in Technitium DNS service bundle:
 - enables `services.technitium-dns-server`
-- optionally exports `TECHNITIUM_API_KEY_FILE` from an age secret
+- optionally exports `TECHNITIUM_API_KEY_FILE` from an age secret while
+  preferring the runtime token file when one is present
 - wires declarative blocklist presets through `services.router.dnsBlockLists`
 - can add declarative DHCP reservations through `services.router-technitium.dhcpReservations`
 

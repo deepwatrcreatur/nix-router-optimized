@@ -9,6 +9,10 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [03](./03-router-backup-standby-and-shared-wan.md) | Router-Backup Standby and Shared-WAN Failure Mode | 2026-05-09 | Closed |
 | [04](./04-router-security-zones-recovery-review.md) | Recovered Security/Zones Work Review | 2026-05-09 | Closed |
 | [05](./05-router-bgp-support-boundary.md) | Whether BGP Should Be a Supported Flake Option | 2026-05-16 | Closed |
+| [06](./06-recent-work-code-review-and-refactor-boundary.md) | Recent Work Code Review and Refactor Boundary | 2026-05-17 | Closed |
+| [07](./07-styx46-incorporation-boundary.md) | Whether `styx46` Should Enter the Flake Boundary | 2026-05-18 | Closed |
+| [08](./08-styx46-incorporation-strategy-and-project-identity.md) | Best Incorporation Strategy for `styx46`-Style Functionality | 2026-05-18 | Closed |
+| [09](./09-declarative-clat-design-review-and-first-slice-boundary.md) | Declarative CLAT Design Review and First-Slice Boundary | 2026-05-18 | Closed |
 
 ## Methodology
 

@@ -75,6 +75,7 @@ CADDY_DNS_CACHE = {
 
 # Technitium DNS Server configuration
 TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
+TECHNITIUM_RUNTIME_API_KEY_FILE = os.environ.get('TECHNITIUM_RUNTIME_API_KEY_FILE', '')
 TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
 TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
 KEA_LEASE_FILES = [
@@ -397,7 +398,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 if result.returncode == 0:
                     systemctl = path
                     break
-            except:
+            except OSError:
                 continue
 
         if not systemctl:
@@ -1238,7 +1239,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 if test.returncode == 0:
                     ping_cmd = path
                     break
-            except:
+            except OSError:
                 continue
 
         results = []
@@ -2079,10 +2080,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         if TECHNITIUM_TOKEN_CACHE['token'] and time.time() < TECHNITIUM_TOKEN_CACHE['expires']:
             return TECHNITIUM_TOKEN_CACHE['token']
 
-        # Read token from file
-        if TECHNITIUM_API_KEY_FILE and os.path.exists(TECHNITIUM_API_KEY_FILE):
+        # Read token from file using the same runtime-first contract as
+        # router-technitium.
+        for token_path in [TECHNITIUM_RUNTIME_API_KEY_FILE, TECHNITIUM_API_KEY_FILE]:
+            if not token_path or not os.path.exists(token_path):
+                continue
             try:
-                with open(TECHNITIUM_API_KEY_FILE, 'r') as f:
+                with open(token_path, 'r') as f:
                     token = f.read().strip()
                     if token:
                         # Cache for 25 minutes (Technitium default is 30 min)
@@ -2090,7 +2094,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                         TECHNITIUM_TOKEN_CACHE['expires'] = time.time() + 1500
                         return token
             except:
-                pass
+                continue
 
         return None
 
