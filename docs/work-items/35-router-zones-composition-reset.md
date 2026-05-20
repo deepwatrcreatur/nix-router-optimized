@@ -1,6 +1,6 @@
 # 35 - Router Zones Composition Reset
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 

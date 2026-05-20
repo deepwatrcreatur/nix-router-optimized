@@ -129,9 +129,12 @@ in
         }
       ];
 
-      warnings = mkIf (hasRouterFirewall && !routerFirewallEnabled) [
-        "router-clat: router-firewall is not enabled. Defense-in-depth recommends enabling router-firewall when using CLAT translation."
-      ];
+      warnings = [
+        "router-clat: this is an experimental first-slice module. It currently validates contract and topology assumptions, but does not yet claim a complete router-grade runtime translation implementation."
+        "router-clat: the current slice should be treated as single-router and non-HA. Active-owner/failover behavior remains intentionally narrow."
+        "router-clat: the `router-clat` name remains provisional until the runtime story and operator-facing boundary stabilize."
+      ] ++ optional (hasRouterFirewall && !routerFirewallEnabled)
+        "router-clat: router-firewall is not enabled. Defense-in-depth recommends enabling router-firewall when using CLAT translation.";
 
       boot.kernel.sysctl = {
         "net.ipv4.ip_forward" = mkDefault 1;

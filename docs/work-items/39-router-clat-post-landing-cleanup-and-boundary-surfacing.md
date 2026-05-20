@@ -1,6 +1,6 @@
 # 39 - Router CLAT Post-Landing Cleanup and Boundary Surfacing
 
-## Status: `pending`
+## Status: `done`
 
 ## Objective
 
@@ -27,33 +27,33 @@ runtime-oriented CLAT work.
 
 ## Requirements
 
-- [ ] Add `router-clat` to the top-level `README.md` with wording that is
+- [x] Add `router-clat` to the top-level `README.md` with wording that is
       explicit about its current maturity:
       - experimental
       - first-slice / contract-oriented
       - not yet a full runtime translation story
-- [ ] Surface `router-clat` in the most relevant status doc(s), with a clear
+- [x] Surface `router-clat` in the most relevant status doc(s), with a clear
       maturity description rather than implying general availability
-- [ ] Add enable-time warning language or equivalent boundary signaling in
+- [x] Add enable-time warning language or equivalent boundary signaling in
       `modules/router-clat.nix` so users are reminded that:
       - the current slice is bounded
       - runtime translation is not yet fully realized
       - HA/active-owner assumptions are still narrow
-- [ ] Tighten the docs around the provisional naming boundary so contributors do
+- [x] Tighten the docs around the provisional naming boundary so contributors do
       not forget that `router-clat` became load-bearing in the option tree before
       stabilization was fully settled
-- [ ] Add at least one explicit note about current HA/non-HA expectations so
+- [x] Add at least one explicit note about current HA/non-HA expectations so
       operators do not infer a failover story that the module does not yet claim
 
 ## Verification
 
-- [ ] A user scanning `README.md` can tell that `router-clat` exists
-- [ ] That same user can also tell that it is **not yet** a normal mature
+- [x] A user scanning `README.md` can tell that `router-clat` exists
+- [x] That same user can also tell that it is **not yet** a normal mature
       operator-facing feature
-- [ ] Enabling `services.router-clat.enable = true;` no longer relies on the user
+- [x] Enabling `services.router-clat.enable = true;` no longer relies on the user
       reading deep design docs to understand that the current slice is
       experimental and incomplete
-- [ ] The repo's status/doc surfaces do not overclaim CLAT maturity
+- [x] The repo's status/doc surfaces do not overclaim CLAT maturity
 
 ## Notes
 

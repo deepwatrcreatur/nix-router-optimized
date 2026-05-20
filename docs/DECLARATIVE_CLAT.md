@@ -2,12 +2,13 @@
 
 ## Status
 
-Draft design document for work item 37.
+Originally drafted for work item 37, then partially landed as the bounded
+first-slice `router-clat` module in work item 38.
 
-This document defines the intended repo-native direction for a future
-CLAT-style capability in `nix-router-optimized`. It is deliberately design-first:
-it does **not** mean the feature is mature, implemented, or ready to present as a
-normal router module today.
+This document still defines the intended repo-native direction for the broader
+CLAT-style capability in `nix-router-optimized`. The currently merged module is
+only a first slice: it is assertion-heavy, intentionally narrow, and not yet a
+claim of full runtime completeness, HA readiness, or final naming stability.
 
 ## Problem Statement
 
