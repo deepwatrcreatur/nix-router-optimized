@@ -14,6 +14,95 @@ let
   hasApiSecret = secretName != null && hasAttr secretName ageSecrets;
   configuredApiTokenPath = if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent";
   runtimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
+  encryptedDnsModule = types.submodule {
+    options = {
+      enable = mkEnableOption "native encrypted DNS features in Technitium";
+
+      enableDnsOverTls = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable DNS-over-TLS (DoT) when encrypted DNS is enabled.";
+      };
+
+      enableDnsOverHttps = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable DNS-over-HTTPS (DoH) when encrypted DNS is enabled.";
+      };
+
+      enableDnsOverHttp3 = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable DNS-over-HTTPS over HTTP/3 when encrypted DNS is enabled.";
+      };
+
+      enableDnsOverQuic = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable DNS-over-QUIC (DoQ) when encrypted DNS is enabled.";
+      };
+
+      dnsOverTlsPort = mkOption {
+        type = types.port;
+        default = 853;
+        description = "Port for DNS-over-TLS.";
+      };
+
+      dnsOverHttpsPort = mkOption {
+        type = types.port;
+        default = 443;
+        description = "Port for DNS-over-HTTPS.";
+      };
+
+      dnsOverQuicPort = mkOption {
+        type = types.port;
+        default = 853;
+        description = "Port for DNS-over-QUIC.";
+      };
+
+      webServiceTlsPort = mkOption {
+        type = types.port;
+        default = 53443;
+        description = "Technitium web-service TLS port used to serve native DoH.";
+      };
+
+      webServiceLocalAddresses = mkOption {
+        type = types.listOf types.str;
+        default = [ "[::]" ];
+        description = ''
+          Addresses Technitium should use for its TLS-enabled web service when
+          native DoH is enabled.
+        '';
+      };
+
+      dnsTlsCertificatePath = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "PKCS#12/PFX certificate bundle path for native DoT/DoQ listeners.";
+      };
+
+      dnsTlsCertificatePasswordFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "File containing the password for dnsTlsCertificatePath.";
+      };
+
+      webServiceTlsCertificatePath = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = ''
+          PKCS#12/PFX certificate bundle path for Technitium's native HTTPS
+          listener used by DoH.
+        '';
+      };
+
+      webServiceTlsCertificatePasswordFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "File containing the password for webServiceTlsCertificatePath.";
+      };
+    };
+  };
   exclusionModule = types.submodule {
     options = {
       startingAddress = mkOption {
@@ -406,6 +495,101 @@ let
     echo "Technitium DNS listeners synchronized"
   '';
 
+  encryptedDnsSyncScript = pkgs.writeShellScript "technitium-sync-encrypted-dns" ''
+    set -euo pipefail
+    umask 077
+
+    ${commonShellHelpers}
+
+    if ! resolve_api_token_file >/dev/null; then
+      echo "Technitium API token file not found; cannot sync encrypted DNS settings" >&2
+      exit 1
+    fi
+
+    ready=false
+    for i in {1..30}; do
+      if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:5380/api/dns/status >/dev/null 2>&1; then
+        ready=true
+        break
+      fi
+      echo "Waiting for Technitium DNS Server to start..."
+      sleep 2
+    done
+
+    if [ "$ready" != true ]; then
+      echo "Timed out after 60s waiting for Technitium DNS Server at http://127.0.0.1:5380/api/dns/status" >&2
+      exit 1
+    fi
+
+    tmpdir="$(${pkgs.coreutils}/bin/mktemp -d)"
+    trap '${pkgs.coreutils}/bin/rm -rf "$tmpdir"' EXIT
+
+    copy_trimmed_secret() {
+      local src="$1"
+      local dest="$2"
+      ${pkgs.coreutils}/bin/tr -d '\r\n' < "$src" > "$dest"
+    }
+
+    token_file="$tmpdir/token"
+    copy_trimmed_secret "$(resolve_api_token_file)" "$token_file"
+
+    cmd=(
+      ${pkgs.curl}/bin/curl -fsS -X POST
+      -H "Content-Type: application/x-www-form-urlencoded"
+      --data-urlencode "token@$token_file"
+      --data-urlencode "enableDnsOverTls=${if cfg.encryptedDns.enableDnsOverTls then "true" else "false"}"
+      --data-urlencode "enableDnsOverHttps=${if cfg.encryptedDns.enableDnsOverHttps then "true" else "false"}"
+      --data-urlencode "enableDnsOverHttp3=${if cfg.encryptedDns.enableDnsOverHttp3 then "true" else "false"}"
+      --data-urlencode "enableDnsOverQuic=${if cfg.encryptedDns.enableDnsOverQuic then "true" else "false"}"
+      --data-urlencode "dnsOverTlsPort=${toString cfg.encryptedDns.dnsOverTlsPort}"
+      --data-urlencode "dnsOverHttpsPort=${toString cfg.encryptedDns.dnsOverHttpsPort}"
+      --data-urlencode "dnsOverQuicPort=${toString cfg.encryptedDns.dnsOverQuicPort}"
+      --data-urlencode "webServiceEnableHttp3=${if cfg.encryptedDns.enableDnsOverHttp3 then "true" else "false"}"
+      --data-urlencode "webServiceTlsPort=${toString cfg.encryptedDns.webServiceTlsPort}"
+      --data-urlencode "webServiceLocalAddresses=${concatStringsSep "," cfg.encryptedDns.webServiceLocalAddresses}"
+      --data-urlencode "webServiceUseSelfSignedTlsCertificate=false"
+    )
+
+    maybe_add_text() {
+      local key="$1"
+      local value="$2"
+      if [ -n "$value" ]; then
+        cmd+=( --data-urlencode "$key=$value" )
+      fi
+    }
+
+    maybe_add_secret_file() {
+      local key="$1"
+      local src="$2"
+      local dest="$3"
+      if [ -n "$src" ]; then
+        copy_trimmed_secret "$src" "$dest"
+        cmd+=( --data-urlencode "$key@$dest" )
+      fi
+    }
+
+    ${optionalString (cfg.encryptedDns.enableDnsOverHttps || cfg.encryptedDns.enableDnsOverHttp3) ''
+      cmd+=( --data-urlencode "webServiceEnableTls=true" )
+    ''}
+    ${optionalString (cfg.encryptedDns.dnsTlsCertificatePath != null) ''
+      maybe_add_text "dnsTlsCertificatePath" "${toString cfg.encryptedDns.dnsTlsCertificatePath}"
+    ''}
+    ${optionalString (cfg.encryptedDns.webServiceTlsCertificatePath != null) ''
+      maybe_add_text "webServiceTlsCertificatePath" "${toString cfg.encryptedDns.webServiceTlsCertificatePath}"
+    ''}
+    ${optionalString (cfg.encryptedDns.dnsTlsCertificatePasswordFile != null) ''
+      maybe_add_secret_file "dnsTlsCertificatePassword" "${toString cfg.encryptedDns.dnsTlsCertificatePasswordFile}" "$tmpdir/dns-tls-password"
+    ''}
+    ${optionalString (cfg.encryptedDns.webServiceTlsCertificatePasswordFile != null) ''
+      maybe_add_secret_file "webServiceTlsCertificatePassword" "${toString cfg.encryptedDns.webServiceTlsCertificatePasswordFile}" "$tmpdir/web-tls-password"
+    ''}
+
+    cmd+=( "http://127.0.0.1:5380/api/settings/set" )
+    technitium_request "''${cmd[@]}" >/dev/null
+
+    echo "Technitium encrypted DNS settings synchronized"
+  '';
+
   dhcpReservationsJson = pkgs.writeText "technitium-dhcp-reservations.json" (
     builtins.toJSON (
       mapAttrsToList (name: reservation: reservation // { inherit name; }) cfg.dhcpReservations
@@ -691,6 +875,15 @@ in
       '';
     };
 
+    encryptedDns = mkOption {
+      type = encryptedDnsModule;
+      default = { };
+      description = ''
+        Optional native encrypted DNS settings synchronized into Technitium via
+        its HTTP API.
+      '';
+    };
+
     scopes = mkOption {
       type = types.attrsOf scopeModule;
       default = { };
@@ -757,6 +950,24 @@ in
       {
         assertion = cfg.listenEndPoints == [ ] || hasApiSecret;
         message = "services.router-technitium.listenEndPoints requires a Technitium API token secret.";
+      }
+      {
+        assertion = (!cfg.encryptedDns.enable) || hasApiSecret;
+        message = "services.router-technitium.encryptedDns requires a Technitium API token secret.";
+      }
+      {
+        assertion =
+          (!cfg.encryptedDns.enable)
+          || (!(cfg.encryptedDns.enableDnsOverTls || cfg.encryptedDns.enableDnsOverHttps || cfg.encryptedDns.enableDnsOverQuic))
+          || (cfg.encryptedDns.dnsTlsCertificatePath != null && cfg.encryptedDns.dnsTlsCertificatePasswordFile != null);
+        message = "Native DoT/DoH/DoQ requires dnsTlsCertificatePath and dnsTlsCertificatePasswordFile.";
+      }
+      {
+        assertion =
+          (!cfg.encryptedDns.enable)
+          || (!(cfg.encryptedDns.enableDnsOverHttps || cfg.encryptedDns.enableDnsOverHttp3))
+          || (cfg.encryptedDns.webServiceTlsCertificatePath != null && cfg.encryptedDns.webServiceTlsCertificatePasswordFile != null);
+        message = "Native DoH/HTTP3 requires webServiceTlsCertificatePath and webServiceTlsCertificatePasswordFile.";
       }
     ];
 
@@ -861,6 +1072,26 @@ in
 
       script = ''
         ${dhcpReservationScript}
+      '';
+    };
+
+    systemd.services.technitium-sync-encrypted-dns = mkIf (cfg.encryptedDns.enable && hasApiSecret) {
+      description = "Sync Technitium encrypted DNS settings";
+      after = [
+        "technitium-dns-server.service"
+        "agenix.service"
+        "technitium-sync-listeners.service"
+      ];
+      wants = [ "technitium-dns-server.service" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+
+      script = ''
+        ${encryptedDnsSyncScript}
       '';
     };
   };

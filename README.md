@@ -386,6 +386,7 @@ Opt-in Technitium DNS service bundle:
   preferring the runtime token file when one is present
 - wires declarative blocklist presets through `services.router.dnsBlockLists`
 - can add declarative DHCP reservations through `services.router-technitium.dhcpReservations`
+- can sync native encrypted DNS settings for DoH/DoT/DoQ through `services.router-technitium.encryptedDns`
 
 Example:
 
@@ -405,6 +406,13 @@ services.router-technitium = {
 The current reservation sync is intentionally conservative:
 - missing reservations are created automatically
 - existing conflicting reservations are left unchanged and logged instead of being mutated blindly
+
+Encrypted DNS notes:
+- recommended baseline is DoH
+- DoT can be added as a secondary compatibility endpoint
+- DoQ is optional and off by default
+- native DoH still requires `dnsTlsCertificatePath` plus `dnsTlsCertificatePasswordFile`
+- the native Technitium API expects PKCS#12/PFX certificate bundles plus password files, not separate PEM cert/key paths
 
 ### router-optimizations
 Core performance optimizations including kernel tuning, hardware offloads, and queue management.
