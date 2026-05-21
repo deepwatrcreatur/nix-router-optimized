@@ -1,6 +1,6 @@
 # 44 - Dashboard Inventory Browser Page and API
 
-## Status: `pending`
+## Status: `done`
 
 ## Objective
 
@@ -17,26 +17,33 @@ overview badge or sidecar note.
 
 ## Requirements
 
-- [ ] Add a dedicated inventory browse surface to the existing dashboard shell
-- [ ] Expose inventory data to the frontend through a bounded read-only API
+- [x] Add a dedicated inventory browse surface to the existing dashboard shell
+- [x] Expose inventory data to the frontend through a bounded read-only API
       endpoint or equivalent static artifact path
-- [ ] Support at least:
+- [x] Support at least:
       - subnet grouping
       - host/IP search or filtering
       - host/detail display
       - clear labels that this surface is read-only
-- [ ] Keep the page visually and behaviorally aligned with the existing
+- [x] Keep the page visually and behaviorally aligned with the existing
       `router-dashboard` shell
-- [ ] Do not add any write/edit path for inventory state
+- [x] Do not add any write/edit path for inventory state
 
 ## Verification
 
-- [ ] The dashboard exposes an explicit inventory page
-- [ ] Operators can answer “what host or IP is this?” and “what subnet does it
+- [x] The dashboard exposes an explicit inventory page
+- [x] Operators can answer “what host or IP is this?” and “what subnet does it
       belong to?” without leaving the dashboard
-- [ ] No mutable inventory action is introduced through the dashboard surface
+- [x] No mutable inventory action is introduced through the dashboard surface
 
 ## Notes
 
 This item is about the **browse page and bounded data access path**.
 Richer reconciliation states belong to follow-on work.
+
+## Outcome
+
+`router-dashboard` now ships an `Inventory` page backed by `/api/inventory`.
+The page provides subnet grouping, host/IP filtering, host detail inspection,
+and explicit read-only labeling while reusing the existing dashboard page shell.
+Runtime reconciliation overlays remain deferred to item `45`.

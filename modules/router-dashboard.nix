@@ -14,11 +14,361 @@ let
   cfg = config.services.router-dashboard;
   technitiumRuntimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
   hasRouterOption = path: hasAttrByPath path options;
+  hasRouterNetworking = hasRouterOption [ "services" "router-networking" "routedInterfaces" ];
+  hasRouterDhcp = hasRouterOption [ "services" "router-dhcp" "interfaces" ];
+  hasRouterKea = hasRouterOption [ "services" "router-kea" "dhcp4" "subnet" ];
+  hasRouterTechnitium = hasRouterOption [ "services" "router-technitium" "scopes" ];
   optimizationInterfaces =
     if hasRouterOption [ "services" "router-optimizations" "interfaces" ] then
       config.services.router-optimizations.interfaces or { }
     else
       { };
+  routedInterfaces = if hasRouterNetworking then config.services.router-networking.routedInterfaces or { } else { };
+  routerDhcpCfg = if hasRouterDhcp then config.services.router-dhcp else null;
+  routerDhcpEffectiveInterfaces =
+    if !hasRouterDhcp || !(routerDhcpCfg.enable or false) then
+      { }
+    else if routerDhcpCfg.interfaces != { } || !(routerDhcpCfg.autoInterfacesFromNetworking or true) then
+      filterAttrs (_name: iface: iface.enable) (routerDhcpCfg.interfaces or { })
+    else
+      mapAttrs (_name: _iface: {
+        enable = true;
+        poolOffset = 100;
+        poolSize = 100;
+        defaultLeaseTimeSec = 3600;
+        maxLeaseTimeSec = 43200;
+        dns = null;
+        emitDns = true;
+        emitRouter = true;
+        staticLeases = [ ];
+        extraDhcpServerConfig = { };
+      }) (
+        filterAttrs (_name: iface: elem iface.role (routerDhcpCfg.matchRoles or [ ])) routedInterfaces
+      );
+
+  parseInt = s: builtins.fromJSON s;
+
+  parseIPv4 =
+    ip:
+    let
+      octets = splitString "." ip;
+      parsedOctets = map parseInt octets;
+      validOctets = all (o: o >= 0 && o <= 255) parsedOctets;
+    in
+    assert length octets == 4;
+    assert validOctets;
+    ((elemAt parsedOctets 0) * 16777216)
+    + ((elemAt parsedOctets 1) * 65536)
+    + ((elemAt parsedOctets 2) * 256)
+    + (elemAt parsedOctets 3);
+
+  mod = a: b: a - ((builtins.div a b) * b);
+
+  intOctet = divisor: value: builtins.toString (mod (builtins.div value divisor) 256);
+
+  renderIPv4 =
+    value:
+    concatStringsSep "." [
+      (intOctet 16777216 value)
+      (intOctet 65536 value)
+      (intOctet 256 value)
+      (builtins.toString (mod value 256))
+    ];
+
+  pow2 = n: if n == 0 then 1 else 2 * pow2 (n - 1);
+
+  parseCidr =
+    cidr:
+    let
+      parts = splitString "/" cidr;
+      address = elemAt parts 0;
+      prefixLength = parseInt (elemAt parts 1);
+      hostCount = pow2 (32 - prefixLength);
+      network = builtins.div (parseIPv4 address) hostCount * hostCount;
+    in
+    assert length parts == 2;
+    assert prefixLength >= 0 && prefixLength <= 32;
+    {
+      inherit address prefixLength hostCount network;
+      broadcast = network + hostCount - 1;
+      cidr = "${renderIPv4 network}/${toString prefixLength}";
+    };
+
+  addToIPv4 = ip: delta: renderIPv4 (parseIPv4 ip + delta);
+
+  netmaskPrefixBits = {
+    "0" = 0;
+    "128" = 1;
+    "192" = 2;
+    "224" = 3;
+    "240" = 4;
+    "248" = 5;
+    "252" = 6;
+    "254" = 7;
+    "255" = 8;
+  };
+
+  prefixFromNetmask =
+    netmask:
+    let
+      octets = splitString "." netmask;
+      prefixBits = map (octet: netmaskPrefixBits.${octet} or (throw "Invalid IPv4 subnet mask octet `${octet}` in `${netmask}`")) octets;
+      contiguousTail =
+        let
+          go =
+            remaining: seenTail:
+            if remaining == [ ] then
+              true
+            else
+              let
+                current = builtins.head remaining;
+                rest = builtins.tail remaining;
+              in
+              if seenTail then
+                current == 0 && go rest true
+              else if current == 8 then
+                go rest false
+              else
+                go rest true;
+        in
+        go prefixBits false;
+    in
+    assert length octets == 4;
+    assert contiguousTail;
+    builtins.foldl' (sum: bits: sum + bits) 0 prefixBits;
+
+  sortById = builtins.sort (a: b: a.id < b.id);
+  sortByAddress = builtins.sort (a: b: (parseIPv4 a.address) < (parseIPv4 b.address));
+
+  mkProvenance = moduleName: optionPath: {
+    module = moduleName;
+    path = optionPath;
+    authority = "declarative";
+  };
+
+  mkRoutedDynamicPool =
+    parsed: dhcpIface:
+    let
+      start = parsed.network + dhcpIface.poolOffset;
+      end = start + dhcpIface.poolSize - 1;
+    in
+    assert dhcpIface.poolOffset >= 0;
+    assert dhcpIface.poolSize > 0;
+    assert start >= parsed.network;
+    assert end <= parsed.broadcast;
+    {
+      start = renderIPv4 start;
+      end = renderIPv4 end;
+    };
+
+  routedSubnetEntries = mapAttrsToList (
+    name: iface:
+    let
+      parsed = parseCidr iface.ipv4Address;
+      dhcpIface = routerDhcpEffectiveInterfaces.${name} or null;
+    in
+    {
+      id = "routed:${name}";
+      key = name;
+      label = name;
+      cidr = parsed.cidr;
+      gatewayAddress = parsed.address;
+      interface = {
+        device = iface.device;
+        role = iface.role;
+      };
+      dnsServers = iface.dns or [ ];
+      searchDomains = iface.domains or [ ];
+      dhcpBackend = if dhcpIface != null then "router-dhcp" else null;
+      dynamicPools =
+        if dhcpIface != null then
+          [
+            (mkRoutedDynamicPool parsed dhcpIface)
+          ]
+        else
+          [ ];
+      provenance = [
+        (mkProvenance "router-networking" "services.router-networking.routedInterfaces.${name}")
+      ];
+    }
+  ) routedInterfaces;
+
+  keaSubnetEntries =
+    if hasRouterKea && (config.services.router-kea.enable or false) then
+      [
+        {
+          id = "kea:dhcp4";
+          key = "kea-dhcp4";
+          label = "kea-dhcp4";
+          cidr = config.services.router-kea.dhcp4.subnet;
+          gatewayAddress = config.services.router-kea.dhcp4.gatewayAddress;
+          interface = null;
+          dnsServers = config.services.router-kea.dhcp4.dnsServers;
+          searchDomains = config.services.router-kea.dhcp4.searchDomains;
+          dhcpBackend = "kea";
+          dynamicPools = map (pool: {
+            start = pool.start;
+            end = pool.end;
+          }) config.services.router-kea.dhcp4.poolRanges;
+          provenance = [
+            (mkProvenance "router-kea" "services.router-kea.dhcp4")
+          ];
+        }
+      ]
+    else
+      [ ];
+
+  technitiumSubnetEntries =
+    if hasRouterTechnitium && (config.services.router-technitium.enable or false) then
+      mapAttrsToList (
+        name: scope:
+        let
+          prefixLength = prefixFromNetmask scope.subnetMask;
+          cidr = parseCidr "${scope.startingAddress}/${toString prefixLength}".cidr;
+        in
+        {
+          id = "technitium:${name}";
+          key = name;
+          label = name;
+          inherit cidr;
+          gatewayAddress = scope.routerAddress;
+          interface = null;
+          dnsServers = scope.dnsServers;
+          searchDomains =
+            optional (scope.domainName != null) scope.domainName
+            ++ scope.domainSearchList;
+          dhcpBackend = "technitium";
+          dynamicPools = [
+            {
+              start = scope.startingAddress;
+              end = scope.endingAddress;
+            }
+          ];
+          provenance = [
+            (mkProvenance "router-technitium" "services.router-technitium.scopes.${name}")
+          ];
+        }
+      ) (config.services.router-technitium.scopes or { })
+    else
+      [ ];
+
+  inventorySubnets = sortById (routedSubnetEntries ++ keaSubnetEntries ++ technitiumSubnetEntries);
+
+  subnetIdForAddress =
+    address:
+    let
+      ipInt = parseIPv4 address;
+      matches = filter (
+        subnet:
+        let
+          parsed = parseCidr subnet.cidr;
+        in
+        ipInt >= parsed.network && ipInt <= parsed.broadcast
+      ) inventorySubnets;
+      routedMatches = filter (subnet: strings.hasPrefix "routed:" subnet.id) matches;
+    in
+    if routedMatches != [ ] then
+      (builtins.head routedMatches).id
+    else if matches != [ ] then
+      (builtins.head matches).id
+    else
+      null;
+
+  routerDhcpReservations =
+    if hasRouterDhcp && (routerDhcpCfg.enable or false) then
+      flatten (mapAttrsToList (
+        ifaceName: ifaceCfg:
+        map (
+          lease:
+          {
+            id = "router-dhcp:${ifaceName}:${lease.address}";
+            label = if lease.hostname != null then lease.hostname else lease.address;
+            hostname = lease.hostname;
+            ipv4Address = lease.address;
+            macAddress = lease.macAddress;
+            subnetRef = subnetIdForAddress lease.address;
+            sourceKind = "router-dhcp-static-lease";
+            provenance = [
+              (mkProvenance "router-dhcp" "services.router-dhcp.interfaces.${ifaceName}.staticLeases")
+            ];
+          }
+        ) ifaceCfg.staticLeases
+      ) routerDhcpEffectiveInterfaces)
+    else
+      [ ];
+
+  keaReservations =
+    if hasRouterKea && (config.services.router-kea.enable or false) then
+      map (
+        reservation:
+        {
+          id = "kea:${reservation.ip-address}";
+          label = if reservation.hostname != null then reservation.hostname else reservation.ip-address;
+          hostname = reservation.hostname;
+          ipv4Address = reservation.ip-address;
+          macAddress = reservation.hw-address;
+          subnetRef = subnetIdForAddress reservation.ip-address;
+          sourceKind = "kea-reservation";
+          provenance = [
+            (mkProvenance "router-kea" "services.router-kea.dhcp4.reservations")
+          ];
+        }
+      ) config.services.router-kea.dhcp4.reservations
+    else
+      [ ];
+
+  technitiumReservations =
+    if hasRouterTechnitium && (config.services.router-technitium.enable or false) then
+      mapAttrsToList (
+        name: reservation:
+        {
+          id = "technitium:${name}";
+          label =
+            if reservation.hostName != null then
+              reservation.hostName
+            else
+              name;
+          hostname = reservation.hostName;
+          ipv4Address = reservation.ipAddress;
+          macAddress = reservation.macAddress;
+          subnetRef = subnetIdForAddress reservation.ipAddress;
+          sourceKind = "technitium-reservation";
+          provenance = [
+            (mkProvenance "router-technitium" "services.router-technitium.dhcpReservations.${name}")
+          ];
+        }
+      ) (config.services.router-technitium.dhcpReservations or { })
+    else
+      [ ];
+
+  inventoryHosts = sortById (routerDhcpReservations ++ keaReservations ++ technitiumReservations);
+
+  inventoryReservedAddresses = sortByAddress (map (
+    host:
+    {
+      address = host.ipv4Address;
+      label = host.label;
+      hostRef = host.id;
+      subnetRef = host.subnetRef;
+      sourceKind = host.sourceKind;
+      provenance = host.provenance;
+    }
+  ) inventoryHosts);
+
+  inventoryArtifact = pkgs.writeText "router-dashboard-inventory.json" (
+    builtins.toJSON {
+      schemaVersion = 1;
+      authoritative = false;
+      authoritySurface = "declarative-router-config";
+      notes = [
+        "This artifact is a read-only reduction of declarative router state."
+        "Runtime lease and reconciliation overlays belong in separate dashboard surfaces."
+      ];
+      subnets = inventorySubnets;
+      hosts = inventoryHosts;
+      reservedAddresses = inventoryReservedAddresses;
+    }
+  );
 
   normalizeRole = role:
     if role == "management" then
@@ -373,6 +723,8 @@ in {
           DASHBOARD_TUNNELS = builtins.toJSON effectiveTunnels;
           DASHBOARD_REMOTE_ADMIN = builtins.toJSON effectiveRemoteAdmin;
           DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
+          DASHBOARD_INVENTORY_FILE = "${inventoryArtifact}";
+          DASHBOARD_INVENTORY_ENABLED = "1";
           DASHBOARD_NAT64_PREFIX = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv6Prefix else "";
           DASHBOARD_NAT64_POOL = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv4Pool else "";
           TECHNITIUM_URL = "http://localhost:5380";
