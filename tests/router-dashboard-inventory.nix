@@ -154,4 +154,31 @@ in
       services.router-dashboard.enable = true;
     }
   ];
+
+  router-dashboard-inventory-router-dhcp-invalid-pool-fails = eval.mkNixosEvalFailureCheck "router-dashboard-inventory-router-dhcp-invalid-pool" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-dhcp
+    self.nixosModules.router-dashboard
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+        routedInterfaces.lan = {
+          device = "eth1";
+          ipv4Address = "10.10.230.1/24";
+          role = "lan";
+        };
+      };
+
+      services.router-dhcp = {
+        enable = true;
+        interfaces.lan = {
+          poolOffset = 300;
+          poolSize = 100;
+        };
+      };
+
+      services.router-dashboard.enable = true;
+    }
+  ];
 }

@@ -146,6 +146,21 @@ let
     authority = "declarative";
   };
 
+  mkRoutedDynamicPool =
+    parsed: dhcpIface:
+    let
+      start = parsed.network + dhcpIface.poolOffset;
+      end = start + dhcpIface.poolSize - 1;
+    in
+    assert dhcpIface.poolOffset >= 0;
+    assert dhcpIface.poolSize > 0;
+    assert start >= parsed.network;
+    assert end <= parsed.broadcast;
+    {
+      start = renderIPv4 start;
+      end = renderIPv4 end;
+    };
+
   routedSubnetEntries = mapAttrsToList (
     name: iface:
     let
@@ -168,10 +183,7 @@ let
       dynamicPools =
         if dhcpIface != null then
           [
-            {
-              start = renderIPv4 (parsed.network + dhcpIface.poolOffset);
-              end = renderIPv4 (parsed.network + dhcpIface.poolOffset + dhcpIface.poolSize - 1);
-            }
+            (mkRoutedDynamicPool parsed dhcpIface)
           ]
         else
           [ ];
