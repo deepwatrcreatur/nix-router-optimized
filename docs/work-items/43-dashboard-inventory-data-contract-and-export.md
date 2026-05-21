@@ -1,6 +1,6 @@
 # 43 - Dashboard Inventory Data Contract and Export
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -22,30 +22,38 @@ Nix/runtime facts ad hoc in the frontend.
 
 ## Requirements
 
-- [ ] Define a normalized inventory shape for dashboard consumption covering at
+- [x] Define a normalized inventory shape for dashboard consumption covering at
       least:
       - subnets
       - hosts / labels
       - reserved addresses
       - available source/provenance markers
-- [ ] Export that shape as a deterministic JSON artifact or equivalent
+- [x] Export that shape as a deterministic JSON artifact or equivalent
       read-only runtime data source
-- [ ] Keep the exported data explicitly non-authoritative:
+- [x] Keep the exported data explicitly non-authoritative:
       it is a reduction of repo-native truth, not a writable state store
-- [ ] Document how the export relates to the existing declarative inventory
+- [x] Document how the export relates to the existing declarative inventory
       surface
-- [ ] Avoid coupling the reusable dashboard surface to an ad hoc private schema
+- [x] Avoid coupling the reusable dashboard surface to an ad hoc private schema
       beyond what is needed for the current bounded slice
 
 ## Verification
 
-- [ ] A single inspectable inventory artifact is produced for dashboard use
-- [ ] The artifact is reproducible from configuration and does not require a
+- [x] A single inspectable inventory artifact is produced for dashboard use
+- [x] The artifact is reproducible from configuration and does not require a
       mutable database
-- [ ] The data contract distinguishes declared information from runtime-derived
+- [x] The data contract distinguishes declared information from runtime-derived
       overlays cleanly enough for later reconciliation work
 
 ## Notes
 
 This item is about the **inventory reduction contract**, not yet the final
 browser UI.
+
+## Outcome
+
+`router-dashboard` now exports a deterministic read-only inventory artifact via
+`DASHBOARD_INVENTORY_FILE`. The artifact reduces declared routed subnets,
+declared DHCP pool metadata, declared reservations, and provenance markers from
+the router modules already modeled in this repo. Runtime lease overlays and
+browser/API presentation remain explicitly deferred to items `44` and `45`.

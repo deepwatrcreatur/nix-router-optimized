@@ -54,6 +54,10 @@ let
   routerZonesChecks = import ./router-zones.nix {
     inherit self lib eval;
   };
+
+  routerDashboardInventoryChecks = import ./router-dashboard-inventory.nix {
+    inherit self eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -92,6 +96,7 @@ in
 // nptv6Checks
 // pvdChecks
 // keaChecks
+// routerDashboardInventoryChecks
 // routerSecurityHardeningChecks
 // routerZonesChecks
 // lib.mapAttrs' (
