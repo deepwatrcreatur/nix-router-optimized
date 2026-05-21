@@ -739,6 +739,27 @@ in
       assertion = lib.hasInfix "CLAT: WAN to translation (return)" config.networking.nftables.ruleset;
       message = "router-clat should inject return-path forward rules.";
     }
+    # ── runtime backend assertions ──
+    {
+      assertion = config.systemd.services ? router-clat-tayga;
+      message = "router-clat should create a router-clat-tayga systemd service.";
+    }
+    {
+      assertion = lib.hasInfix "tayga" config.systemd.services.router-clat-tayga.serviceConfig.ExecStart;
+      message = "router-clat-tayga ExecStart should invoke tayga.";
+    }
+    {
+      assertion = config.systemd.network.netdevs ? "30-clat0";
+      message = "router-clat should declare a clat0 TUN netdev.";
+    }
+    {
+      assertion = config.systemd.network.networks."30-clat0".matchConfig.Name == "clat0";
+      message = "router-clat should own clat0 network config.";
+    }
+    {
+      assertion = config.environment.etc ? "router-clat/tayga.conf";
+      message = "router-clat should render tayga.conf to /etc.";
+    }
   ]);
 
   docs-router-clat-reject-loop-topology-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-loop-topology" [
