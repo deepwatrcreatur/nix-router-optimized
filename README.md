@@ -53,6 +53,22 @@ If you are assigning or running agents against this repo, start with:
   - **MAC Security**: Interface-specific MAC-address whitelisting with enforcement or alert policies.
 - **Zone Isolation**: Declarative "Zone-based" security (WAN, LAN, IoT) with high-level cross-zone traffic policies.
 
+## Experimental / in-progress capabilities
+
+Some features in this flake are intentionally present as bounded first slices
+rather than full maturity claims.
+
+- **`router-clat`** is available now as an experimental CLAT-style surface for
+  legacy IPv4 clients on IPv6-capable uplinks.
+- The current slice is intentionally narrow:
+  - single-router
+  - non-HA
+  - contract/assertion heavy
+  - not yet presented as a complete router-grade CLAT runtime/control plane
+- Start with the module section at [`#router-clat`](#router-clat), then read
+  [`docs/DECLARATIVE_CLAT.md`](./docs/DECLARATIVE_CLAT.md) for the current
+  design boundary and maturity language.
+
 ## Quick Start
 
 ### As a Flake Input
