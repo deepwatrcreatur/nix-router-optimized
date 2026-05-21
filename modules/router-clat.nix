@@ -55,6 +55,13 @@ let
   ipv4RouterAddr = cidrAddress cfg.legacyIpv4Pool;
   ipv6RouterAddr = "${cidrAddress cfg.mappingPrefix6}1";
 
+  # Python control-plane daemon with its dependencies
+  clatDnsPython = pkgs.python3.withPackages (_ps: []);
+  clatDnsScript = ./router-clat/clat-dns.py;
+
+  # Build upstream resolver CLI args
+  upstreamArgs = concatMapStringsSep " " (r: "--upstream ${r}") cfg.upstreamResolvers;
+
   # Tayga config for the CLAT instance
   taygaConf = pkgs.writeText "router-clat-tayga.conf" ''
     tun-device clat0
@@ -113,6 +120,12 @@ in
       type = types.int;
       default = 53;
       description = "Port for the CLAT DNS listener on listenInterfaces.";
+    };
+
+    preferSynthesizedAnswers = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Prefer synthesized A over native A for dual-stack upstream answers.";
     };
 
     openFirewall = mkOption {
@@ -203,6 +216,61 @@ in
           }
         ];
         linkConfig.RequiredForOnline = "no";
+      };
+
+      # DNS synthesis and mapping control plane
+      systemd.services.router-clat-dns = {
+        description = "CLAT DNS synthesis and mapping control plane";
+        after = [
+          "network-online.target"
+          "router-clat-tayga.service"
+        ];
+        wants = [ "network-online.target" ];
+        requires = [ "router-clat-tayga.service" ];
+        wantedBy = [ "multi-user.target" ];
+
+        serviceConfig = {
+          ExecStart = concatStringsSep " " ([
+            "${clatDnsPython}/bin/python3"
+            "${clatDnsScript}"
+            "--pool ${cfg.legacyIpv4Pool}"
+            "--mapping-ttl ${toString cfg.mappingTtl}"
+            "--gc-interval ${toString cfg.gcInterval}"
+            "--state-dir /var/lib/router-clat"
+            "--artifact-path /run/router-clat/mappings.json"
+            upstreamArgs
+          ]
+          ++ [ "--listen 0.0.0.0" ]
+          ++ [ "--port ${toString cfg.dnsListenPort}" ]
+          ++ optional cfg.preferSynthesizedAnswers "--prefer-synthesized"
+          ++ [ "--reload-cmd" "'${pkgs.systemd}/bin/systemctl reload router-clat-tayga.service'" ]);
+
+          Restart = "on-failure";
+          RestartSec = 5;
+
+          StateDirectory = "router-clat";
+          RuntimeDirectory = "router-clat";
+
+          # Hardening
+          ProtectHome = true;
+          ProtectSystem = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          ProtectHostname = true;
+          ProtectControlGroups = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          RestrictNamespaces = true;
+          NoNewPrivileges = true;
+          LockPersonality = true;
+          PrivateTmp = true;
+          SystemCallArchitectures = "native";
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+          ];
+        };
       };
 
       # Tayga translation daemon — separate instance from router-nat64

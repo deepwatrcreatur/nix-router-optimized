@@ -760,6 +760,27 @@ in
       assertion = config.environment.etc ? "router-clat/tayga.conf";
       message = "router-clat should render tayga.conf to /etc.";
     }
+    # ── control-plane assertions ──
+    {
+      assertion = config.systemd.services ? router-clat-dns;
+      message = "router-clat should create a router-clat-dns systemd service.";
+    }
+    {
+      assertion = lib.hasInfix "clat-dns.py" config.systemd.services.router-clat-dns.serviceConfig.ExecStart;
+      message = "router-clat-dns ExecStart should invoke clat-dns.py.";
+    }
+    {
+      assertion = lib.hasInfix "--mapping-ttl 1800" config.systemd.services.router-clat-dns.serviceConfig.ExecStart;
+      message = "router-clat-dns should pass mapping-ttl from config.";
+    }
+    {
+      assertion = lib.hasInfix "--gc-interval 60" config.systemd.services.router-clat-dns.serviceConfig.ExecStart;
+      message = "router-clat-dns should pass gc-interval from config.";
+    }
+    {
+      assertion = builtins.elem "router-clat-tayga.service" config.systemd.services.router-clat-dns.requires;
+      message = "router-clat-dns should require router-clat-tayga.";
+    }
   ]);
 
   docs-router-clat-reject-loop-topology-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-loop-topology" [
@@ -834,6 +855,16 @@ in
       };
     }
   ];
+
+  # Python unit tests for the CLAT DNS synthesis daemon
+  router-clat-dns-unit-tests = pkgs.runCommand "router-clat-dns-unit-tests" {
+    nativeBuildInputs = [ pkgs.python3 ];
+  } ''
+    cp ${self}/modules/router-clat/clat-dns.py clat-dns.py
+    cp ${self}/modules/router-clat/test_clat_dns.py test_clat_dns.py
+    python3 test_clat_dns.py -v
+    touch $out
+  '';
 
   docs-router-clat-reject-nat64-pool-subset-overlap-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-nat64-pool-subset-overlap" [
     self.nixosModules.router-clat
