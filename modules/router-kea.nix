@@ -13,6 +13,7 @@ let
   routedIfaces = config.services.router-networking.routedInterfaces or { };
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   hasRouterDnsService = hasAttrByPath [ "services" "router-dns-service" "searchDomains" ] options;
+  hasRouterNtp = hasAttrByPath [ "services" "router-ntp" "enable" ] options;
 
   # Auto-derive LAN interfaces from router-networking when none are specified.
   effectiveInterfaces =
@@ -77,6 +78,26 @@ let
   subnetInfo = parseSubnet cfg.dhcp4.subnet;
   inSubnet = ipInt: ipInt >= subnetInfo.network && ipInt <= subnetInfo.broadcast;
   isUsableHostAddress = ipInt: ipInt > subnetInfo.network && ipInt < subnetInfo.broadcast;
+  routerNtpLanSubnets =
+    if hasRouterNtp then
+      config.services.router-ntp.lanSubnets or [ ]
+    else
+      [ ];
+  routerNtpAllowsDhcpSubnet =
+    any (
+      lanSubnet:
+      let
+        lanInfo = parseSubnet lanSubnet;
+      in
+      subnetInfo.network >= lanInfo.network && subnetInfo.broadcast <= lanInfo.broadcast
+    ) routerNtpLanSubnets;
+  effectiveNtpServers =
+    if cfg.dhcp4.ntpServers != [ ] then
+      cfg.dhcp4.ntpServers
+    else if hasRouterNtp && (config.services.router-ntp.enable or false) && routerNtpAllowsDhcpSubnet && cfg.dhcp4.gatewayAddress != "" then
+      [ cfg.dhcp4.gatewayAddress ]
+    else
+      [ ];
 
   reservationModule = types.submodule {
     options = {
@@ -204,6 +225,17 @@ in
         type = types.listOf types.str;
         default = [ ];
         description = "DNS servers advertised to clients (DHCP option 6).";
+      };
+
+      ntpServers = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [ "10.10.10.1" ];
+        description = ''
+          NTP servers advertised to clients (DHCP option 42). Defaults to the
+          configured gateway/router address when `services.router-ntp.enable`
+          is true.
+        '';
       };
 
       searchDomains = mkOption {
@@ -480,6 +512,10 @@ in
                 ++ optional (effectiveSearchDomains != [ ]) {
                   name = "domain-search";
                   data = concatStringsSep ", " effectiveSearchDomains;
+                }
+                ++ optional (effectiveNtpServers != [ ]) {
+                  name = "ntp-servers";
+                  data = concatStringsSep ", " effectiveNtpServers;
                 }
                 ++ optional (pxeCfg.enable && pxeCfg.bootServerName != null) {
                   name = "tftp-server-name";
