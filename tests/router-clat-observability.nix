@@ -20,23 +20,21 @@
     }
     ({ config, ... }:
       let
-        clat = builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_CLAT;
+        services = builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_SERVICES;
+        statusFile = config.systemd.services.router-dashboard.environment.DASHBOARD_CLAT_STATUS_FILE;
       in
       {
         assertions = [
           {
             assertion =
-              clat.enabled
-              && clat.backend == "tayga"
-              && clat.systemdUnit == "router-clat-tayga"
-              && clat.translationInterface == "clat0";
-            message = "router-dashboard should export bounded router-clat runtime metadata.";
+              builtins.elem "router-clat-tayga" services
+              && builtins.elem "router-clat-dns" services;
+            message = "router-dashboard should include CLAT services in the monitored service list.";
           }
           {
             assertion =
-              clat.operatorBoundary.ha == "non-ha"
-              && clat.operatorBoundary.ownership == "single-owner";
-            message = "router-dashboard should surface router-clat non-HA/single-owner boundary metadata.";
+              statusFile == "/run/router-clat/status.json";
+            message = "router-dashboard should export the CLAT status file path for the dashboard API.";
           }
         ];
       })
