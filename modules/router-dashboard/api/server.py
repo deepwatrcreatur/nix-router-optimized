@@ -1652,7 +1652,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             inventory_path = Path(INVENTORY_FILE)
-            if not inventory_path.exists():
+            if not inventory_path.exists() or not inventory_path.is_file():
                 self.send_json({
                     'available': False,
                     'message': 'Inventory export file not found'
@@ -1734,7 +1734,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 }
             })
 
-        inventory['hosts'] = sorted(merged_hosts, key=lambda host: host.get('ipv4Address', ''))
+        inventory['hosts'] = sorted(
+            merged_hosts,
+            key=lambda host: self.parse_ipv4_address(host.get('ipv4Address') or '0.0.0.0') or 0
+        )
         inventory['reservedAddresses'] = sorted([
             {
                 'address': host.get('ipv4Address'),
@@ -1747,7 +1750,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             }
             for host in inventory['hosts']
             if host.get('ipv4Address')
-        ], key=lambda entry: entry.get('address', ''))
+        ], key=lambda entry: self.parse_ipv4_address(entry.get('address') or '0.0.0.0') or 0)
 
         for subnet in inventory.get('subnets', []):
             subnet_hosts = [host for host in inventory['hosts'] if host.get('subnetRef') == subnet.get('id')]
@@ -1801,7 +1804,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                     })
 
         if live_leases:
-            return sorted(live_leases, key=lambda lease: lease.get('address', ''))
+            return sorted(
+                live_leases,
+                key=lambda lease: self.parse_ipv4_address(lease.get('address') or '0.0.0.0') or 0
+            )
 
         if kea_leases:
             if scopes:
@@ -1848,6 +1854,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 prefix_length = int(prefix)
             except ValueError:
+                continue
+            if prefix_length < 0 or prefix_length > 32:
                 continue
 
             host_bits = 32 - prefix_length
