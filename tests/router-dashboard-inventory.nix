@@ -133,4 +133,25 @@ in
         ];
       })
   ];
+
+  router-dashboard-inventory-technitium-invalid-mask-fails = eval.mkNixosEvalFailureCheck "router-dashboard-inventory-technitium-invalid-mask" [
+    self.nixosModules.router-technitium
+    self.nixosModules.router-dashboard
+    {
+      age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
+
+      services.router-technitium = {
+        enable = true;
+        scopes.lan = {
+          startingAddress = "10.10.220.100";
+          endingAddress = "10.10.220.199";
+          subnetMask = "255.0.255.0";
+          routerAddress = "10.10.220.1";
+          dnsServers = [ "10.10.220.1" ];
+        };
+      };
+
+      services.router-dashboard.enable = true;
+    }
+  ];
 }

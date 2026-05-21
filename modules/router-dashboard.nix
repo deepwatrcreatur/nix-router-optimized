@@ -112,9 +112,30 @@ let
     netmask:
     let
       octets = splitString "." netmask;
+      prefixBits = map (octet: netmaskPrefixBits.${octet} or (throw "Invalid IPv4 subnet mask octet `${octet}` in `${netmask}`")) octets;
+      contiguousTail =
+        let
+          go =
+            remaining: seenTail:
+            if remaining == [ ] then
+              true
+            else
+              let
+                current = builtins.head remaining;
+                rest = builtins.tail remaining;
+              in
+              if seenTail then
+                current == 0 && go rest true
+              else if current == 8 then
+                go rest false
+              else
+                go rest true;
+        in
+        go prefixBits false;
     in
     assert length octets == 4;
-    builtins.foldl' (sum: octet: sum + netmaskPrefixBits.${octet}) 0 octets;
+    assert contiguousTail;
+    builtins.foldl' (sum: bits: sum + bits) 0 prefixBits;
 
   sortById = builtins.sort (a: b: a.id < b.id);
   sortByAddress = builtins.sort (a: b: a.address < b.address);
@@ -148,8 +169,8 @@ let
         if dhcpIface != null then
           [
             {
-              start = addToIPv4 (renderIPv4 parsed.network) dhcpIface.poolOffset;
-              end = addToIPv4 (renderIPv4 parsed.network) (dhcpIface.poolOffset + dhcpIface.poolSize - 1);
+              start = renderIPv4 (parsed.network + dhcpIface.poolOffset);
+              end = renderIPv4 (parsed.network + dhcpIface.poolOffset + dhcpIface.poolSize - 1);
             }
           ]
         else
