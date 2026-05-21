@@ -234,6 +234,7 @@ in
         wants = [ "network-online.target" ];
         requires = [ "router-clat-tayga.service" ];
         wantedBy = [ "multi-user.target" ];
+        path = [ pkgs.systemd ];
 
         serviceConfig = {
           ExecStart = concatStringsSep " " ([
@@ -277,6 +278,7 @@ in
           PrivateTmp = true;
           SystemCallArchitectures = "native";
           RestrictAddressFamilies = [
+            "AF_UNIX"
             "AF_INET"
             "AF_INET6"
           ];

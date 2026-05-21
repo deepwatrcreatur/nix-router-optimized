@@ -766,7 +766,9 @@ in {
             "/sys/class/net"
             "/var/log/journal"
             "/run/agenix"
-          ] ++ lib.optional (config.services.router-technitium.enable or false) technitiumRuntimeApiTokenPath;
+          ]
+          ++ lib.optional (config.services.router-clat.enable or false) "/run/router-clat"
+          ++ lib.optional (config.services.router-technitium.enable or false) technitiumRuntimeApiTokenPath;
         };
 
         path = with pkgs; [
