@@ -75,6 +75,7 @@ class InventoryWidget extends BaseWidget {
       this.renderInventory();
       this.hideLoading();
     } catch (error) {
+      this.hideLoading();
       this.showError(`Unable to load inventory: ${error.message}`);
     }
   }
@@ -105,6 +106,22 @@ class InventoryWidget extends BaseWidget {
       }))
       .filter(group => this.groupMatches(group));
 
+    const unassignedHosts = this.filterUnassignedHosts();
+    if (unassignedHosts.length > 0) {
+      visibleGroups.push({
+        subnet: {
+          id: "unassigned",
+          label: "Unassigned",
+          cidr: "No matching subnet",
+          gatewayAddress: null,
+          dhcpBackend: null,
+          dynamicPools: [ ],
+          runtimeSummary: { }
+        },
+        hosts: unassignedHosts
+      });
+    }
+
     if (visibleGroups.length === 0) {
       subnetsEl.innerHTML = '<div class="inventory-empty-list">No inventory entries match the current filter.</div>';
       this.renderEmptyDetail('No matching hosts or subnets.');
@@ -122,6 +139,11 @@ class InventoryWidget extends BaseWidget {
 
   filterHostsForSubnet(subnetId) {
     return (this.inventory?.hosts || []).filter(host => host.subnetRef === subnetId);
+  }
+
+  filterUnassignedHosts() {
+    const hosts = (this.inventory?.hosts || []).filter(host => !host.subnetRef);
+    return this.filter ? hosts.filter(host => this.hostMatches(host)) : hosts;
   }
 
   groupMatches(group) {
