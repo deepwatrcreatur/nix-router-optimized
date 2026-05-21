@@ -58,6 +58,10 @@ let
   routerDashboardInventoryChecks = import ./router-dashboard-inventory.nix {
     inherit self eval lib;
   };
+
+  routerClatObservabilityChecks = import ./router-clat-observability.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -99,6 +103,7 @@ in
 // routerDashboardInventoryChecks
 // routerSecurityHardeningChecks
 // routerZonesChecks
+// routerClatObservabilityChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (

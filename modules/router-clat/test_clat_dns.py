@@ -352,5 +352,153 @@ class TestClatResolver(unittest.TestCase):
         self.assertEqual(len(self.store.mappings), 0)
 
 
+class TestClatStatusServer(unittest.TestCase):
+    """Tests for the ClatStatusServer status generation."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.artifact = os.path.join(self.tmpdir, "artifact.json")
+        self.status_path = os.path.join(self.tmpdir, "status.json")
+        self.store = clat_dns.MappingStore(
+            pool_cidr="100.64.46.0/24",
+            mapping_ttl=1800,
+            gc_interval=3600,
+            state_dir=self.tmpdir,
+            artifact_path=self.artifact,
+        )
+        # Create a mock DNS server object
+        class MockServer:
+            running = True
+            port = 53
+        self.mock_server = MockServer()
+
+        self.status_server = clat_dns.ClatStatusServer(
+            store=self.store,
+            server=self.mock_server,
+            status_path=self.status_path,
+            port=0,  # won't actually bind
+        )
+
+    def test_status_active_idle(self):
+        """Active with no mappings should be active-idle."""
+        # Mock tayga check to return True
+        self.status_server._check_tayga_health = lambda: True
+        status = self.status_server.get_status()
+        self.assertEqual(status["state"], "active-idle")
+        self.assertTrue(status["backend"]["healthy"])
+        self.assertTrue(status["dns"]["listening"])
+        self.assertEqual(status["mappings"]["active"], 0)
+
+    def test_status_active_translating(self):
+        """Active with mappings should be active-translating."""
+        self.store.lookup_or_allocate("2001:db8::1", "example.com")
+        self.status_server._check_tayga_health = lambda: True
+        status = self.status_server.get_status()
+        self.assertEqual(status["state"], "active-translating")
+        self.assertEqual(status["mappings"]["active"], 1)
+
+    def test_status_degraded(self):
+        """Backend unhealthy should be degraded."""
+        self.status_server._check_tayga_health = lambda: False
+        status = self.status_server.get_status()
+        self.assertEqual(status["state"], "degraded")
+        self.assertFalse(status["backend"]["healthy"])
+
+    def test_status_inactive(self):
+        """Server not running should be inactive."""
+        self.mock_server.running = False
+        self.status_server._check_tayga_health = lambda: True
+        status = self.status_server.get_status()
+        self.assertEqual(status["state"], "inactive")
+
+    def test_status_boundaries(self):
+        """Status should expose non-HA boundary."""
+        self.status_server._check_tayga_health = lambda: True
+        status = self.status_server.get_status()
+        self.assertFalse(status["boundaries"]["ha"])
+        self.assertFalse(status["boundaries"]["multiWan"])
+        self.assertIn("Single-owner", status["boundaries"]["note"])
+
+    def test_write_status_file(self):
+        """Status file should be written to disk."""
+        self.status_server._check_tayga_health = lambda: True
+        self.status_server.write_status_file()
+        self.assertTrue(os.path.exists(self.status_path))
+        with open(self.status_path) as f:
+            data = json.load(f)
+        self.assertEqual(data["version"], 1)
+        self.assertIn("state", data)
+
+    def test_status_version_field(self):
+        """Status should have version 1."""
+        self.status_server._check_tayga_health = lambda: True
+        status = self.status_server.get_status()
+        self.assertEqual(status["version"], 1)
+
+
+class TestArtifactRendering(unittest.TestCase):
+    """Tests for deterministic artifact rendering."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.artifact = os.path.join(self.tmpdir, "artifact.json")
+        self.store = clat_dns.MappingStore(
+            pool_cidr="100.64.46.0/24",
+            mapping_ttl=1800,
+            gc_interval=3600,
+            state_dir=self.tmpdir,
+            artifact_path=self.artifact,
+        )
+
+    def test_artifact_schema(self):
+        """Artifact must match the documented backend-neutral schema."""
+        self.store.lookup_or_allocate("2001:db8::1", "example.com")
+        self.store.lookup_or_allocate("2001:db8::2", "other.com")
+        with open(self.artifact) as f:
+            data = json.load(f)
+        self.assertEqual(data["version"], 1)
+        self.assertIn("generatedAt", data)
+        self.assertEqual(data["mappingCount"], 2)
+        for m in data["mappings"]:
+            self.assertIn("ipv4", m)
+            self.assertIn("ipv6", m)
+            self.assertIn("expiresAt", m)
+            self.assertEqual(m["state"], "active")
+
+    def test_artifact_deterministic(self):
+        """Same mappings should produce identical artifacts (minus timestamp)."""
+        self.store.lookup_or_allocate("2001:db8::1", "example.com")
+        with open(self.artifact) as f:
+            a1 = json.load(f)
+        # Re-render by touching the mapping
+        self.store.lookup_or_allocate("2001:db8::1", "example.com")
+        with open(self.artifact) as f:
+            a2 = json.load(f)
+        # Mappings content should match
+        self.assertEqual(a1["mappings"][0]["ipv4"], a2["mappings"][0]["ipv4"])
+        self.assertEqual(a1["mappings"][0]["ipv6"], a2["mappings"][0]["ipv6"])
+        self.assertEqual(a1["mappingCount"], a2["mappingCount"])
+
+    def test_artifact_gc_removes_expired(self):
+        """Artifact should reflect GC by removing expired entries."""
+        store = clat_dns.MappingStore(
+            pool_cidr="100.64.46.0/24",
+            mapping_ttl=0.1,
+            gc_interval=3600,
+            state_dir=self.tmpdir,
+            artifact_path=self.artifact,
+        )
+        store.lookup_or_allocate("2001:db8::1", "example.com")
+        with open(self.artifact) as f:
+            before = json.load(f)
+        self.assertEqual(before["mappingCount"], 1)
+
+        time.sleep(0.2)
+        store.run_gc()
+        with open(self.artifact) as f:
+            after = json.load(f)
+        self.assertEqual(after["mappingCount"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

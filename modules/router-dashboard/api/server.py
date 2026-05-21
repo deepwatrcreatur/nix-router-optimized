@@ -55,6 +55,7 @@ INVENTORY_ENABLED = os.environ.get('DASHBOARD_INVENTORY_ENABLED', '0') == '1'
 
 NAT64_PREFIX = os.environ.get('DASHBOARD_NAT64_PREFIX', '')
 NAT64_POOL = os.environ.get('DASHBOARD_NAT64_POOL', '')
+CLAT_STATUS_FILE = os.environ.get('DASHBOARD_CLAT_STATUS_FILE', '')
 
 # Rate tracking for interface stats
 RATE_CACHE = {}
@@ -165,6 +166,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_speedtest_status()
         elif path == '/api/nat64/connections':
             self.handle_nat64_connections()
+        elif path == '/api/clat/status':
+            self.handle_clat_status()
         elif path.startswith('/api/'):
             self.send_error(404, 'API endpoint not found')
         else:
@@ -1366,6 +1369,30 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({'connections': connections})
         except Exception as e:
             self.send_error_json(500, str(e))
+
+    def handle_clat_status(self):
+        """Get CLAT runtime status from the control-plane status file"""
+        if not CLAT_STATUS_FILE:
+            self.send_json({'enabled': False})
+            return
+
+        try:
+            with open(CLAT_STATUS_FILE) as f:
+                status = json.load(f)
+            status['enabled'] = True
+            self.send_json(status)
+        except FileNotFoundError:
+            self.send_json({
+                'enabled': True,
+                'state': 'inactive',
+                'error': 'Status file not found — control plane may not be running',
+            })
+        except (json.JSONDecodeError, OSError) as e:
+            self.send_json({
+                'enabled': True,
+                'state': 'degraded',
+                'error': f'Failed to read status: {e}',
+            })
 
     def handle_nat64_connections(self):
         """Get NAT64 translations from conntrack"""
