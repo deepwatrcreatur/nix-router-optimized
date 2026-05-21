@@ -1,6 +1,7 @@
 {
   self,
   eval,
+  lib,
   ...
 }:
 
@@ -153,5 +154,40 @@ in
 
       services.router-dashboard.enable = true;
     }
+  ];
+
+  router-dashboard-inventory-page-shell-eval = eval.mkNixosEvalCheck "router-dashboard-inventory-page-shell" [
+    self.nixosModules.router-dashboard
+    {
+      services.router-dashboard.enable = true;
+    }
+    ({ config, ... }:
+      let
+        staticDir = config.systemd.services.router-dashboard.environment.DASHBOARD_STATIC;
+        indexHtml = builtins.readFile "${staticDir}/index.html";
+        inventory = builtins.fromJSON (
+          builtins.readFile config.systemd.services.router-dashboard.environment.DASHBOARD_INVENTORY_FILE
+        );
+      in
+      {
+        assertions = [
+          {
+            assertion = lib.hasInfix "data-dashboard-tab=\"inventory\"" indexHtml;
+            message = "router-dashboard should expose an Inventory tab in the shell.";
+          }
+          {
+            assertion = lib.hasInfix "dashboard-grid-inventory" indexHtml;
+            message = "router-dashboard should expose a dedicated Inventory page container.";
+          }
+          {
+            assertion = lib.hasInfix "/js/widgets/inventory-widget.js" indexHtml;
+            message = "router-dashboard should load the inventory browser widget asset.";
+          }
+          {
+            assertion = inventory.schemaVersion == 1;
+            message = "router-dashboard should still export the read-only inventory artifact for the Inventory page.";
+          }
+        ];
+      })
   ];
 }

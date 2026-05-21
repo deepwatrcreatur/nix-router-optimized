@@ -1,6 +1,6 @@
 # 44 - Dashboard Inventory Browser Page and API
 
-## Status: `pending`
+## Status: `in-progress`
 
 ## Objective
 

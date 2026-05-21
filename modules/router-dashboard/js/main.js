@@ -12,7 +12,7 @@ class Dashboard {
     this.layoutStorageKey = 'router-dashboard-layout-v2';
     this.legacyLayoutStorageKey = 'router-dashboard-layout-v1';
     this.activePageStorageKey = 'router-dashboard-active-page';
-    this.pageOrder = [ 'overview', 'network', 'services', 'security', 'vpn', 'remote-admin', 'tunnels' ];
+    this.pageOrder = [ 'overview', 'network', 'services', 'security', 'vpn', 'remote-admin', 'tunnels', 'inventory' ];
     this.activePage = this.getInitialPage();
   }
 
@@ -229,6 +229,13 @@ class Dashboard {
       refreshInterval: 15000
     });
     this.renderWidget('tunnels', tunnels);
+
+    const inventory = new InventoryWidget({
+      id: 'inventory-browser',
+      grid: { w: 12, h: 8 },
+      refreshInterval: 60000
+    });
+    this.renderWidget('inventory', inventory);
   }
 
   initTabs() {

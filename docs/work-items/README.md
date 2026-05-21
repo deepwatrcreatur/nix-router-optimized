@@ -21,7 +21,7 @@ tracked separately from the dashboard planning docs.
 - [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `in-progress`
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `in-progress`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `pending`
-- [44-dashboard-inventory-browser-page-and-api](./44-dashboard-inventory-browser-page-and-api.md) — `pending`
+- [44-dashboard-inventory-browser-page-and-api](./44-dashboard-inventory-browser-page-and-api.md) — `in-progress`
 - [45-dashboard-inventory-reconciliation-and-subnet-summary](./45-dashboard-inventory-reconciliation-and-subnet-summary.md) — `pending`
 
 ## Recently Completed

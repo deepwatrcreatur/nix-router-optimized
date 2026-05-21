@@ -28,6 +28,7 @@
         <button class="dashboard-tab" type="button" data-dashboard-tab="vpn">VPN</button>
         <button class="dashboard-tab" type="button" data-dashboard-tab="remote-admin">Remote Admin</button>
         <button class="dashboard-tab" type="button" data-dashboard-tab="tunnels">Tunnels</button>
+        <button class="dashboard-tab" type="button" data-dashboard-tab="inventory">Inventory</button>
       </nav>
       <div class="sidebar-footer">nix-router-optimized / local control plane</div>
     </aside>
@@ -84,6 +85,9 @@
           <section class="dashboard-page" id="dashboard-page-tunnels" data-dashboard-page="tunnels" aria-label="Tunnels dashboard">
             <div class="dashboard-grid" id="dashboard-grid-tunnels"></div>
           </section>
+          <section class="dashboard-page" id="dashboard-page-inventory" data-dashboard-page="inventory" aria-label="Inventory dashboard">
+            <div class="dashboard-grid" id="dashboard-grid-inventory"></div>
+          </section>
         </div>
       </div>
     </main>
@@ -112,6 +116,7 @@
   <script src="/js/widgets/vpn-widget.js"></script>
   <script src="/js/widgets/tunnels-widget.js"></script>
   <script src="/js/widgets/remote-admin-widget.js"></script>
+  <script src="/js/widgets/inventory-widget.js"></script>
 
   <!-- Dashboard Configuration -->
   <script src="/js/config.js"></script>
