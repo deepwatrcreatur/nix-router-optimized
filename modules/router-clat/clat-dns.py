@@ -17,6 +17,7 @@ import os
 import signal
 import socket
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -638,7 +639,8 @@ class ClatStatusServer:
         now = time.time()
         uptime = now - self.start_time
 
-        # Check backend health by looking for the Tayga service
+        # Check backend health using the translation interface rather than
+        # systemd, since this service is hardened away from AF_UNIX sockets.
         tayga_healthy = self._check_tayga_health()
 
         # Determine overall state
@@ -673,15 +675,8 @@ class ClatStatusServer:
         }
 
     def _check_tayga_health(self):
-        """Check if the Tayga backend service is running."""
-        try:
-            result = subprocess.run(
-                ["systemctl", "is-active", "router-clat-tayga.service"],
-                capture_output=True, text=True, timeout=5,
-            )
-            return result.stdout.strip() == "active"
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            return False
+        """Check whether the runtime translation interface is present."""
+        return os.path.exists("/sys/class/net/clat0")
 
     def write_status_file(self):
         """Write current status to a file for dashboard consumption."""
@@ -694,10 +689,6 @@ class ClatStatusServer:
             os.replace(tmp, self.status_path)
         except OSError as e:
             logger.warning("Failed to write status file: %s", e)
-
-
-import subprocess  # needed for systemctl check
-
 
 # ---------------------------------------------------------------------------
 # CLI
