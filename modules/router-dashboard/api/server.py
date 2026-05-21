@@ -1379,6 +1379,18 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         try:
             with open(CLAT_STATUS_FILE) as f:
                 status = json.load(f)
+            if not isinstance(status, dict):
+                logger.warning(
+                    "Invalid CLAT status payload type from %s: %s",
+                    CLAT_STATUS_FILE,
+                    type(status).__name__,
+                )
+                self.send_json({
+                    'enabled': True,
+                    'state': 'degraded',
+                    'error': 'Invalid CLAT status payload',
+                })
+                return
             status['enabled'] = True
             self.send_json(status)
         except FileNotFoundError:
@@ -1388,10 +1400,11 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'error': 'Status file not found — control plane may not be running',
             })
         except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Failed to read CLAT status file %s: %s", CLAT_STATUS_FILE, e)
             self.send_json({
                 'enabled': True,
                 'state': 'degraded',
-                'error': f'Failed to read status: {e}',
+                'error': 'Failed to read CLAT status',
             })
 
     def handle_nat64_connections(self):
