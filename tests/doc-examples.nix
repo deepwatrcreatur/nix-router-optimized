@@ -781,6 +781,15 @@ in
       assertion = builtins.elem "router-clat-tayga.service" config.systemd.services.router-clat-dns.requires;
       message = "router-clat-dns should require router-clat-tayga.";
     }
+    # ── observability assertions ──
+    {
+      assertion = lib.hasInfix "--status-port 9467" config.systemd.services.router-clat-dns.serviceConfig.ExecStart;
+      message = "router-clat-dns should pass status-port from config.";
+    }
+    {
+      assertion = lib.hasInfix "--status-path /run/router-clat/status.json" config.systemd.services.router-clat-dns.serviceConfig.ExecStart;
+      message = "router-clat-dns should pass status-path for dashboard consumption.";
+    }
   ]);
 
   docs-router-clat-reject-loop-topology-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-loop-topology" [
@@ -882,6 +891,37 @@ in
       };
     }
   ];
+
+  docs-router-dashboard-clat-status-wiring-eval = mkDocExampleCheck "docs-router-dashboard-clat-status-wiring" [
+    self.nixosModules.router-clat
+    self.nixosModules.router-dashboard
+    self.nixosModules.router-firewall
+    self.nixosModules.router-optimizations
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+      };
+      services.router-dashboard.enable = true;
+      services.router-firewall.enable = true;
+      services.router-optimizations = {
+        enable = true;
+        interfaces.wan = { device = "eth0"; role = "wan"; label = "WAN"; };
+        interfaces.lan = { device = "eth1"; role = "lan"; label = "LAN"; };
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.systemd.services.router-dashboard.environment.DASHBOARD_CLAT_STATUS_FILE == "/run/router-clat/status.json";
+      message = "Dashboard should have CLAT status file path when router-clat is enabled.";
+    }
+    {
+      assertion = let services = builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_SERVICES;
+                  in builtins.elem "router-clat-tayga" services && builtins.elem "router-clat-dns" services;
+      message = "Dashboard should include CLAT services in monitored service list.";
+    }
+  ]);
 
   docs-router-dashboard-technitium-token-resolution-eval = mkDocExampleCheck "docs-router-dashboard-technitium-token-resolution" [
     self.nixosModules.router-dashboard
