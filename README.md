@@ -433,6 +433,13 @@ modules. These modules do not manage the underlying services; they simply
 describe existing systemd units and endpoints so the dashboard can render status
 consistently.
 
+When router networking and DHCP modules are present, `router-dashboard` also
+exports a read-only inventory artifact via `DASHBOARD_INVENTORY_FILE`. That
+artifact reduces declared routed subnets, declared DHCP pools, declared
+reservations, and provenance markers into a single deterministic JSON file for
+dashboard consumption. It is not a writable database and it does not replace
+runtime lease/reconciliation views.
+
 Example:
 
 ```nix
