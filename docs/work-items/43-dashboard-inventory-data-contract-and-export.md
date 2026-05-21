@@ -1,6 +1,6 @@
 # 43 - Dashboard Inventory Data Contract and Export
 
-## Status: `pending`
+## Status: `in-progress`
 
 ## Objective
 
