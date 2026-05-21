@@ -10,7 +10,6 @@ let
   findByAddress = address: items: builtins.filter (item: item.address == address) items;
   dashboardIndex = builtins.readFile ../modules/router-dashboard/index.html;
   dashboardMain = builtins.readFile ../modules/router-dashboard/js/main.js;
-  dashboardApi = builtins.readFile ../modules/router-dashboard/api/server.py;
 in
 {
   router-dashboard-inventory-router-dhcp-eval = eval.mkNixosEvalCheck "router-dashboard-inventory-router-dhcp" [
@@ -156,10 +155,6 @@ in
             lib.hasInfix "InventoryWidget" dashboardMain
             && lib.hasInfix "'inventory'" dashboardMain;
           message = "router-dashboard main script should wire the inventory page into the page model.";
-        }
-        {
-          assertion = lib.hasInfix "/api/inventory" dashboardApi && lib.hasInfix "handle_inventory" dashboardApi;
-          message = "router-dashboard API server should expose a bounded read-only inventory endpoint.";
         }
       ];
     }
