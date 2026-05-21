@@ -903,6 +903,42 @@ header h1 {
   font-weight: 600;
 }
 
+.inventory-status-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.inventory-status-declared {
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+
+.inventory-status-leased {
+  background: rgba(74, 222, 128, 0.14);
+  color: #86efac;
+}
+
+.inventory-status-runtime-only {
+  background: rgba(250, 204, 21, 0.16);
+  color: #fde68a;
+}
+
+.inventory-status-conflict {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+.inventory-conflict-text {
+  color: #fca5a5;
+}
+
 .inventory-host-ip {
   color: var(--accent-primary);
   font-size: 0.92rem;

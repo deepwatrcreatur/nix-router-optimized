@@ -94,8 +94,9 @@ class InventoryWidget extends BaseWidget {
     const subnets = this.inventory.subnets || [];
     const hosts = this.inventory.hosts || [];
     const reservations = this.inventory.reservedAddresses || [];
+    const runtimeSummary = this.inventory.runtimeSummary || {};
 
-    statusEl.textContent = `${subnets.length} subnets • ${hosts.length} hosts • ${reservations.length} reserved addresses`;
+    statusEl.textContent = `${subnets.length} subnets • ${hosts.length} hosts • ${reservations.length} reserved addresses • ${runtimeSummary.liveLeaseCount || 0} live leases`;
 
     const visibleGroups = subnets
       .map(subnet => ({
@@ -161,6 +162,7 @@ class InventoryWidget extends BaseWidget {
           <div class="inventory-subnet-summary">
             <span>${this.escape(subnet.dhcpBackend || 'no-dhcp')}</span>
             <span>${visibleHosts.length} hosts</span>
+            ${this.renderSubnetSummary(subnet.runtimeSummary)}
           </div>
         </button>
         <div class="inventory-host-list">
@@ -177,7 +179,7 @@ class InventoryWidget extends BaseWidget {
     return `
       <button class="inventory-host-row${selectedClass}" type="button" data-inventory-host-id="${this.escape(host.id)}">
         <div class="inventory-host-main">
-          <span class="inventory-host-label">${this.escape(host.label)}</span>
+          <span class="inventory-host-label">${this.escape(host.label)} ${this.renderHostStatusChip(host.status)}</span>
           <span class="inventory-host-ip">${this.escape(host.ipv4Address)}</span>
         </div>
         <div class="inventory-host-meta">${this.escape(host.sourceKind || 'declared-host')}</div>
@@ -201,7 +203,7 @@ class InventoryWidget extends BaseWidget {
         <div class="inventory-detail-header">
           <div>
             <div class="inventory-detail-title">${this.escape(host.label)}</div>
-            <div class="inventory-detail-subtitle">${this.escape(host.sourceKind || 'declared-host')}</div>
+            <div class="inventory-detail-subtitle">${this.escape(host.sourceKind || 'declared-host')} · ${this.escape(host.status || 'declared')}</div>
           </div>
           <span class="inventory-badge">Read-only</span>
         </div>
@@ -210,6 +212,8 @@ class InventoryWidget extends BaseWidget {
           <div><dt>Hostname</dt><dd>${this.escape(host.hostname || '—')}</dd></div>
           <div><dt>MAC</dt><dd>${this.escape(host.macAddress || '—')}</dd></div>
           <div><dt>Subnet</dt><dd>${this.escape(subnet ? `${subnet.label} (${subnet.cidr})` : host.subnetRef || '—')}</dd></div>
+          <div><dt>Status</dt><dd>${this.escape(host.status || 'declared')}</dd></div>
+          <div><dt>Lease Expires</dt><dd>${this.escape(host.runtimeLease?.leaseExpires || '—')}</dd></div>
         </dl>
         <div class="inventory-provenance">
           <h3>Provenance</h3>
@@ -245,6 +249,8 @@ class InventoryWidget extends BaseWidget {
           <div><dt>DNS</dt><dd>${this.escape((subnet.dnsServers || []).join(', ') || '—')}</dd></div>
           <div><dt>Search Domains</dt><dd>${this.escape((subnet.searchDomains || []).join(', ') || '—')}</dd></div>
           <div><dt>Dynamic Pools</dt><dd>${this.escape(pools.map(pool => `${pool.start} - ${pool.end}`).join(', ') || '—')}</dd></div>
+          <div><dt>Live Leases</dt><dd>${this.escape(String(subnet.runtimeSummary?.liveLeaseCount ?? 0))}</dd></div>
+          <div><dt>Occupancy</dt><dd>${this.escape(this.formatOccupancy(subnet.runtimeSummary))}</dd></div>
         </dl>
         <div class="inventory-provenance">
           <h3>Provenance</h3>
@@ -276,6 +282,28 @@ class InventoryWidget extends BaseWidget {
     if (detailEl) {
       detailEl.innerHTML = `<div class="inventory-empty-detail">${this.escape(message)}</div>`;
     }
+  }
+
+  renderHostStatusChip(status) {
+    if (!status) return '';
+    return `<span class="inventory-status-chip inventory-status-${this.escape(status)}">${this.escape(status)}</span>`;
+  }
+
+  renderSubnetSummary(summary = {}) {
+    const live = summary.liveLeaseCount ?? 0;
+    const conflicts = summary.conflictCount ?? 0;
+    const occupancy = this.formatOccupancy(summary);
+    return `
+      <span>${live} live</span>
+      <span>${occupancy}</span>
+      ${conflicts > 0 ? `<span class="inventory-conflict-text">${conflicts} conflict</span>` : ''}
+    `;
+  }
+
+  formatOccupancy(summary = {}) {
+    const capacity = summary.dynamicAddressCapacity ?? 0;
+    if (capacity <= 0) return 'no pool';
+    return `${summary.occupiedAddressCount ?? 0}/${capacity} (${summary.occupancyPercent ?? 0}%)`;
   }
 
   escape(value) {

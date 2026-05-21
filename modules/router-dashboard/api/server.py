@@ -1660,12 +1660,218 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             inventory = json.loads(inventory_path.read_text())
+            inventory = self.decorate_inventory_with_runtime(inventory)
             inventory['available'] = True
             self.send_json(inventory)
         except json.JSONDecodeError as exc:
             self.send_error_json(500, f'Invalid inventory JSON: {exc}')
         except Exception as e:
             self.send_error_json(500, str(e))
+
+    def decorate_inventory_with_runtime(self, inventory):
+        runtime_leases = self.get_runtime_dhcp_leases()
+        declared_hosts = inventory.get('hosts', [])
+        declared_by_address = {host.get('ipv4Address'): dict(host) for host in declared_hosts if host.get('ipv4Address')}
+        runtime_by_address = {lease.get('address'): lease for lease in runtime_leases if lease.get('address')}
+
+        merged_hosts = []
+        conflict_count = 0
+        runtime_only_count = 0
+
+        for host in declared_hosts:
+            merged = dict(host)
+            runtime = runtime_by_address.get(host.get('ipv4Address'))
+            status = 'declared'
+
+            if runtime:
+                status = 'leased'
+                declared_mac = self.normalize_mac_address(host.get('macAddress', ''))
+                runtime_mac = self.normalize_mac_address(runtime.get('hardwareAddress', ''))
+                if declared_mac and runtime_mac and declared_mac != runtime_mac:
+                    status = 'conflict'
+                    conflict_count += 1
+
+                merged['runtimeLease'] = {
+                    'address': runtime.get('address'),
+                    'hostname': runtime.get('hostname'),
+                    'hardwareAddress': runtime.get('hardwareAddress'),
+                    'leaseExpires': runtime.get('leaseExpires'),
+                    'scope': runtime.get('scope'),
+                    'interface': runtime.get('interface'),
+                }
+
+            merged['status'] = status
+            merged_hosts.append(merged)
+
+        for address, runtime in runtime_by_address.items():
+            if address in declared_by_address:
+                continue
+
+            runtime_only_count += 1
+            merged_hosts.append({
+                'id': f'runtime:{address}',
+                'label': runtime.get('hostname') or address,
+                'hostname': runtime.get('hostname') or None,
+                'ipv4Address': address,
+                'macAddress': runtime.get('hardwareAddress') or None,
+                'subnetRef': self.subnet_id_for_address(address, inventory.get('subnets', [])),
+                'sourceKind': 'runtime-lease',
+                'status': 'runtime-only',
+                'provenance': [
+                    {
+                        'module': 'router-dashboard',
+                        'path': 'runtime-dhcp-leases',
+                        'authority': 'runtime'
+                    }
+                ],
+                'runtimeLease': {
+                    'address': runtime.get('address'),
+                    'hostname': runtime.get('hostname'),
+                    'hardwareAddress': runtime.get('hardwareAddress'),
+                    'leaseExpires': runtime.get('leaseExpires'),
+                    'scope': runtime.get('scope'),
+                    'interface': runtime.get('interface'),
+                }
+            })
+
+        inventory['hosts'] = sorted(merged_hosts, key=lambda host: host.get('ipv4Address', ''))
+        inventory['reservedAddresses'] = sorted([
+            {
+                'address': host.get('ipv4Address'),
+                'label': host.get('label'),
+                'hostRef': host.get('id'),
+                'subnetRef': host.get('subnetRef'),
+                'sourceKind': host.get('sourceKind'),
+                'status': host.get('status'),
+                'provenance': host.get('provenance', [])
+            }
+            for host in inventory['hosts']
+            if host.get('ipv4Address')
+        ], key=lambda entry: entry.get('address', ''))
+
+        for subnet in inventory.get('subnets', []):
+            subnet_hosts = [host for host in inventory['hosts'] if host.get('subnetRef') == subnet.get('id')]
+            runtime_only_hosts = [host for host in subnet_hosts if host.get('status') == 'runtime-only']
+            subnet_conflicts = [host for host in subnet_hosts if host.get('status') == 'conflict']
+            live_leases = [host for host in subnet_hosts if host.get('status') in ('leased', 'runtime-only', 'conflict')]
+
+            dynamic_capacity = self.dynamic_pool_capacity(subnet.get('dynamicPools', []))
+            occupied = len(live_leases)
+            subnet['runtimeSummary'] = {
+                'declaredHostCount': len([host for host in subnet_hosts if host.get('sourceKind') != 'runtime-lease']),
+                'liveLeaseCount': occupied,
+                'runtimeOnlyLeaseCount': len(runtime_only_hosts),
+                'conflictCount': len(subnet_conflicts),
+                'dynamicAddressCapacity': dynamic_capacity,
+                'occupiedAddressCount': occupied,
+                'occupancyPercent': round((occupied / dynamic_capacity) * 100, 1) if dynamic_capacity > 0 else 0.0,
+            }
+
+        inventory['runtimeSummary'] = {
+            'liveLeaseCount': len(runtime_leases),
+            'runtimeOnlyLeaseCount': runtime_only_count,
+            'conflictCount': conflict_count,
+            'reconciliationStates': ['declared', 'leased', 'runtime-only', 'conflict']
+        }
+        return inventory
+
+    def get_runtime_dhcp_leases(self):
+        kea_leases = self.get_kea_dhcp_leases()
+        token = self.get_technitium_token()
+        scopes = []
+        live_leases = []
+
+        if token:
+            scopes_url = f"{TECHNITIUM_URL}/api/dhcp/scopes/list?token={token}"
+            scopes_data = self.fetch_technitium_api(scopes_url)
+            if self.technitium_response_ok(scopes_data):
+                scopes = scopes_data.get('response', {}).get('scopes', [])
+
+            leases_url = f"{TECHNITIUM_URL}/api/dhcp/leases/list?token={token}"
+            leases_data = self.fetch_technitium_api(leases_url)
+            if self.technitium_response_ok(leases_data):
+                for lease in leases_data.get('response', {}).get('leases', []):
+                    live_leases.append({
+                        'address': lease.get('address', ''),
+                        'hostname': lease.get('hostName', ''),
+                        'hardwareAddress': lease.get('hardwareAddress', ''),
+                        'leaseExpires': lease.get('leaseExpires', ''),
+                        'scope': lease.get('scope', ''),
+                        'interface': lease.get('scope', ''),
+                    })
+
+        if live_leases:
+            return sorted(live_leases, key=lambda lease: lease.get('address', ''))
+
+        if kea_leases:
+            if scopes:
+                scope = scopes[0]
+                scope_name = scope.get('name', 'LAN')
+                interface_name = (
+                    scope.get('interface')
+                    or scope.get('interfaceName')
+                    or scope.get('networkInterface')
+                    or scope.get('adapter')
+                    or 'Kea DHCP'
+                )
+                for lease in kea_leases:
+                    lease['scope'] = scope_name
+                    lease['interface'] = interface_name
+            return kea_leases
+
+        return []
+
+    def normalize_mac_address(self, value):
+        return re.sub(r'[^0-9A-F]', '', (value or '').upper())
+
+    def parse_ipv4_address(self, address):
+        try:
+            return int.from_bytes(socket.inet_aton(address), 'big')
+        except OSError:
+            return None
+
+    def subnet_id_for_address(self, address, subnets):
+        ip_value = self.parse_ipv4_address(address)
+        if ip_value is None:
+            return None
+
+        routed_match = None
+        fallback_match = None
+        for subnet in subnets:
+            cidr = subnet.get('cidr', '')
+            if '/' not in cidr:
+                continue
+            base_address, prefix = cidr.split('/', 1)
+            base_value = self.parse_ipv4_address(base_address)
+            if base_value is None:
+                continue
+            try:
+                prefix_length = int(prefix)
+            except ValueError:
+                continue
+
+            host_bits = 32 - prefix_length
+            host_count = 2 ** host_bits
+            network = (base_value // host_count) * host_count
+            broadcast = network + host_count - 1
+            if network <= ip_value <= broadcast:
+                if str(subnet.get('id', '')).startswith('routed:'):
+                    routed_match = subnet.get('id')
+                    break
+                if fallback_match is None:
+                    fallback_match = subnet.get('id')
+
+        return routed_match or fallback_match
+
+    def dynamic_pool_capacity(self, pools):
+        total = 0
+        for pool in pools or []:
+            start = self.parse_ipv4_address(pool.get('start', ''))
+            end = self.parse_ipv4_address(pool.get('end', ''))
+            if start is None or end is None or end < start:
+                continue
+            total += (end - start) + 1
+        return total
 
     def get_kea_dhcp_leases(self):
         leases_by_address = {}
