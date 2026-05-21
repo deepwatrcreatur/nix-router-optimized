@@ -1,6 +1,6 @@
 # 45 - Dashboard Inventory Reconciliation and Subnet Summary
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -23,26 +23,34 @@ visual browsing cues such as subnet occupancy and status coloring.
 
 ## Requirements
 
-- [ ] Add bounded reconciliation states or provenance flags such as:
+- [x] Add bounded reconciliation states or provenance flags such as:
       - declared
       - leased
       - dns-only
       - conflict
-- [ ] Add a compact subnet summary or occupancy view suitable for the dashboard
+- [x] Add a compact subnet summary or occupancy view suitable for the dashboard
       surface
-- [ ] Keep reconciliation read-only and derived from existing declarative +
+- [x] Keep reconciliation read-only and derived from existing declarative +
       runtime sources
-- [ ] Make any status coloring or summary view legible without requiring
+- [x] Make any status coloring or summary view legible without requiring
       `phpIPAM`-style application complexity
 
 ## Verification
 
-- [ ] The inventory browser can distinguish intent from live runtime observations
-- [ ] Operators can quickly identify subnets/hosts that deserve follow-up
-- [ ] The resulting surface remains clearly non-authoritative and read-only
+- [x] The inventory browser can distinguish intent from live runtime observations
+- [x] Operators can quickly identify subnets/hosts that deserve follow-up
+- [x] The resulting surface remains clearly non-authoritative and read-only
 
 ## Notes
 
 This item should follow the data-contract and base-browser work.
 It is the place to borrow phpIPAM-like browse **patterns** without importing
 phpIPAM code or authority boundaries.
+
+## Outcome
+
+`router-dashboard` now overlays bounded runtime reconciliation onto the
+read-only inventory browser. Hosts can surface as declared, leased,
+runtime-only, or conflict, and each subnet now exposes compact live-lease and
+occupancy summaries. The result stays derived and non-authoritative: it does
+not add any write path or mutable inventory store.
