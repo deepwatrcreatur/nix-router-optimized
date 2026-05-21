@@ -103,6 +103,7 @@ class InventoryWidget extends BaseWidget {
       this.hideLoading();
     } catch (error) {
       console.error('Inventory widget error:', error);
+      this.hideLoading();
       this.renderErrorState('Unable to load inventory data');
     }
   }
@@ -177,6 +178,27 @@ class InventoryWidget extends BaseWidget {
         subnetMatches: this.matchesQuery(subnet, subnet, query)
       };
     });
+
+    const unassignedHosts = (hostMap.get('unassigned') || []).filter(host =>
+      this.matchesQuery(host, null, query)
+    );
+
+    if (unassignedHosts.length > 0) {
+      groups.push({
+        subnet: {
+          id: 'unassigned',
+          label: 'Unassigned',
+          cidr: 'No matching subnet',
+          gatewayAddress: null,
+          dhcpBackend: null,
+          dynamicPools: [ ]
+        },
+        hosts: unassignedHosts.sort((a, b) =>
+          (a.ipv4Address || '').localeCompare(b.ipv4Address || '')
+        ),
+        subnetMatches: !query || 'unassigned no matching subnet'.includes(query)
+      });
+    }
 
     return groups.filter(group => group.subnetMatches || group.hosts.length > 0);
   }
