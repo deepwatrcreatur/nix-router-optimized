@@ -1,6 +1,6 @@
 # 40 - Router CLAT Runtime Backend and Lifecycle
 
-## Status: `pending`
+## Status: `in-progress`
 
 ## Objective
 
@@ -33,35 +33,35 @@ But the module still lacks the runtime middle:
 
 Discussion 10 concluded that cleanup/surfacing was the right immediate follow-up,
 and that the next substantial step should be a separate runtime-oriented item
-rather than letting “contract-only” silently imply “feature complete.”
+rather than letting "contract-only" silently imply "feature complete."
 
 ## Requirements
 
-- [ ] Choose and document the first bounded runtime backend for `router-clat`
+- [x] Choose and document the first bounded runtime backend for `router-clat`
       without treating it as the long-term architecture by default
-- [ ] Make `router-clat` own the lifecycle of the translation interface
+- [x] Make `router-clat` own the lifecycle of the translation interface
       (`clat0` or equivalent) declaratively
-- [ ] Add explicit systemd/runtime ownership for the first slice so the module
+- [x] Add explicit systemd/runtime ownership for the first slice so the module
       no longer depends on an imagined external daemon or manually-created
       interface
-- [ ] Render deterministic runtime/backend artifacts from the module surface
+- [x] Render deterministic runtime/backend artifacts from the module surface
       instead of burying runtime assumptions inside ad hoc scripts
-- [ ] Keep the current single-owner / non-HA boundary explicit and fail loudly
+- [x] Keep the current single-owner / non-HA boundary explicit and fail loudly
       on unsupported topology or ownership combinations
-- [ ] Preserve clean coexistence boundaries with at least:
+- [x] Preserve clean coexistence boundaries with at least:
       - `router-firewall`
       - `router-nat64`
       - host routing/sysctl ownership
 
 ## Verification
 
-- [ ] Enabling `services.router-clat.enable = true;` now results in a concrete
+- [x] Enabling `services.router-clat.enable = true;` now results in a concrete
       runtime unit graph rather than only eval-time assertions
-- [ ] The translation interface lifecycle is owned declaratively by the module
-- [ ] Runtime artifacts are inspectable and reproducible from config
-- [ ] Unsupported topologies or ownership conflicts fail clearly rather than
+- [x] The translation interface lifecycle is owned declaratively by the module
+- [x] Runtime artifacts are inspectable and reproducible from config
+- [x] Unsupported topologies or ownership conflicts fail clearly rather than
       degrading silently
-- [ ] The resulting slice remains honest about being bounded and non-HA
+- [x] The resulting slice remains honest about being bounded and non-HA
 
 ## Notes
 

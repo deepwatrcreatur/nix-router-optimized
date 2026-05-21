@@ -46,6 +46,24 @@ let
     in
       if aLen == 96 && bLen == 96 then aPrefix == bPrefix
       else a == b;  # conservative fallback
+
+  # Parse CIDR helpers for config generation
+  cidrAddress = cidr: head (splitString "/" cidr);
+  cidrPrefixLen = cidr: toInt (last (splitString "/" cidr));
+
+  # First address in pool is used as the Tayga router address on that side
+  ipv4RouterAddr = cidrAddress cfg.legacyIpv4Pool;
+  ipv6RouterAddr = "${cidrAddress cfg.mappingPrefix6}1";
+
+  # Tayga config for the CLAT instance
+  taygaConf = pkgs.writeText "router-clat-tayga.conf" ''
+    tun-device clat0
+    ipv4-addr ${ipv4RouterAddr}
+    ipv6-addr ${ipv6RouterAddr}
+    prefix ${cfg.mappingPrefix6}
+    dynamic-pool ${cfg.legacyIpv4Pool}
+    data-dir /var/lib/router-clat
+  '';
 in
 {
   options.services.router-clat = {
@@ -156,5 +174,87 @@ in
         iifname "clat0" oifname {${concatMapStringsSep ", " (i: "\"${i}\"") cfg.listenInterfaces}} accept comment "CLAT: translation to LAN (return)"
       '';
     }))
+
+    # Runtime backend: Tayga instance + clat0 interface lifecycle
+    {
+      # Tayga config artifact — inspectable at /etc/router-clat/tayga.conf
+      environment.etc."router-clat/tayga.conf".source = taygaConf;
+
+      # clat0 TUN interface owned by systemd-networkd
+      systemd.network.netdevs."30-clat0" = {
+        netdevConfig = {
+          Name = "clat0";
+          Kind = "tun";
+        };
+      };
+
+      systemd.network.networks."30-clat0" = {
+        matchConfig.Name = "clat0";
+        addresses = [
+          { Address = "${ipv4RouterAddr}/32"; }
+          { Address = "${ipv6RouterAddr}/128"; }
+        ];
+        routes = [
+          {
+            Destination = cfg.legacyIpv4Pool;
+          }
+          {
+            Destination = cfg.mappingPrefix6;
+          }
+        ];
+        linkConfig.RequiredForOnline = "no";
+      };
+
+      # Tayga translation daemon — separate instance from router-nat64
+      systemd.services.router-clat-tayga = {
+        description = "CLAT translation backend (Tayga)";
+        after = [
+          "network-online.target"
+          "systemd-networkd.service"
+        ];
+        wants = [ "network-online.target" ];
+        wantedBy = [ "multi-user.target" ];
+        reloadTriggers = [ taygaConf ];
+
+        serviceConfig = {
+          ExecStart = "${pkgs.tayga}/bin/tayga -d --nodetach --config /etc/router-clat/tayga.conf";
+          ExecReload = "${pkgs.coreutils}/bin/kill -SIGHUP $MAINPID";
+          Restart = "on-failure";
+          RestartSec = 5;
+
+          StateDirectory = "router-clat";
+
+          # Hardening
+          ProtectHome = true;
+          ProtectSystem = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          ProtectHostname = true;
+          ProtectControlGroups = true;
+          MemoryDenyWriteExecute = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          RestrictNamespaces = true;
+          NoNewPrivileges = true;
+          LockPersonality = true;
+          PrivateTmp = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter = [
+            "@network-io"
+            "@system-service"
+            "~@privileged"
+            "~@resources"
+          ];
+          AmbientCapabilities = [ "CAP_NET_ADMIN" ];
+          CapabilityBoundingSet = [ "CAP_NET_ADMIN" ];
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+            "AF_NETLINK"
+          ];
+        };
+      };
+    }
   ]);
 }
