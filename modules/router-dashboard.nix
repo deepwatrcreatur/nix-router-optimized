@@ -691,6 +691,7 @@ in {
           DASHBOARD_REMOTE_ADMIN = builtins.toJSON effectiveRemoteAdmin;
           DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
           DASHBOARD_INVENTORY_FILE = "${inventoryArtifact}";
+          DASHBOARD_INVENTORY_ENABLED = "1";
           DASHBOARD_NAT64_PREFIX = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv6Prefix else "";
           DASHBOARD_NAT64_POOL = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv4Pool else "";
           TECHNITIUM_URL = "http://localhost:5380";

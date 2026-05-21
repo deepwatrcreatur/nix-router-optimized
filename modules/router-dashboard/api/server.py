@@ -50,6 +50,8 @@ try:
     WOL_DEVICES = json.loads(os.environ.get('DASHBOARD_WOL_DEVICES', '[]'))
 except json.JSONDecodeError:
     WOL_DEVICES = []
+INVENTORY_FILE = os.environ.get('DASHBOARD_INVENTORY_FILE', '')
+INVENTORY_ENABLED = os.environ.get('DASHBOARD_INVENTORY_ENABLED', '0') == '1'
 
 NAT64_PREFIX = os.environ.get('DASHBOARD_NAT64_PREFIX', '')
 NAT64_POOL = os.environ.get('DASHBOARD_NAT64_POOL', '')
@@ -155,6 +157,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_dns_stats()
         elif path == '/api/dhcp/leases':
             self.handle_dhcp_leases()
+        elif path == '/api/inventory':
+            self.handle_inventory()
         elif path == '/api/fail2ban/status':
             self.handle_fail2ban_status()
         elif path == '/api/speedtest/status':
@@ -1636,6 +1640,32 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'available': False,
                 'message': str(e)
             })
+
+    def handle_inventory(self):
+        """Serve the read-only declarative inventory reduction artifact."""
+        try:
+            if not INVENTORY_ENABLED or not INVENTORY_FILE:
+                self.send_json({
+                    'available': False,
+                    'message': 'Inventory export not configured'
+                }, status=404)
+                return
+
+            inventory_path = Path(INVENTORY_FILE)
+            if not inventory_path.exists():
+                self.send_json({
+                    'available': False,
+                    'message': 'Inventory export file not found'
+                }, status=404)
+                return
+
+            inventory = json.loads(inventory_path.read_text())
+            inventory['available'] = True
+            self.send_json(inventory)
+        except json.JSONDecodeError as exc:
+            self.send_error_json(500, f'Invalid inventory JSON: {exc}')
+        except Exception as e:
+            self.send_error_json(500, str(e))
 
     def get_kea_dhcp_leases(self):
         leases_by_address = {}

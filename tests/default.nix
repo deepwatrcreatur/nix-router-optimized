@@ -56,7 +56,7 @@ let
   };
 
   routerDashboardInventoryChecks = import ./router-dashboard-inventory.nix {
-    inherit self eval;
+    inherit self eval lib;
   };
 in
 {
