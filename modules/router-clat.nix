@@ -128,6 +128,12 @@ in
       description = "Prefer synthesized A over native A for dual-stack upstream answers.";
     };
 
+    statusPort = mkOption {
+      type = types.int;
+      default = 9467;
+      description = "HTTP port for the CLAT runtime status endpoint (localhost only).";
+    };
+
     openFirewall = mkOption {
       type = types.bool;
       default = true;
@@ -243,7 +249,11 @@ in
           ++ [ "--listen 0.0.0.0" ]
           ++ [ "--port ${toString cfg.dnsListenPort}" ]
           ++ optional cfg.preferSynthesizedAnswers "--prefer-synthesized"
-          ++ [ "--reload-cmd" "'${pkgs.systemd}/bin/systemctl reload router-clat-tayga.service'" ]);
+          ++ [
+            "--status-port ${toString cfg.statusPort}"
+            "--status-path /run/router-clat/status.json"
+            "--reload-cmd" "'${pkgs.systemd}/bin/systemctl reload router-clat-tayga.service'"
+          ]);
 
           Restart = "on-failure";
           RestartSec = 5;

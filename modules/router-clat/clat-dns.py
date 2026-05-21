@@ -576,6 +576,130 @@ class ClatDnsServer:
 
 
 # ---------------------------------------------------------------------------
+# Status / observability
+# ---------------------------------------------------------------------------
+
+class ClatStatusServer:
+    """Lightweight HTTP server exposing runtime health and mapping status.
+
+    Writes a JSON status file on each update so the dashboard can read it
+    without depending on this process being responsive.
+    """
+
+    def __init__(self, store, server, status_path, port=9467):
+        self.store = store
+        self.dns_server = server
+        self.status_path = status_path
+        self.port = port
+        self.start_time = time.time()
+        self._last_status_write = 0
+
+    def start(self):
+        """Start the HTTP status server in a background thread."""
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+
+        parent = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self_handler):
+                if self_handler.path == "/status":
+                    status = parent.get_status()
+                    body = json.dumps(status, indent=2).encode()
+                    self_handler.send_response(200)
+                    self_handler.send_header("Content-Type", "application/json")
+                    self_handler.send_header("Content-Length", str(len(body)))
+                    self_handler.end_headers()
+                    self_handler.wfile.write(body)
+                else:
+                    self_handler.send_error(404)
+
+            def log_message(self_handler, format, *args):
+                pass  # suppress access logs
+
+        def serve():
+            httpd = HTTPServer(("127.0.0.1", self.port), Handler)
+            httpd.serve_forever()
+
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+        logger.info("Status endpoint listening on 127.0.0.1:%d/status", self.port)
+
+        # Start periodic status file writer
+        def write_loop():
+            while True:
+                self.write_status_file()
+                time.sleep(10)
+        wt = threading.Thread(target=write_loop, daemon=True)
+        wt.start()
+
+    def get_status(self):
+        """Build the runtime status object."""
+        stats = self.store.get_stats()
+        now = time.time()
+        uptime = now - self.start_time
+
+        # Check backend health by looking for the Tayga service
+        tayga_healthy = self._check_tayga_health()
+
+        # Determine overall state
+        if not self.dns_server.running:
+            state = "inactive"
+        elif not tayga_healthy:
+            state = "degraded"
+        elif stats["active"] == 0:
+            state = "active-idle"
+        else:
+            state = "active-translating"
+
+        return {
+            "version": 1,
+            "timestamp": now,
+            "state": state,
+            "uptime": round(uptime, 1),
+            "backend": {
+                "name": "tayga",
+                "healthy": tayga_healthy,
+            },
+            "dns": {
+                "listening": self.dns_server.running,
+                "listenPort": self.dns_server.port,
+            },
+            "mappings": stats,
+            "boundaries": {
+                "ha": False,
+                "multiWan": False,
+                "note": "Single-owner first-slice. No HA or failover guarantees.",
+            },
+        }
+
+    def _check_tayga_health(self):
+        """Check if the Tayga backend service is running."""
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-active", "router-clat-tayga.service"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return result.stdout.strip() == "active"
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return False
+
+    def write_status_file(self):
+        """Write current status to a file for dashboard consumption."""
+        try:
+            status = self.get_status()
+            os.makedirs(os.path.dirname(self.status_path), exist_ok=True)
+            tmp = self.status_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(status, f, indent=2)
+            os.replace(tmp, self.status_path)
+        except OSError as e:
+            logger.warning("Failed to write status file: %s", e)
+
+
+import subprocess  # needed for systemctl check
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -603,6 +727,10 @@ def main():
                         help="Prefer synthesized A over native A in dual-stack")
     parser.add_argument("--reload-cmd",
                         help="Command to run after artifact render (e.g. reload backend)")
+    parser.add_argument("--status-port", type=int, default=9467,
+                        help="HTTP port for status endpoint (default: 9467)")
+    parser.add_argument("--status-path",
+                        help="Path to write JSON status file for dashboard")
     parser.add_argument("--log-level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"])
 
@@ -646,6 +774,16 @@ def main():
         bind_addresses=args.listen,
         port=args.port,
     )
+
+    # Start status/observability endpoint
+    status_path = args.status_path or os.path.join(args.state_dir, "status.json")
+    status_server = ClatStatusServer(
+        store=store,
+        server=server,
+        status_path=status_path,
+        port=args.status_port,
+    )
+    status_server.start()
 
     def handle_signal(signum, frame):
         logger.info("Received signal %d, shutting down", signum)
