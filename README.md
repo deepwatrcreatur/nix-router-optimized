@@ -507,6 +507,9 @@ Declarative Technitium DNS blocklist management with curated presets and additiv
 ### router-kea
 ISC Kea DHCPv4 with optional RFC2136/TSIG DDNS to register leases in a local DNS server. The
 TSIG secret is injected at runtime via an `ExecStartPre` script so it never enters the Nix store.
+When `router-ntp` is enabled, Kea automatically advertises the router/gateway address as the
+LAN NTP server via DHCP option 42 unless you override `dhcp4.ntpServers`, but only when
+`services.router-ntp.lanSubnets` actually allows the served DHCP subnet.
 
 ```nix
 services.router-kea = {
@@ -515,6 +518,9 @@ services.router-kea = {
     subnet = "10.10.0.0/16";
     gatewayAddress = "10.10.10.1";
     dnsServers = [ "10.10.10.1" ];
+    # Optional; otherwise defaults to the router/gateway only when router-ntp
+    # is enabled and allows this DHCP subnet.
+    ntpServers = [ "10.10.10.1" ];
     # Optional; defaults to router-dns-service.searchDomains when present.
     searchDomains = [ "home.example.com" ];
     poolRanges = [{ start = "10.10.10.100"; end = "10.10.10.250"; }];
@@ -534,6 +540,7 @@ services.router-kea = {
 ### router-ntp
 Chrony NTP server with declarative upstream servers, per-subnet client access controls, and
 optional firewall integration (opens UDP 123 on trusted interfaces when router-firewall is loaded).
+SNTP-only clients such as many switches and APs can use the router IP directly.
 
 ```nix
 services.router-ntp = {
