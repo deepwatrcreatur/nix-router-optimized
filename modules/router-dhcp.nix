@@ -114,6 +114,23 @@ let
         description = "Typed PXE boot advertisement options for this routed segment.";
       };
 
+      option108 = mkOption {
+        type = types.submodule {
+          options = {
+            enable = mkEnableOption "RFC 8925 DHCPv4 option 108 (IPv6-Only Preferred)";
+          };
+        };
+        default = { };
+        description = ''
+          Explicit DHCP option 108 boundary for the systemd-networkd backend.
+
+          `services.router-dhcp` does not provide a first-class declarative
+          option 108 surface. If you need to experiment manually, use
+          `extraDhcpServerConfig` and validate the underlying
+          systemd-networkd behavior yourself.
+        '';
+      };
+
       extraDhcpServerConfig = mkOption {
         type = types.attrsOf types.anything;
         default = { };
@@ -136,6 +153,7 @@ let
         emitDns = true;
         emitRouter = true;
         staticLeases = [ ];
+        option108 = { };
         extraDhcpServerConfig = { };
       }) (filterAttrs (_name: iface: elem iface.role cfg.matchRoles) routedIfaces);
 
@@ -238,6 +256,14 @@ in
             && (ifaceCfg.pxe.bootFilename == null || ifaceCfg.pxe.bootFilename == "")
           );
         message = "services.router-dhcp.interfaces.${name}.pxe.bootFilename must be set when PXE is enabled.";
+      }) cfg.interfaces)
+      ++ (mapAttrsToList (name: ifaceCfg: {
+        assertion = !(ifaceCfg.option108.enable or false);
+        message = ''
+          services.router-dhcp.interfaces.${name}.option108.enable is not supported declaratively.
+          Use services.router-dhcp.interfaces.${name}.extraDhcpServerConfig only as a manual
+          escape hatch if you need to experiment with raw systemd-networkd DHCPServer keys.
+        '';
       }) cfg.interfaces);
 
     systemd.network.networks = mapAttrs' (

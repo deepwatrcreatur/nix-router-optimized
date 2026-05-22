@@ -62,6 +62,10 @@ let
   routerClatObservabilityChecks = import ./router-clat-observability.nix {
     inherit self lib eval;
   };
+
+  routerDhcpOption108BoundaryChecks = import ./router-dhcp-option108-boundary.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -104,6 +108,7 @@ in
 // routerSecurityHardeningChecks
 // routerZonesChecks
 // routerClatObservabilityChecks
+// routerDhcpOption108BoundaryChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (
