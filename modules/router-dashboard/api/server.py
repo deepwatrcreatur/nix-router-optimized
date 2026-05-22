@@ -13,6 +13,7 @@ import csv
 import re
 import shlex
 import socket
+import ipaddress
 import time
 import urllib.request
 import urllib.error
@@ -1938,7 +1939,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             interface = interfaces_by_device.get(route.get('interface'))
             interface_ref = interface.get('id') if interface else None
             prefix = prefixes_by_cidr.get(route.get('destination'))
-            route_kind = 'default-route' if route.get('destination') == '0.0.0.0/0' else 'route'
+            route_kind = 'default-route' if self.is_default_route_destination(route.get('destination')) else 'route'
             route_edge = {
                 'id': self.runtime_route_edge_id(route),
                 'kind': 'route',
@@ -1958,7 +1959,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'provenance': self.runtime_route_provenance_entries(),
             }
             route_edges.append(route_edge)
-            if route.get('destination') == '0.0.0.0/0':
+            if self.is_default_route_destination(route.get('destination')):
                 default_route_edges.append(route_edge)
 
         merged_edges = []
@@ -2059,84 +2060,91 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         destination = route.get('destination') or 'route'
         gateway = route.get('gatewayAddress')
         interface_name = route.get('interface') or 'unknown-interface'
-        if destination == '0.0.0.0/0':
+        if self.is_default_route_destination(destination):
             return f"default via {gateway or interface_name}"
         if gateway:
             return f"{destination} via {gateway}"
         return f"{destination} on {interface_name}"
 
-    def normalize_route_destination(self, destination):
+    def normalize_route_destination(self, destination, family=None):
         if not destination or destination == 'default':
+            if family == 6:
+                return '::/0'
             return '0.0.0.0/0'
         return destination
 
+    def is_default_route_destination(self, destination):
+        return destination in ('0.0.0.0/0', '::/0')
+
     def get_runtime_neighbors(self):
         try:
-            result = subprocess.run(
-                ['ip', '-4', '-j', 'neigh', 'show'],
-                capture_output=True, text=True, timeout=3
-            )
-            if result.returncode != 0:
-                return []
-
             neighbors = []
-            payload = json.loads(result.stdout or '[]')
-            for entry in payload:
-                address = (entry.get('dst') or '').strip()
-                if not address:
+            for family_flag in ('-4', '-6'):
+                result = subprocess.run(
+                    ['ip', family_flag, '-j', 'neigh', 'show'],
+                    capture_output=True, text=True, timeout=3
+                )
+                if result.returncode != 0:
                     continue
 
-                state = entry.get('state') or entry.get('nud') or ''
-                if isinstance(state, list):
-                    state = ' '.join(str(part) for part in state if part)
+                payload = json.loads(result.stdout or '[]')
+                for entry in payload:
+                    address = (entry.get('dst') or '').strip()
+                    if not address:
+                        continue
 
-                neighbors.append({
-                    'address': address,
-                    'hardwareAddress': (entry.get('lladdr') or '').strip(),
-                    'interface': (entry.get('dev') or '').strip(),
-                    'state': str(state).upper(),
-                })
+                    state = entry.get('state') or entry.get('nud') or ''
+                    if isinstance(state, list):
+                        state = ' '.join(str(part) for part in state if part)
+
+                    neighbors.append({
+                        'address': address,
+                        'hardwareAddress': (entry.get('lladdr') or '').strip(),
+                        'interface': (entry.get('dev') or '').strip(),
+                        'state': str(state).upper(),
+                    })
 
             return sorted(
                 neighbors,
-                key=lambda neighbor: self.parse_ipv4_address(neighbor.get('address') or '0.0.0.0') or 0
+                key=lambda neighbor: self.sort_ip_address(neighbor.get('address'))
             )
         except Exception:
             return []
 
     def get_runtime_routes(self):
         try:
-            result = subprocess.run(
-                ['ip', '-4', '-j', 'route', 'show'],
-                capture_output=True, text=True, timeout=3
-            )
-            if result.returncode != 0:
-                return []
-
             routes = []
-            payload = json.loads(result.stdout or '[]')
-            for entry in payload:
-                destination = self.normalize_route_destination(entry.get('dst'))
-                interface_name = (entry.get('dev') or '').strip()
-                gateway_address = (entry.get('gateway') or entry.get('via') or '').strip()
-                if not destination:
+            for family_flag, family in (('-4', 4), ('-6', 6)):
+                result = subprocess.run(
+                    ['ip', family_flag, '-j', 'route', 'show'],
+                    capture_output=True, text=True, timeout=3
+                )
+                if result.returncode != 0:
                     continue
 
-                routes.append({
-                    'destination': destination,
-                    'interface': interface_name,
-                    'gatewayAddress': gateway_address or None,
-                    'protocol': entry.get('protocol') or entry.get('proto') or None,
-                    'scope': entry.get('scope') or None,
-                    'table': entry.get('table') or None,
-                    'type': entry.get('type') or 'unicast',
-                })
+                payload = json.loads(result.stdout or '[]')
+                for entry in payload:
+                    destination = self.normalize_route_destination(entry.get('dst'), family=family)
+                    interface_name = (entry.get('dev') or '').strip()
+                    gateway_address = (entry.get('gateway') or entry.get('via') or '').strip()
+                    if not destination:
+                        continue
+
+                    routes.append({
+                        'destination': destination,
+                        'interface': interface_name,
+                        'gatewayAddress': gateway_address or None,
+                        'protocol': entry.get('protocol') or entry.get('proto') or None,
+                        'scope': entry.get('scope') or None,
+                        'table': entry.get('table') or None,
+                        'type': entry.get('type') or 'unicast',
+                    })
 
             return sorted(
                 routes,
                 key=lambda route: (
-                    route.get('destination') != '0.0.0.0/0',
-                    route.get('destination') or '',
+                    not self.is_default_route_destination(route.get('destination')),
+                    self.sort_ip_network(route.get('destination')),
                     route.get('interface') or ''
                 )
             )
@@ -2200,6 +2208,25 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return int.from_bytes(socket.inet_aton(address), 'big')
         except OSError:
             return None
+
+    def parse_ip_address(self, address):
+        try:
+            return ipaddress.ip_address(address)
+        except ValueError:
+            return None
+
+    def sort_ip_address(self, address):
+        parsed = self.parse_ip_address(address or '')
+        if parsed is None:
+            return (99, '')
+        return (parsed.version, int(parsed))
+
+    def sort_ip_network(self, cidr):
+        try:
+            network = ipaddress.ip_network(cidr or '', strict=False)
+        except ValueError:
+            return (99, '', '')
+        return (network.version, int(network.network_address), network.prefixlen)
 
     def subnet_id_for_address(self, address, subnets):
         ip_value = self.parse_ipv4_address(address)

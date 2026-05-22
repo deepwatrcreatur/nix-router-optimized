@@ -221,53 +221,97 @@ class InventoryRuntimeTests(unittest.TestCase):
 
     def test_get_runtime_neighbors_parses_ip_json(self):
         handler = self.make_handler()
-        payload = json.dumps([
-            {
-                "dst": "10.10.200.40",
-                "dev": "br-lan",
-                "lladdr": "00:11:22:33:44:55",
-                "state": ["STALE"],
-            },
-            {
-                "dst": "10.10.200.20",
-                "dev": "br-lan",
-                "lladdr": "11:22:33:44:55:66",
-                "state": ["REACHABLE"],
-            },
-        ])
+        payloads = [
+            json.dumps([
+                {
+                    "dst": "10.10.200.40",
+                    "dev": "br-lan",
+                    "lladdr": "00:11:22:33:44:55",
+                    "state": ["STALE"],
+                },
+                {
+                    "dst": "10.10.200.20",
+                    "dev": "br-lan",
+                    "lladdr": "11:22:33:44:55:66",
+                    "state": ["REACHABLE"],
+                },
+            ]),
+            json.dumps([
+                {
+                    "dst": "2001:db8::20",
+                    "dev": "br-lan",
+                    "lladdr": "22:33:44:55:66:77",
+                    "state": ["REACHABLE"],
+                }
+            ]),
+        ]
 
-        with mock.patch.object(subprocess, "run", return_value=mock.Mock(returncode=0, stdout=payload, stderr="")):
+        with mock.patch.object(
+            subprocess,
+            "run",
+            side_effect=[mock.Mock(returncode=0, stdout=payload, stderr="") for payload in payloads],
+        ):
             neighbors = handler.get_runtime_neighbors()
 
-        self.assertEqual([entry["address"] for entry in neighbors], ["10.10.200.20", "10.10.200.40"])
+        self.assertEqual(
+            [entry["address"] for entry in neighbors],
+            ["10.10.200.20", "10.10.200.40", "2001:db8::20"],
+        )
         self.assertEqual(neighbors[1]["state"], "STALE")
+        self.assertEqual(neighbors[2]["hardwareAddress"], "22:33:44:55:66:77")
 
     def test_get_runtime_routes_parses_ip_json(self):
         handler = self.make_handler()
-        payload = json.dumps([
-            {
-                "dst": "default",
-                "dev": "eth0",
-                "gateway": "198.51.100.1",
-                "protocol": "dhcp",
-                "scope": "global",
-                "table": "main",
-            },
-            {
-                "dst": "10.10.200.0/24",
-                "dev": "eth1",
-                "protocol": "kernel",
-                "scope": "link",
-                "table": "main",
-            },
-        ])
+        payloads = [
+            json.dumps([
+                {
+                    "dst": "default",
+                    "dev": "eth0",
+                    "gateway": "198.51.100.1",
+                    "protocol": "dhcp",
+                    "scope": "global",
+                    "table": "main",
+                },
+                {
+                    "dst": "10.10.200.0/24",
+                    "dev": "eth1",
+                    "protocol": "kernel",
+                    "scope": "link",
+                    "table": "main",
+                },
+            ]),
+            json.dumps([
+                {
+                    "dst": "default",
+                    "dev": "eth0",
+                    "via": "2001:db8::1",
+                    "protocol": "ra",
+                    "scope": "global",
+                    "table": "main",
+                },
+                {
+                    "dst": "2001:db8:200::/64",
+                    "dev": "eth1",
+                    "protocol": "kernel",
+                    "scope": "link",
+                    "table": "main",
+                },
+            ]),
+        ]
 
-        with mock.patch.object(subprocess, "run", return_value=mock.Mock(returncode=0, stdout=payload, stderr="")):
+        with mock.patch.object(
+            subprocess,
+            "run",
+            side_effect=[mock.Mock(returncode=0, stdout=payload, stderr="") for payload in payloads],
+        ):
             routes = handler.get_runtime_routes()
 
         self.assertEqual(routes[0]["destination"], "0.0.0.0/0")
         self.assertEqual(routes[0]["gatewayAddress"], "198.51.100.1")
-        self.assertEqual(routes[1]["destination"], "10.10.200.0/24")
+        self.assertEqual(routes[1]["destination"], "::/0")
+        self.assertEqual(routes[1]["gatewayAddress"], "2001:db8::1")
+        self.assertEqual(routes[2]["destination"], "10.10.200.0/24")
+        self.assertEqual(routes[3]["destination"], "2001:db8:200::/64")
 
 
 if __name__ == "__main__":
