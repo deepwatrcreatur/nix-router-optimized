@@ -42,12 +42,17 @@ in
           builtins.readFile config.systemd.services.router-dashboard.environment.DASHBOARD_INVENTORY_FILE
         );
         routedLan = builtins.head (findById "routed:lan" inventory.subnets);
+        findInterfaceById = id: builtins.head (builtins.filter (i: i.id == id) inventory.interfaces);
+        findPrefixById = id: builtins.head (builtins.filter (p: p.id == id) inventory.prefixes);
+        wanIface = findInterfaceById "wan:wan";
+        lanIface = findInterfaceById "routed:lan";
+        lanPrefix = findPrefixById "prefix:routed:lan";
       in
       {
         assertions = [
           {
-            assertion = inventory.schemaVersion == 1;
-            message = "router-dashboard inventory export should declare schema version 1.";
+            assertion = inventory.schemaVersion == 2;
+            message = "router-dashboard inventory export should declare schema version 2.";
           }
           {
             assertion =
@@ -65,6 +70,18 @@ in
           {
             assertion = inventory.hosts == [ ] && inventory.reservedAddresses == [ ];
             message = "router-dashboard inventory export should stay empty for host/reservation records when router-dhcp has no declared static leases.";
+          }
+          {
+            assertion = wanIface.device == "eth0" && wanIface.role == "wan";
+            message = "router-dashboard inventory should export WAN interface entry.";
+          }
+          {
+            assertion = lanIface.device == "eth1" && lanIface.role == "lan" && lanIface.subnetRefs == [ "routed:lan" ];
+            message = "router-dashboard inventory should export routed interface entry with subnet refs.";
+          }
+          {
+            assertion = lanPrefix.cidr == "10.10.200.0/24" && lanPrefix.interfaceRef == "routed:lan";
+            message = "router-dashboard inventory should export prefix entry linked to its interface.";
           }
         ];
       })
@@ -117,6 +134,7 @@ in
         );
         keaSubnet = builtins.head (findById "kea:dhcp4" inventory.subnets);
         printerReservation = builtins.head (findById "kea:10.10.210.20" inventory.hosts);
+        keaPrefix = builtins.head (builtins.filter (p: p.id == "prefix:kea:dhcp4") inventory.prefixes);
       in
       {
         assertions = [
@@ -133,6 +151,10 @@ in
               && printerReservation.subnetRef == "routed:lan"
               && printerReservation.sourceKind == "kea-reservation";
             message = "router-dashboard inventory export should include Kea reservations as inventory hosts.";
+          }
+          {
+            assertion = keaPrefix.cidr == "10.10.210.0/24" && keaPrefix.dhcpBackend == "kea";
+            message = "router-dashboard inventory should export Kea prefix entry.";
           }
         ];
       })
