@@ -113,11 +113,56 @@ let
 
   zoneNames = attrNames multiCfg;
 
-  allZones =
+  configuredZones =
     if zoneNames != [] then
       multiCfg
     else
       legacyZone;
+
+  reverseZoneNameForNetwork =
+    network:
+    let
+      parts = splitString "/" network;
+      address = elemAt parts 0;
+      prefixLength = toInt (elemAt parts 1);
+      octets = splitString "." address;
+      zoneOctetCount = prefixLength / 8;
+    in
+    assert (length parts == 2 && prefixLength > 0 && prefixLength <= 32 && mod prefixLength 8 == 0);
+    "${concatStringsSep "." (reverseList (sublist 0 zoneOctetCount octets))}.in-addr.arpa";
+
+  derivedReverseZones =
+    foldl'
+      (
+        acc: zone:
+        if zone.reverseZone.enable then
+          foldl'
+            (
+              zoneAcc: network:
+              zoneAcc
+              // {
+                "${reverseZoneNameForNetwork network}" = {
+                  nameserverIP = zone.nameserverIP;
+                  staticHosts = {};
+                  aliases = {};
+                  allowDynamicUpdates = zone.allowDynamicUpdates;
+                  zoneConfig = null;
+                  reverseZone = {
+                    enable = false;
+                    networks = [ ];
+                  };
+                };
+              }
+            )
+            acc
+            zone.reverseZone.networks
+        else
+          acc
+      )
+      { }
+      (attrValues configuredZones);
+
+  allZones = configuredZones // derivedReverseZones;
 
   hasZones = allZones != {};
   allZoneNames = attrNames allZones;
@@ -164,23 +209,25 @@ let
           hostCommands = concatStringsSep "\n" (
             mapAttrsToList (name: value: ''
               echo "Adding DNS record: ${name}.${zoneName} -> ${value.ipAddress}"
-              ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
+              technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                 -d "zone=${zoneName}" \
                 -d "domain=${if name == "@" then zoneName else "${name}.${zoneName}"}" \
                 -d "type=A" \
                 -d "ttl=${toString value.ttl}" \
                 -d "ipAddress=${value.ipAddress}" \
-                -d "overwrite=true" || echo "Failed to add ${name}.${zoneName}"
+                -d "overwrite=true" \
+                >/dev/null
 
               ${concatMapStringsSep "\n" (alias: ''
                 echo "Adding alias: ${alias}.${zoneName} -> ${name}.${zoneName}"
-                ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
+                technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                   -d "zone=${zoneName}" \
                   -d "domain=${if alias == "@" then zoneName else "${alias}.${zoneName}"}" \
                   -d "type=CNAME" \
                   -d "ttl=${toString value.ttl}" \
                   -d "cname=${if name == "@" then zoneName else "${name}.${zoneName}"}" \
-                  -d "overwrite=true" || echo "Failed to add alias ${alias}.${zoneName}"
+                  -d "overwrite=true" \
+                  >/dev/null
               '') value.aliases}
             '') zone.staticHosts
           );
@@ -188,21 +235,25 @@ let
           aliasCommands = concatStringsSep "\n" (
             mapAttrsToList (alias: target: ''
               echo "Adding zone alias: ${alias}.${zoneName} -> ${target}.${zoneName}"
-              ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
+              technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                 -d "zone=${zoneName}" \
                 -d "domain=${if alias == "@" then zoneName else "${alias}.${zoneName}"}" \
                 -d "type=CNAME" \
                 -d "ttl=3600" \
                 -d "cname=${if target == "@" then zoneName else "${target}.${zoneName}"}" \
-                -d "overwrite=true" || echo "Failed to add zone alias ${alias}.${zoneName}"
+                -d "overwrite=true" \
+                >/dev/null
             '') zone.aliases
           );
         in
         ''
           echo "Ensuring DNS zone exists: ${zoneName}"
-          ${pkgs.curl}/bin/curl -s "http://localhost:5380/api/zones/create?token=$TOKEN" \
-            -d "zone=${zoneName}" \
-            -d "type=Primary" || true
+          if ! zone_exists "${zoneName}"; then
+            technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/create?token=$TOKEN" \
+              -d "zone=${zoneName}" \
+              -d "type=Primary" \
+              >/dev/null
+          fi
 
           ${hostCommands}
           ${aliasCommands}
@@ -341,8 +392,12 @@ in
 
     systemd.services.technitium-sync-static-hosts = {
       description = "Sync static DNS records to Technitium";
-      after = [ "technitium-dns-server.service" ];
-      wants = [ "technitium-dns-server.service" ];
+      after =
+        [ "technitium-dns-server.service" ]
+        ++ optional (config.systemd.services ? technitium-bootstrap-api-token) "technitium-bootstrap-api-token.service";
+      wants =
+        [ "technitium-dns-server.service" ]
+        ++ optional (config.systemd.services ? technitium-bootstrap-api-token) "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
@@ -351,9 +406,16 @@ in
       };
 
       script = let
+        technitiumSecretName =
+          if config.services ? router-technitium then
+            config.services.router-technitium.apiKeySecretName
+          else
+            null;
         apiToken =
-          if config.age.secrets ? technitium-api-key then
-            config.age.secrets.technitium-api-key.path
+          if config.systemd.services ? technitium-bootstrap-api-token then
+            "/var/lib/private/technitium-dns-server/nix-router-api-token"
+          else if technitiumSecretName != null && builtins.hasAttr technitiumSecretName (config.age.secrets or { }) then
+            config.age.secrets.${technitiumSecretName}.path
           else
             "/dev/null";
       in
@@ -377,6 +439,33 @@ in
           echo "Technitium API token is empty or file not found at ${apiToken}; cannot sync DNS records" >&2
           exit 1
         fi
+
+        technitium_request() {
+          local response
+          response="$("$@")"
+          if [ -z "$response" ]; then
+            echo "Technitium API returned an empty response" >&2
+            return 1
+          fi
+
+          local status
+          status="$(printf '%s' "$response" | ${pkgs.jq}/bin/jq -r '.status // empty' 2>/dev/null || true)"
+          if [ "$status" = "error" ] || [ "$status" = "invalid-token" ]; then
+            printf '%s\n' "$response" >&2
+            return 1
+          fi
+
+          printf '%s' "$response"
+        }
+
+        zone_exists() {
+          local zone_name="$1"
+          local zones_json
+          zones_json="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/list?token=$TOKEN")"
+          printf '%s' "$zones_json" | ${pkgs.jq}/bin/jq -e --arg zone "$zone_name" '
+            (.response.zones // []) | any(.name == $zone)
+          ' >/dev/null
+        }
 
         ${zoneSyncScript}
 

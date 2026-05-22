@@ -115,6 +115,35 @@ in
     ])
   ];
 
+  router-kea-ntp-eval = eval.mkNixosEvalCheck "router-kea-ntp" [
+    self.nixosModules.router-kea
+    {
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          interfaces = [ "lan0" ];
+          subnet = "10.10.0.0/16";
+          gatewayAddress = "10.10.10.1";
+          dnsServers = [ "10.10.10.1" ];
+          ntpServers = [ "10.10.10.1" ];
+          poolRanges = [
+            {
+              start = "10.10.10.100";
+              end = "10.10.10.250";
+            }
+          ];
+        };
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = lib.any (option: option.name == "ntp-servers" && option.data == "10.10.10.1")
+          (builtins.elemAt config.services.kea.dhcp4.settings.subnet4 0).option-data;
+        message = "router-kea should advertise DHCP option 42 through Kea when ntpServers are set.";
+      }
+    ])
+  ];
+
   router-bgp-eval = eval.mkNixosEvalCheck "router-bgp" [
     self.nixosModules.router-bgp
     {
@@ -275,6 +304,10 @@ in
         ];
         message = "router-dns-service should pass serviceListenAddresses to Unbound.";
       }
+      {
+        assertion = !config.services.router-dns-service.providerCapabilities.supportsAuthoritativeDnsUpdates;
+        message = "Unbound should not advertise Technitium-style authoritative DDNS capabilities.";
+      }
     ])
   ];
 
@@ -310,6 +343,10 @@ in
       {
         assertion = config.systemd.services.technitium-sync-listeners.wantedBy == [ "multi-user.target" ];
         message = "router-technitium should create a listener sync service when custom listener endpoints are declared.";
+      }
+      {
+        assertion = config.services.router-dns-service.providerCapabilities.supportsAuthoritativeDnsUpdates;
+        message = "Technitium should advertise authoritative DDNS capabilities.";
       }
     ])
   ];
@@ -393,5 +430,65 @@ in
         };
       };
     }
+  ];
+
+  router-technitium-bootstrap-eval = eval.mkNixosEvalCheck "router-technitium-bootstrap" [
+    ageSecretStub
+    self.nixosModules.router-technitium
+    {
+      age.secrets.technitium-admin-password.path = "/run/agenix/technitium-admin-password";
+      services.router-technitium = {
+        enable = true;
+        bootstrapPasswordSecretName = "technitium-admin-password";
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.systemd.services.technitium-dns-server.environment.DNS_SERVER_ADMIN_PASSWORD_FILE == "/run/agenix/technitium-admin-password";
+        message = "router-technitium should pass the bootstrap admin password file to Technitium.";
+      }
+      {
+        assertion = config.systemd.services.technitium-bootstrap-api-token.wantedBy == [ "multi-user.target" ];
+        message = "router-technitium should create a token bootstrap service when a bootstrap password secret is configured.";
+      }
+    ])
+  ];
+
+  router-technitium-rfc2136-eval = eval.mkNixosEvalCheck "router-technitium-rfc2136" [
+    ageSecretStub
+    self.nixosModules.router-technitium
+    {
+      age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
+      services.router-technitium = {
+        enable = true;
+        rfc2136 = {
+          enable = true;
+          tsigKeyFile = "/run/agenix/kea-ddns-tsig-key";
+          zones = [
+            { name = "example.internal"; }
+            {
+              name = "10.10.in-addr.arpa";
+              updateNetworkACL = [ "127.0.0.1" "10.10.10.0/16" ];
+            }
+          ];
+        };
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.systemd.services.technitium-enable-rfc2136.wantedBy == [ "multi-user.target" ];
+        message = "router-technitium should create an RFC2136 sync service when RFC2136 is enabled.";
+      }
+      {
+        assertion =
+          builtins.elem "technitium-bootstrap-api-token.service" config.systemd.services.technitium-enable-rfc2136.after
+          || !(config.systemd.services ? technitium-bootstrap-api-token);
+        message = "router-technitium RFC2136 service should wait for token bootstrap when bootstrap mode is enabled.";
+      }
+      {
+        assertion = config.services.router-technitium.rfc2136.tsigKeyName == "kea-ddns";
+        message = "router-technitium should keep the RFC2136 TSIG key configurable through module options.";
+      }
+    ])
   ];
 }
