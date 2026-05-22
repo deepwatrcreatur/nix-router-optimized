@@ -1,6 +1,6 @@
 # 46 - Dashboard Interface and Prefix Detail Surface
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -40,7 +40,7 @@ cross-linking, not its mutable CMDB model.
 
 ## Requirements
 
-- [ ] Extend the dashboard inventory data contract to expose interface-centric
+- [x] Extend the dashboard inventory data contract to expose interface-centric
       read models sufficient for browsing at least:
       - interface name / kind
       - operational role if declared
@@ -48,26 +48,26 @@ cross-linking, not its mutable CMDB model.
       - bridge / VLAN attachment if declared
       - subnet / prefix membership
       - provenance markers
-- [ ] Add a dedicated interface-focused browser surface or detail drill-down
+- [x] Add a dedicated interface-focused browser surface or detail drill-down
       within the existing inventory page shell
-- [ ] Add prefix/detail drill-down that makes it easy to answer:
+- [x] Add prefix/detail drill-down that makes it easy to answer:
       - what addresses are declared in this prefix
       - which interface or segment this prefix belongs to
       - what reservations / live leases are associated with it
-- [ ] Reuse existing dashboard page/navigation patterns instead of creating an
+- [x] Reuse existing dashboard page/navigation patterns instead of creating an
       unrelated second admin UI
-- [ ] Keep the entire surface explicitly read-only and derived from declarative
+- [x] Keep the entire surface explicitly read-only and derived from declarative
       config plus already-approved bounded runtime overlays
 
 ## Verification
 
-- [ ] An operator can answer “what is on this interface?” without reading raw Nix
+- [x] An operator can answer "what is on this interface?" without reading raw Nix
       or shell output
-- [ ] An operator can open a prefix and quickly understand its declared role,
+- [x] An operator can open a prefix and quickly understand its declared role,
       membership, and related addresses
-- [ ] The UI makes interface/prefix relationships legible through links, badges,
+- [x] The UI makes interface/prefix relationships legible through links, badges,
       or compact summary panels rather than forcing raw JSON inspection
-- [ ] No edit path or mutable inventory authority is introduced
+- [x] No edit path or mutable inventory authority is introduced
 
 ## Notes
 
