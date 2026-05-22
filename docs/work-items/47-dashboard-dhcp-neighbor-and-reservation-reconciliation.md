@@ -1,6 +1,6 @@
 # 47 - Dashboard DHCP Neighbor and Reservation Reconciliation
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -35,33 +35,33 @@ line up.
 
 ## Requirements
 
-- [ ] Extend the inventory/reconciliation model to represent at least:
+- [x] Extend the inventory/reconciliation model to represent at least:
       - declared reservations
       - active DHCP leases
       - runtime-only neighbors
       - reservation mismatches / conflicts
       - provenance for each state
-- [ ] Surface MAC address, lease age/expiry where available, and subnet/context
+- [x] Surface MAC address, lease age/expiry where available, and subnet/context
       links in a way that is easy to browse from the inventory UI
-- [ ] Add filters or badges for states such as:
+- [x] Add filters or badges for states such as:
       - reserved
       - leased
       - runtime-only
       - conflict
       - stale / expired where derivable
-- [ ] Make it possible to drill from a subnet or interface view into the
+- [x] Make it possible to drill from a subnet or interface view into the
       reservations / leases / neighbors associated with that network segment
-- [ ] Keep the result explicitly read-only and derived from existing router
+- [x] Keep the result explicitly read-only and derived from existing router
       runtime sources plus declarative config
 
 ## Verification
 
-- [ ] An operator can answer “who has this address right now?” from the dashboard
-- [ ] An operator can quickly distinguish declared reservations from transient
+- [x] An operator can answer “who has this address right now?” from the dashboard
+- [x] An operator can quickly distinguish declared reservations from transient
       runtime clients
-- [ ] Conflicts or mismatches are visible without requiring manual comparison of
+- [x] Conflicts or mismatches are visible without requiring manual comparison of
       multiple raw sources
-- [ ] The resulting surface still does not become a DHCP or IPAM editing console
+- [x] The resulting surface still does not become a DHCP or IPAM editing console
 
 ## Notes
 

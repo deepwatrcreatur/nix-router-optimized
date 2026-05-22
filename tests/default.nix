@@ -56,7 +56,7 @@ let
   };
 
   routerDashboardInventoryChecks = import ./router-dashboard-inventory.nix {
-    inherit self eval lib;
+    inherit self eval lib pkgs;
   };
 
   routerClatObservabilityChecks = import ./router-clat-observability.nix {
