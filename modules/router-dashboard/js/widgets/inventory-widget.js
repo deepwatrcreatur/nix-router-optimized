@@ -8,6 +8,7 @@ class InventoryWidget extends BaseWidget {
     this.widgetClass = 'widget-full inventory-widget';
     this.inventory = null;
     this.filter = '';
+    this.statusFilter = 'all';
     this.selectedHostId = null;
     this.selectedInterfaceId = null;
     this.selectedPrefixId = null;
@@ -27,10 +28,16 @@ class InventoryWidget extends BaseWidget {
             <button class="inventory-view-tab" type="button" data-inventory-view="interfaces" role="tab">Interfaces</button>
             <button class="inventory-view-tab" type="button" data-inventory-view="prefixes" role="tab">Prefixes</button>
           </nav>
+          <div class="inventory-toolbar-copy">
+            <p>Browse declared reservations alongside live leases and neighbor evidence without leaving the router dashboard.</p>
+          </div>
           <label class="inventory-filter">
             <span class="sr-only">Filter inventory</span>
             <input type="search" id="${this.id}-filter" placeholder="Search host, IP, subnet, or label">
           </label>
+        </div>
+        <div class="inventory-filter-bar" id="${this.id}-status-filters">
+          ${this.renderStatusFilters()}
         </div>
         <div class="inventory-status" id="${this.id}-status">Loading inventory…</div>
         <div class="inventory-layout">
@@ -74,6 +81,13 @@ class InventoryWidget extends BaseWidget {
       if (subnetButton) {
         this.selectedHostId = null;
         this.renderSubnetDetail(subnetButton.dataset.inventorySubnetId);
+        return;
+      }
+
+      const statusButton = event.target.closest('[data-inventory-status-filter]');
+      if (statusButton) {
+        this.statusFilter = statusButton.dataset.inventoryStatusFilter || 'all';
+        this.renderInventory();
         return;
       }
 
@@ -180,7 +194,11 @@ class InventoryWidget extends BaseWidget {
     const reservations = this.inventory.reservedAddresses || [];
     const runtimeSummary = this.inventory.runtimeSummary || {};
 
-    statusEl.textContent = `${subnets.length} subnets · ${hosts.length} hosts · ${reservations.length} reserved addresses · ${runtimeSummary.liveLeaseCount || 0} live leases`;
+    statusEl.textContent = `${subnets.length} subnets • ${reservations.length} reserved addresses • ${runtimeSummary.liveLeaseCount || 0} live leases • ${runtimeSummary.neighborCount || 0} neighbors • ${runtimeSummary.conflictCount || 0} conflicts`;
+    const filterBar = this.container?.querySelector(`#${this.id}-status-filters`);
+    if (filterBar) {
+      filterBar.innerHTML = this.renderStatusFilters();
+    }
 
     const visibleGroups = subnets
       .map(subnet => ({
@@ -213,6 +231,11 @@ class InventoryWidget extends BaseWidget {
 
     subnetsEl.innerHTML = visibleGroups.map(group => this.renderSubnetGroup(group)).join('');
 
+    const visibleHostIds = visibleGroups.flatMap(group => group.hosts.map(host => host.id));
+    if (this.selectedHostId && !visibleHostIds.includes(this.selectedHostId)) {
+      this.selectedHostId = visibleHostIds[0] || null;
+    }
+
     if (this.selectedHostId) {
       this.renderHostDetail(this.selectedHostId);
     } else {
@@ -221,16 +244,18 @@ class InventoryWidget extends BaseWidget {
   }
 
   filterHostsForSubnet(subnetId) {
-    return (this.inventory?.hosts || []).filter(host => host.subnetRef === subnetId);
+    return (this.inventory?.hosts || []).filter(host => (
+      host.subnetRef === subnetId
+      && this.hostMatchesFilters(host)
+    ));
   }
 
   filterUnassignedHosts() {
-    const hosts = (this.inventory?.hosts || []).filter(host => !host.subnetRef);
-    return this.filter ? hosts.filter(host => this.hostMatches(host)) : hosts;
+    return (this.inventory?.hosts || []).filter(host => !host.subnetRef && this.hostMatchesFilters(host));
   }
 
   groupMatches(group) {
-    if (!this.filter) return true;
+    if (!this.filter && this.statusFilter === 'all') return true;
 
     const subnetText = [
       group.subnet.label,
@@ -239,7 +264,12 @@ class InventoryWidget extends BaseWidget {
       group.subnet.dhcpBackend || ''
     ].join(' ').toLowerCase();
 
-    return subnetText.includes(this.filter) || group.hosts.some(host => this.hostMatches(host));
+    const hostMatches = group.hosts.some(host => this.hostMatchesFilters(host));
+    if (!this.filter) {
+      return hostMatches;
+    }
+
+    return subnetText.includes(this.filter) || hostMatches;
   }
 
   hostMatches(host) {
@@ -248,14 +278,26 @@ class InventoryWidget extends BaseWidget {
       host.hostname || '',
       host.ipv4Address,
       host.macAddress || '',
-      host.sourceKind || ''
+      host.sourceKind || '',
+      host.status || '',
+      ...(host.reconciliationTags || [])
     ].join(' ').toLowerCase();
     return text.includes(this.filter);
   }
 
+  hostMatchesStatus(host) {
+    if (this.statusFilter === 'all') return true;
+    if ((host.reconciliationTags || []).includes(this.statusFilter)) return true;
+    return host.status === this.statusFilter;
+  }
+
+  hostMatchesFilters(host) {
+    return this.hostMatchesStatus(host) && (!this.filter || this.hostMatches(host));
+  }
+
   renderSubnetGroup(group) {
     const { subnet, hosts } = group;
-    const visibleHosts = this.filter ? hosts.filter(host => this.hostMatches(host)) : hosts;
+    const visibleHosts = hosts;
 
     return `
       <section class="inventory-subnet-card">
@@ -273,7 +315,7 @@ class InventoryWidget extends BaseWidget {
         <div class="inventory-host-list">
           ${visibleHosts.length > 0
             ? visibleHosts.map(host => this.renderHostRow(host)).join('')
-            : '<div class="inventory-empty-subnet">No declared hosts in this subnet.</div>'}
+            : '<div class="inventory-empty-subnet">No hosts in this subnet match the current filters.</div>'}
         </div>
       </section>
     `;
@@ -287,7 +329,10 @@ class InventoryWidget extends BaseWidget {
           <span class="inventory-host-label">${this.escape(host.label)} ${this.renderHostStatusChip(host.status)}</span>
           <span class="inventory-host-ip">${this.escape(host.ipv4Address)}</span>
         </div>
-        <div class="inventory-host-meta">${this.escape(host.sourceKind || 'declared-host')}</div>
+        <div class="inventory-host-meta">
+          ${this.escape(host.sourceKind || 'declared-host')}
+          ${this.renderTagList(host.reconciliationTags || [])}
+        </div>
       </button>
     `;
   }
@@ -320,8 +365,10 @@ class InventoryWidget extends BaseWidget {
             ? `<button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(subnet.id)}" data-inventory-cross-view="hosts" data-inventory-cross-kind="subnet">${this.escape(subnet.label)} (${this.escape(subnet.cidr)})</button>`
             : this.escape(host.subnetRef || '—')}</dd></div>
           <div><dt>Status</dt><dd>${this.escape(host.status || 'declared')}</dd></div>
+          <div><dt>Tags</dt><dd>${this.escape((host.reconciliationTags || []).join(', ') || '—')}</dd></div>
           <div><dt>Lease Expires</dt><dd>${this.escape(host.runtimeLease?.leaseExpires || '—')}</dd></div>
         </dl>
+        ${this.renderRuntimeEvidence(host)}
         <div class="inventory-provenance">
           <h3>Provenance</h3>
           ${this.renderProvenance(host.provenance || [])}
@@ -345,7 +392,7 @@ class InventoryWidget extends BaseWidget {
     const matchingIface = subnet.interface
       ? (this.inventory?.interfaces || []).find(i => i.device === subnet.interface.device)
       : null;
-
+    const subnetHosts = (this.inventory?.hosts || []).filter(entry => entry.subnetRef === subnet.id);
     detailEl.innerHTML = `
       <div class="inventory-detail-card">
         <div class="inventory-detail-header">
@@ -362,10 +409,13 @@ class InventoryWidget extends BaseWidget {
           <div><dt>Search Domains</dt><dd>${this.escape((subnet.searchDomains || []).join(', ') || '—')}</dd></div>
           <div><dt>Dynamic Pools</dt><dd>${this.escape(pools.map(pool => `${pool.start} - ${pool.end}`).join(', ') || '—')}</dd></div>
           <div><dt>Live Leases</dt><dd>${this.escape(String(subnet.runtimeSummary?.liveLeaseCount ?? 0))}</dd></div>
+          <div><dt>Visible Neighbors</dt><dd>${this.escape(String(subnet.runtimeSummary?.neighborCount ?? 0))}</dd></div>
+          <div><dt>Conflicts</dt><dd>${this.escape(String(subnet.runtimeSummary?.conflictCount ?? 0))}</dd></div>
           <div><dt>Occupancy</dt><dd>${this.escape(this.formatOccupancy(subnet.runtimeSummary))}</dd></div>
           ${matchingIface ? `<div><dt>Interface</dt><dd><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(matchingIface.id)}" data-inventory-cross-view="interfaces">${this.escape(matchingIface.name)} (${this.escape(matchingIface.device)})</button></dd></div>` : ''}
           ${matchingPrefix ? `<div><dt>Prefix</dt><dd><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(matchingPrefix.id)}" data-inventory-cross-view="prefixes">${this.escape(matchingPrefix.cidr)}</button></dd></div>` : ''}
         </dl>
+        ${this.renderSubnetRuntimeCollections(subnetHosts)}
         <div class="inventory-provenance">
           <h3>Provenance</h3>
           ${this.renderProvenance(subnet.provenance || [])}
@@ -691,6 +741,62 @@ class InventoryWidget extends BaseWidget {
     `;
   }
 
+  renderRuntimeEvidence(host) {
+    const evidence = host.runtimeEvidence || [];
+    if (!evidence.length) {
+      return '';
+    }
+
+    return `
+      <div class="inventory-evidence">
+        <h3>Runtime Evidence</h3>
+        <div class="inventory-evidence-list">
+          ${evidence.map(entry => `
+            <div class="inventory-evidence-card">
+              <div class="inventory-evidence-title">${this.escape(entry.type || 'runtime')}</div>
+              <div class="inventory-evidence-meta">${this.escape(entry.address || '—')} · ${this.escape(entry.hardwareAddress || 'no-mac')}</div>
+              <div class="inventory-evidence-meta">${this.escape(entry.interface || 'unknown-interface')}${entry.leaseExpires ? ` · lease ${this.escape(entry.leaseExpires)}` : ''}${entry.state ? ` · ${this.escape(entry.state)}` : ''}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  renderSubnetRuntimeCollections(hosts) {
+    const sections = [
+      [ 'Reserved', hosts.filter(host => (host.reconciliationTags || []).includes('reserved')) ],
+      [ 'Active Leases', hosts.filter(host => (host.reconciliationTags || []).includes('leased')) ],
+      [ 'Runtime-only', hosts.filter(host => (host.reconciliationTags || []).includes('runtime-only')) ],
+      [ 'Conflicts', hosts.filter(host => (host.reconciliationTags || []).includes('conflict')) ]
+    ].filter(([, entries]) => entries.length > 0);
+
+    if (!sections.length) {
+      return '';
+    }
+
+    return `
+      <div class="inventory-related">
+        <h3>Subnet Runtime Breakdown</h3>
+        <div class="inventory-related-sections">
+          ${sections.map(([label, entries]) => `
+            <div class="inventory-related-section">
+              <div class="inventory-related-title">${this.escape(label)} <span>${entries.length}</span></div>
+              <div class="inventory-related-items">
+                ${entries.map(host => `
+                  <button class="inventory-related-host" type="button" data-inventory-host-id="${this.escape(host.id)}">
+                    <span>${this.escape(host.label)}</span>
+                    <span>${this.escape(host.ipv4Address)}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   renderEmptyDetail(message) {
     const detailEl = this.container?.querySelector(`#${this.id}-detail`);
     if (detailEl) {
@@ -701,6 +807,33 @@ class InventoryWidget extends BaseWidget {
   renderHostStatusChip(status) {
     if (!status) return '';
     return `<span class="inventory-status-chip inventory-status-${this.escape(status)}">${this.escape(status)}</span>`;
+  }
+
+  renderStatusFilters() {
+    const filters = [
+      [ 'all', 'All' ],
+      [ 'reserved', 'Reserved' ],
+      [ 'leased', 'Leased' ],
+      [ 'runtime-only', 'Runtime-only' ],
+      [ 'conflict', 'Conflict' ],
+      [ 'stale', 'Stale' ]
+    ];
+    return filters.map(([value, label]) => `
+      <button
+        class="inventory-filter-chip${this.statusFilter === value ? ' is-active' : ''}"
+        type="button"
+        data-inventory-status-filter="${this.escape(value)}"
+      >${this.escape(label)}</button>
+    `).join('');
+  }
+
+  renderTagList(tags) {
+    if (!tags.length) return '';
+    return `
+      <span class="inventory-tag-list">
+        ${tags.map(tag => `<span class="inventory-inline-tag">${this.escape(tag)}</span>`).join('')}
+      </span>
+    `;
   }
 
   renderSubnetSummary(summary = {}) {

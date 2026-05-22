@@ -2,6 +2,7 @@
   self,
   eval,
   lib,
+  pkgs,
   ...
 }:
 
@@ -229,4 +230,13 @@ in
       services.router-dashboard.enable = true;
     }
   ];
+
+  router-dashboard-inventory-runtime-unit-tests = pkgs.runCommand "router-dashboard-inventory-runtime-unit-tests" {
+    nativeBuildInputs = [ pkgs.python3 ];
+  } ''
+    cp ${self}/modules/router-dashboard/api/server.py server.py
+    cp ${self}/modules/router-dashboard/api/test_inventory_runtime.py test_inventory_runtime.py
+    python3 test_inventory_runtime.py -v
+    touch $out
+  '';
 }
