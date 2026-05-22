@@ -473,9 +473,70 @@ let
     }
   ) inventorySubnets);
 
+  inventoryEdges =
+    let
+      segmentEdges = map (
+        prefix:
+        let
+          subnetRef = strings.removePrefix "prefix:" prefix.id;
+        in
+        {
+          id = "edge:segment:${subnetRef}";
+          kind = "segment";
+          label = "${prefix.label} segment";
+          interfaceRef = prefix.interfaceRef;
+          prefixRef = prefix.id;
+          inherit subnetRef;
+          destination = prefix.cidr;
+          gatewayAddress = prefix.gatewayAddress;
+          active = true;
+          confidence = "declared";
+          inference = "declared";
+          provenance = prefix.provenance;
+        }
+      ) inventoryPrefixes;
+
+      upstreamEdges = map (
+        iface:
+        {
+          id = "edge:upstream:${iface.id}";
+          kind = "upstream";
+          label = "${iface.name} upstream";
+          interfaceRef = iface.id;
+          prefixRef = null;
+          subnetRef = null;
+          destination = "0.0.0.0/0";
+          gatewayAddress = null;
+          active = false;
+          confidence = "declared";
+          inference = "declared";
+          provenance = iface.provenance;
+        }
+      ) (filter (iface: iface.role == "wan") inventoryInterfaces);
+
+      overlayEdges = map (
+        iface:
+        {
+          id = "edge:overlay:${iface.id}";
+          kind = "overlay";
+          label = "${iface.name} overlay";
+          interfaceRef = iface.id;
+          prefixRef = null;
+          subnetRef = null;
+          destination = null;
+          gatewayAddress = null;
+          active = null;
+          confidence = "declared";
+          inference = "declared";
+          provenance = iface.provenance;
+        }
+      ) (filter (iface: iface.role == "vpn" || iface.kind == "virtual") inventoryInterfaces);
+    in
+    sortById (segmentEdges ++ upstreamEdges ++ overlayEdges);
+
   inventoryArtifact = pkgs.writeText "router-dashboard-inventory.json" (
     builtins.toJSON {
-      schemaVersion = 2;
+      schemaVersion = 3;
       authoritative = false;
       authoritySurface = "declarative-router-config";
       notes = [
@@ -487,6 +548,7 @@ let
       reservedAddresses = inventoryReservedAddresses;
       interfaces = inventoryInterfaces;
       prefixes = inventoryPrefixes;
+      edges = inventoryEdges;
     }
   );
 
