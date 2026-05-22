@@ -10,10 +10,14 @@ with lib;
 let
   cfg = config.services.router-technitium;
   secretName = cfg.apiKeySecretName;
+  bootstrapSecretName = cfg.bootstrapPasswordSecretName;
   ageSecrets = config.age.secrets or { };
   hasApiSecret = secretName != null && hasAttr secretName ageSecrets;
+  hasBootstrapSecret = bootstrapSecretName != null && hasAttr bootstrapSecretName ageSecrets;
+  hasTokenSource = hasApiSecret || hasBootstrapSecret;
   configuredApiTokenPath = if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent";
   runtimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
+  bootstrapPasswordFile = if hasBootstrapSecret then config.age.secrets.${bootstrapSecretName}.path else "/nonexistent";
   encryptedDnsModule = types.submodule {
     options = {
       enable = mkEnableOption "native encrypted DNS features in Technitium";
@@ -324,6 +328,32 @@ let
       };
     };
   };
+  rfc2136ZoneModule = types.submodule {
+    options = {
+      name = mkOption {
+        type = types.str;
+        description = "Technitium zone name to enable for RFC2136 updates.";
+      };
+
+      updateNetworkACL = mkOption {
+        type = types.listOf types.str;
+        default = [ "127.0.0.1" ];
+        description = ''
+          Network ACL entries allowed to submit dynamic updates for this zone.
+        '';
+      };
+
+      updateSecurityPolicies = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = ''
+          Optional explicit Technitium update security policies. When unset, the
+          module derives a TSIG-based policy suitable for forward or reverse DNS
+          updates.
+        '';
+      };
+    };
+  };
   commonShellHelpers = ''
     resolve_api_token_file() {
       if [ -f "${runtimeApiTokenPath}" ]; then
@@ -355,6 +385,32 @@ let
         return 1
       fi
       printf '%s' "$response"
+    }
+
+    wait_for_technitium() {
+      local i
+      for i in {1..30}; do
+        if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:5380/api/dns/status >/dev/null 2>&1; then
+          return 0
+        fi
+        echo "Waiting for Technitium DNS Server to start..."
+        ${pkgs.coreutils}/bin/sleep 2
+      done
+
+      echo "Timed out waiting for Technitium DNS Server to start" >&2
+      return 1
+    }
+
+    technitium_token_is_valid() {
+      local token="$1"
+      local response
+
+      response="$(${pkgs.curl}/bin/curl -fsS -G \
+        --data-urlencode "token=$token" \
+        "http://127.0.0.1:5380/api/settings/get" 2>/dev/null || true)"
+
+      [ -n "$response" ] || return 1
+      [ "$(${pkgs.jq}/bin/jq -r '.status // "error"' <<<"$response")" = "ok" ]
     }
 
     # Deterministically find the live Technitium scope name corresponding to a
@@ -400,6 +456,129 @@ let
 
       return 1
     }
+  '';
+
+  apiTokenBootstrapScript = pkgs.writeShellScript "technitium-bootstrap-api-token" ''
+    set -euo pipefail
+
+    TOKEN_FILE="${runtimeApiTokenPath}"
+    SEEDED_TOKEN_FILE="${configuredApiTokenPath}"
+    BOOTSTRAP_PASSWORD_FILE="${bootstrapPasswordFile}"
+    BOOTSTRAP_USERNAME="${cfg.bootstrapUsername}"
+    TOKEN_NAME="nix-router-${config.networking.hostName}"
+
+    ${commonShellHelpers}
+    wait_for_technitium
+
+    ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$TOKEN_FILE")"
+    ${pkgs.coreutils}/bin/chmod 0700 "$(${pkgs.coreutils}/bin/dirname "$TOKEN_FILE")"
+
+    write_token_file() {
+      local token="$1"
+      local tmp_file
+
+      tmp_file="$(${pkgs.coreutils}/bin/mktemp "$(${pkgs.coreutils}/bin/dirname "$TOKEN_FILE")/.api-token.XXXXXX")"
+      ${pkgs.coreutils}/bin/chmod 0600 "$tmp_file"
+      printf '%s\n' "$token" >"$tmp_file"
+      ${pkgs.coreutils}/bin/chmod 0400 "$tmp_file"
+      ${pkgs.coreutils}/bin/mv "$tmp_file" "$TOKEN_FILE"
+    }
+
+    if [ -f "$TOKEN_FILE" ]; then
+      current_token="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$TOKEN_FILE")"
+      if [ -n "$current_token" ] && technitium_token_is_valid "$current_token"; then
+        echo "Technitium automation token already valid"
+        exit 0
+      fi
+    fi
+
+    if [ -f "$SEEDED_TOKEN_FILE" ]; then
+      seeded_token="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$SEEDED_TOKEN_FILE")"
+      if [ -n "$seeded_token" ] && technitium_token_is_valid "$seeded_token"; then
+        write_token_file "$seeded_token"
+        echo "Seeded Technitium automation token from configured secret"
+        exit 0
+      fi
+    fi
+
+    if [ ! -f "$BOOTSTRAP_PASSWORD_FILE" ]; then
+      echo "No valid Technitium API token is available and no bootstrap password secret is configured" >&2
+      exit 1
+    fi
+
+    bootstrap_password="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$BOOTSTRAP_PASSWORD_FILE")"
+    if [ -z "$bootstrap_password" ]; then
+      echo "Technitium bootstrap password secret is empty" >&2
+      exit 1
+    fi
+
+    token_response="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "user=$BOOTSTRAP_USERNAME" \
+      --data-urlencode "pass=$bootstrap_password" \
+      --data-urlencode "tokenName=$TOKEN_NAME" \
+      "http://127.0.0.1:5380/api/user/createToken")"
+    new_token="$(${pkgs.jq}/bin/jq -r '.token // empty' <<<"$token_response")"
+
+    if [ -z "$new_token" ]; then
+      echo "Technitium bootstrap succeeded but did not return an API token" >&2
+      exit 1
+    fi
+
+    write_token_file "$new_token"
+    echo "Generated a node-local Technitium automation token"
+  '';
+
+  rfc2136Script = pkgs.writeShellScript "technitium-enable-rfc2136" ''
+    set -euo pipefail
+
+    ${commonShellHelpers}
+
+    if ! resolve_api_token_file >/dev/null; then
+      echo "Technitium API token file not found; cannot configure RFC2136 support" >&2
+      exit 1
+    fi
+
+    if [ ! -f "${cfg.rfc2136.tsigKeyFile}" ]; then
+      echo "Technitium TSIG key file not found at ${cfg.rfc2136.tsigKeyFile}" >&2
+      exit 1
+    fi
+
+    wait_for_technitium
+
+    TOKEN="$(read_api_token)"
+    SECRET="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "${cfg.rfc2136.tsigKeyFile}")"
+
+    echo "Registering TSIG key ${cfg.rfc2136.tsigKeyName} in Technitium..."
+    technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "token=$TOKEN" \
+      --data-urlencode "tsigKeys=${cfg.rfc2136.tsigKeyName}|$SECRET|${cfg.rfc2136.algorithm}" \
+      "http://127.0.0.1:5380/api/settings/set" \
+      >/dev/null
+
+    ${concatMapStringsSep "\n" (zone:
+      let
+        defaultUpdateSecurityPolicy =
+          if hasSuffix ".arpa" zone.name then
+            "${cfg.rfc2136.tsigKeyName}|*.${zone.name}|PTR,DHCID"
+          else
+            "${cfg.rfc2136.tsigKeyName}|*.${zone.name}|A,AAAA,DHCID";
+        updateSecurityPolicies = concatStringsSep ","
+          (if zone.updateSecurityPolicies != [ ] then zone.updateSecurityPolicies else [ defaultUpdateSecurityPolicy ]);
+      in ''
+      echo "Enabling RFC2136 updates for zone ${zone.name}..."
+      technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data-urlencode "token=$TOKEN" \
+        --data-urlencode "zone=${zone.name}" \
+        --data-urlencode "update=UseSpecifiedNetworkACL" \
+        --data-urlencode "updateNetworkACL=${concatStringsSep "," zone.updateNetworkACL}" \
+        --data-urlencode "updateSecurityPolicies=${updateSecurityPolicies}" \
+        "http://127.0.0.1:5380/api/zones/options/set" \
+        >/dev/null
+    '') cfg.rfc2136.zones}
+
+    echo "Technitium RFC2136 configuration synchronized"
   '';
 
   ntpSyncScript = pkgs.writeShellScript "technitium-sync-ntp-option" ''
@@ -819,6 +998,22 @@ in
       '';
     };
 
+    bootstrapPasswordSecretName = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        Optional age secret name containing the Technitium admin password.
+        When configured, the module can mint and refresh a node-local
+        automation token at `${runtimeApiTokenPath}`.
+      '';
+    };
+
+    bootstrapUsername = mkOption {
+      type = types.str;
+      default = "admin";
+      description = "Technitium username used when minting an automation API token.";
+    };
+
     enableBlockLists = mkOption {
       type = types.bool;
       default = true;
@@ -884,6 +1079,33 @@ in
       '';
     };
 
+    rfc2136 = {
+      enable = mkEnableOption "Technitium RFC2136 dynamic update support";
+
+      tsigKeyFile = mkOption {
+        type = types.path;
+        description = "File containing the RFC2136 TSIG secret.";
+      };
+
+      tsigKeyName = mkOption {
+        type = types.str;
+        default = "kea-ddns";
+        description = "TSIG key name registered in Technitium.";
+      };
+
+      algorithm = mkOption {
+        type = types.str;
+        default = "hmac-sha256";
+        description = "TSIG algorithm string sent to Technitium.";
+      };
+
+      zones = mkOption {
+        type = types.listOf rfc2136ZoneModule;
+        default = [ ];
+        description = "Zones to enable for RFC2136 updates.";
+      };
+    };
+
     scopes = mkOption {
       type = types.attrsOf scopeModule;
       default = { };
@@ -936,24 +1158,32 @@ in
   config = mkIf cfg.enable {
     assertions = [
       {
-        assertion = cfg.scopes == { } || hasApiSecret;
-        message = "services.router-technitium.scopes requires a Technitium API token secret.";
+        assertion = cfg.scopes == { } || hasTokenSource;
+        message = "services.router-technitium.scopes requires a Technitium API token or bootstrap password secret.";
       }
       {
-        assertion = cfg.dhcpReservations == { } || hasApiSecret;
-        message = "services.router-technitium.dhcpReservations requires a Technitium API token secret.";
+        assertion = cfg.dhcpReservations == { } || hasTokenSource;
+        message = "services.router-technitium.dhcpReservations requires a Technitium API token or bootstrap password secret.";
       }
       {
-        assertion = cfg.ntpServers == [ ] || hasApiSecret;
-        message = "services.router-technitium.ntpServers requires a Technitium API token secret.";
+        assertion = cfg.ntpServers == [ ] || hasTokenSource;
+        message = "services.router-technitium.ntpServers requires a Technitium API token or bootstrap password secret.";
       }
       {
-        assertion = cfg.listenEndPoints == [ ] || hasApiSecret;
-        message = "services.router-technitium.listenEndPoints requires a Technitium API token secret.";
+        assertion = cfg.listenEndPoints == [ ] || hasTokenSource;
+        message = "services.router-technitium.listenEndPoints requires a Technitium API token or bootstrap password secret.";
       }
       {
-        assertion = (!cfg.encryptedDns.enable) || hasApiSecret;
-        message = "services.router-technitium.encryptedDns requires a Technitium API token secret.";
+        assertion = (!cfg.encryptedDns.enable) || hasTokenSource;
+        message = "services.router-technitium.encryptedDns requires a Technitium API token or bootstrap password secret.";
+      }
+      {
+        assertion = (!cfg.rfc2136.enable) || hasTokenSource;
+        message = "services.router-technitium.rfc2136 requires a Technitium API token or bootstrap password secret.";
+      }
+      {
+        assertion = (!cfg.rfc2136.enable) || cfg.rfc2136.zones != [ ];
+        message = "services.router-technitium.rfc2136.zones must not be empty when RFC2136 support is enabled.";
       }
       {
         assertion =
@@ -972,6 +1202,10 @@ in
     ];
 
     services.technitium-dns-server.enable = true;
+
+    systemd.services.technitium-dns-server.environment = mkIf hasBootstrapSecret {
+      DNS_SERVER_ADMIN_PASSWORD_FILE = bootstrapPasswordFile;
+    };
 
     services.router.dnsBlockLists = mkIf cfg.enableBlockLists {
       enable = true;
@@ -995,13 +1229,32 @@ in
       mode = "0644";
     };
 
-    systemd.services.technitium-sync-dhcp-scopes = mkIf (cfg.scopes != { }) {
-      description = "Sync declarative Technitium DHCP scopes";
+    systemd.services.technitium-bootstrap-api-token = mkIf hasBootstrapSecret {
+      description = "Bootstrap a node-local Technitium automation token";
       after = [
         "technitium-dns-server.service"
         "agenix.service"
       ];
       wants = [ "technitium-dns-server.service" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+
+      script = ''
+        ${apiTokenBootstrapScript}
+      '';
+    };
+
+    systemd.services.technitium-sync-dhcp-scopes = mkIf (cfg.scopes != { }) {
+      description = "Sync declarative Technitium DHCP scopes";
+      after = [
+        "technitium-dns-server.service"
+        "agenix.service"
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
+      wants = [ "technitium-dns-server.service" ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
@@ -1014,13 +1267,13 @@ in
       '';
     };
 
-    systemd.services.technitium-sync-listeners = mkIf (cfg.listenEndPoints != [ ] && hasApiSecret) {
+    systemd.services.technitium-sync-listeners = mkIf (cfg.listenEndPoints != [ ] && hasTokenSource) {
       description = "Sync Technitium DNS listener endpoints";
       after = [
         "technitium-dns-server.service"
         "agenix.service"
-      ];
-      wants = [ "technitium-dns-server.service" ];
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
+      wants = [ "technitium-dns-server.service" ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
@@ -1033,7 +1286,7 @@ in
       '';
     };
 
-    systemd.services.technitium-sync-ntp-option = mkIf (cfg.ntpServers != [ ] && hasApiSecret) {
+    systemd.services.technitium-sync-ntp-option = mkIf (cfg.ntpServers != [ ] && hasTokenSource) {
       description = "Sync NTP server list to Technitium DHCP option 42";
       after = [
         "technitium-dns-server.service"
@@ -1041,8 +1294,10 @@ in
         "technitium-sync-listeners.service"
         "technitium-sync-dhcp-scopes.service"
         "technitium-sync-dhcp-reservations.service"
-      ];
-      wants = [ "technitium-dns-server.service" ];
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
+      wants = [
+        "technitium-dns-server.service"
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
@@ -1061,8 +1316,8 @@ in
         "technitium-dns-server.service"
         "agenix.service"
         "technitium-sync-dhcp-scopes.service"
-      ];
-      wants = [ "technitium-dns-server.service" ];
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
+      wants = [ "technitium-dns-server.service" ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
@@ -1075,14 +1330,14 @@ in
       '';
     };
 
-    systemd.services.technitium-sync-encrypted-dns = mkIf (cfg.encryptedDns.enable && hasApiSecret) {
+    systemd.services.technitium-sync-encrypted-dns = mkIf (cfg.encryptedDns.enable && hasTokenSource) {
       description = "Sync Technitium encrypted DNS settings";
       after = [
         "technitium-dns-server.service"
         "agenix.service"
         "technitium-sync-listeners.service"
-      ];
-      wants = [ "technitium-dns-server.service" ];
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
+      wants = [ "technitium-dns-server.service" ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
@@ -1092,6 +1347,29 @@ in
 
       script = ''
         ${encryptedDnsSyncScript}
+      '';
+    };
+
+    systemd.services.technitium-enable-rfc2136 = mkIf cfg.rfc2136.enable {
+      description = "Configure Technitium RFC2136 dynamic update support";
+      after = [
+        "technitium-dns-server.service"
+        "agenix.service"
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service"
+        ++ optional (config.systemd.services ? technitium-sync-static-hosts) "technitium-sync-static-hosts.service";
+      wants = [
+        "technitium-dns-server.service"
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service"
+        ++ optional (config.systemd.services ? technitium-sync-static-hosts) "technitium-sync-static-hosts.service";
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+
+      script = ''
+        ${rfc2136Script}
       '';
     };
   };

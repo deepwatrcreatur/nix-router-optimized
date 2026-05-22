@@ -224,7 +224,7 @@ let
         name: scope:
         let
           prefixLength = prefixFromNetmask scope.subnetMask;
-          cidr = parseCidr "${scope.startingAddress}/${toString prefixLength}".cidr;
+          cidr = (parseCidr "${scope.startingAddress}/${toString prefixLength}").cidr;
         in
         {
           id = "technitium:${name}";

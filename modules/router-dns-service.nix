@@ -126,6 +126,26 @@ in
       };
     };
 
+    providerCapabilities = {
+      supportsDhcpOptionSync = mkOption {
+        type = types.bool;
+        internal = true;
+        description = "Whether the selected DNS provider can synchronize DHCP-served options through the router DNS module.";
+      };
+
+      supportsDhcpReservationSync = mkOption {
+        type = types.bool;
+        internal = true;
+        description = "Whether the selected DNS provider can synchronize DHCP reservations through the router DNS module.";
+      };
+
+      supportsAuthoritativeDnsUpdates = mkOption {
+        type = types.bool;
+        internal = true;
+        description = "Whether the selected DNS provider can host the router's authoritative DDNS/update integration.";
+      };
+    };
+
     ntpServers = mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -139,12 +159,29 @@ in
   };
 
   config = mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.ntpServers == [ ] || cfg.provider == "technitium";
+        message = ''
+          services.router-dns-service.ntpServers currently depends on the Technitium-backed
+          DHCP option sync path. Before switching provider to `${cfg.provider}`, move DHCP
+          option synchronization behind a provider implementation that supports it.
+        '';
+      }
+    ];
+
     services.resolved.enable = mkIf cfg.disableResolved false;
 
     networking.nameservers = mkDefault effectiveNameservers;
 
     environment.etc."resolv.conf" = mkIf cfg.writeResolvConf {
       text = resolvConfText;
+    };
+
+    services.router-dns-service.providerCapabilities = {
+      supportsDhcpOptionSync = cfg.provider == "technitium";
+      supportsDhcpReservationSync = cfg.provider == "technitium";
+      supportsAuthoritativeDnsUpdates = cfg.provider == "technitium";
     };
 
     router.dns = mkIf (cfg.provider != "technitium") {
