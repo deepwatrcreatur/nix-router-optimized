@@ -1,6 +1,6 @@
 # 52 - Router Multi-WAN Positioning and Doc Boundary
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -31,30 +31,30 @@ are added.
 
 ## Requirements
 
-- [ ] Update the relevant docs and README surfaces so `router-mwan` is described
+- [x] Update the relevant docs and README surfaces so `router-mwan` is described
       as:
       - failover
       - prioritized uplinks
       - optional selected policy-routing companion patterns
       - and **not** generic load balancing
-- [ ] Add at least one explicit note describing unsupported expectations such as:
+- [x] Add at least one explicit note describing unsupported expectations such as:
       - aggregate throughput
       - connection-preserving failover
       - ECMP-like balancing
       - state-synchronized HA behavior
-- [ ] Add or refine an example for the standard supported shape:
+- [x] Add or refine an example for the standard supported shape:
       - primary WAN
       - secondary WAN
       - health-check driven metric switching
-- [ ] Ensure any future advanced balancing direction is referred to separately
+- [x] Ensure any future advanced balancing direction is referred to separately
       rather than widening the apparent meaning of `router-mwan`
 
 ## Verification
 
-- [ ] A user reading the repo docs can tell what `router-mwan` actually does
-- [ ] README no longer implies a broader polished balancing story than the module
+- [x] A user reading the repo docs can tell what `router-mwan` actually does
+- [x] README no longer implies a broader polished balancing story than the module
       supports
-- [ ] The default/example configuration reflects prioritized failover, not ECMP
+- [x] The default/example configuration reflects prioritized failover, not ECMP
 
 ## Notes
 

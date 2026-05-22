@@ -1,6 +1,6 @@
 # 53 - IPv6 Multi-WAN Decision Guide and Examples
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -32,17 +32,17 @@ PvD/NPTv6 are interchangeable.
 
 ## Requirements
 
-- [ ] Add a dedicated IPv6 multi-WAN guide that helps operators decide among:
+- [x] Add a dedicated IPv6 multi-WAN guide that helps operators decide among:
       - PvD / native multi-prefix
       - source-aware policy routing
       - NPTv6
       - NAT66 as last resort
-- [ ] Include at least one realistic example for each recommended pattern
-- [ ] Make the ordering and recommendation strength explicit:
+- [x] Include at least one realistic example for each recommended pattern
+- [x] Make the ordering and recommendation strength explicit:
       - preferred
       - advanced
       - discouraged / escape hatch
-- [ ] Document the major client and operator tradeoffs, including:
+- [x] Document the major client and operator tradeoffs, including:
       - client support variance for PvD
       - stable-inside benefits of NPTv6
       - source-address correctness constraints
@@ -50,11 +50,11 @@ PvD/NPTv6 are interchangeable.
 
 ## Verification
 
-- [ ] A user can answer “which IPv6 multi-WAN pattern should I use?” without
+- [x] A user can answer “which IPv6 multi-WAN pattern should I use?” without
       reading module source
-- [ ] The docs clearly distinguish native multi-prefix from translation-based
+- [x] The docs clearly distinguish native multi-prefix from translation-based
       approaches
-- [ ] NAT66 is documented honestly as compatibility-oriented, not as the
+- [x] NAT66 is documented honestly as compatibility-oriented, not as the
       preferred architecture
 
 ## Notes

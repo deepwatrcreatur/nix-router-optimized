@@ -591,6 +591,18 @@ services.router-dns64.enable = true;
 # prefix auto-derives from router-nat64.ipv6Prefix
 ```
 
+### router-mwan
+Small multi-WAN monitor for prioritized uplink failover:
+- health-checks WAN interfaces
+- promotes or demotes route metrics on failure/recovery
+- should be read as failover / priority switching, not aggregate load balancing
+
+If you want the supported IPv4-first boundary and example shape, read
+[`docs/router-mwan.md`](./docs/router-mwan.md).
+
+For IPv6 multi-WAN decision-making, do not assume `router-mwan` is the answer.
+Start with [`docs/ipv6-multiwan.md`](./docs/ipv6-multiwan.md) instead.
+
 ### router-clat
 Experimental first-slice CLAT-style surface for legacy IPv4 clients on IPv6-capable uplinks:
 - exports a bounded declarative contract under `services.router-clat`
@@ -673,6 +685,8 @@ Additional docs:
 - `docs/IMPLEMENTATION-STATUS.md` for current module maturity
 - `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
 - `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
+- `docs/router-mwan.md` for the IPv4-first multi-WAN failover boundary
+- `docs/ipv6-multiwan.md` for the IPv6 multi-WAN decision ladder
 - `docs/router-bgp.md` for BGP support boundaries, examples, and operational verification
 
 ## PPPoE Example
