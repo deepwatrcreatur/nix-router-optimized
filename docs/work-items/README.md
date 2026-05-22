@@ -21,7 +21,18 @@ tracked separately from the dashboard planning docs.
 - [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `in-progress`
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `in-progress`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `in-progress`
-- [46-dashboard-interface-and-prefix-detail-surface](./46-dashboard-interface-and-prefix-detail-surface.md) — `in-progress`
+- [51-dhcp-option-108-backend-parity-or-explicit-non-support](./51-dhcp-option-108-backend-parity-or-explicit-non-support.md) — `ready`
+- [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `ready`
+- [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `ready`
+- [54-ipv6-multiwan-source-routing-guardrails-and-tests](./54-ipv6-multiwan-source-routing-guardrails-and-tests.md) — `ready`
+- [55-router-clat-control-plane-contract-and-preservation-spec](./55-router-clat-control-plane-contract-and-preservation-spec.md) — `ready`
+- [56-router-clat-preservation-fixtures-and-parity-tests](./56-router-clat-preservation-fixtures-and-parity-tests.md) — `ready`
+- [57-router-clat-elixir-control-plane-path-and-selector](./57-router-clat-elixir-control-plane-path-and-selector.md) — `ready`
+- [58-router-clat-elixir-extraction-and-release-boundary](./58-router-clat-elixir-extraction-and-release-boundary.md) — `ready`
+- [59-dashboard-service-control-auth-and-boundary](./59-dashboard-service-control-auth-and-boundary.md) — `ready`
+- [60-router-bgp-promotion-aware-ha-ownership](./60-router-bgp-promotion-aware-ha-ownership.md) — `ready`
+- [61-dashboard-light-theme-parity](./61-dashboard-light-theme-parity.md) — `ready`
+- [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `ready`
 
 ## Recently Completed
 
@@ -30,11 +41,14 @@ tracked separately from the dashboard planning docs.
 - [38-router-clat-first-slice-contract-and-assertions](./38-router-clat-first-slice-contract-and-assertions.md) — `done`
 - [37-declarative-clat-design-and-incubation](./37-declarative-clat-design-and-incubation.md) — `done`
 - [36-recent-correctness-fixes-geoip-and-runtime-token-alignment](./36-recent-correctness-fixes-geoip-and-runtime-token-alignment.md) — `done`
+- [46-dashboard-interface-and-prefix-detail-surface](./46-dashboard-interface-and-prefix-detail-surface.md) — `done`
+- [47-dashboard-dhcp-neighbor-and-reservation-reconciliation](./47-dashboard-dhcp-neighbor-and-reservation-reconciliation.md) — `done`
+- [48-dashboard-route-upstream-and-edge-relationships](./48-dashboard-route-upstream-and-edge-relationships.md) — `done`
+- [49-dhcp-option-108-support-boundary-and-docs](./49-dhcp-option-108-support-boundary-and-docs.md) — `done`
+- [50-router-kea-dhcp-option-108-and-guardrails](./50-router-kea-dhcp-option-108-and-guardrails.md) — `done`
 - [43-dashboard-inventory-data-contract-and-export](./43-dashboard-inventory-data-contract-and-export.md) — `done`
 - [44-dashboard-inventory-browser-page-and-api](./44-dashboard-inventory-browser-page-and-api.md) — `done`
 - [45-dashboard-inventory-reconciliation-and-subnet-summary](./45-dashboard-inventory-reconciliation-and-subnet-summary.md) — `done`
-- [47-dashboard-dhcp-neighbor-and-reservation-reconciliation](./47-dashboard-dhcp-neighbor-and-reservation-reconciliation.md) — `done`
-- [48-dashboard-route-upstream-and-edge-relationships](./48-dashboard-route-upstream-and-edge-relationships.md) — `done`
 - [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `done`
 - [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `done`
 - [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `done`

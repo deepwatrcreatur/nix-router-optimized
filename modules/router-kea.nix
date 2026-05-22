@@ -14,6 +14,10 @@ let
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   hasRouterDnsService = hasAttrByPath [ "services" "router-dns-service" "searchDomains" ] options;
   hasRouterNtp = hasAttrByPath [ "services" "router-ntp" "enable" ] options;
+  hasRouterNat64 = hasAttrByPath [ "services" "router-nat64" "enable" ] options;
+  hasRouterDns64 = hasAttrByPath [ "services" "router-dns64" "enable" ] options;
+  nat64Enabled = hasRouterNat64 && (config.services.router-nat64.enable or false);
+  dns64Enabled = hasRouterDns64 && (config.services.router-dns64.enable or false);
 
   # Auto-derive LAN interfaces from router-networking when none are specified.
   effectiveInterfaces =
@@ -306,6 +310,26 @@ in
         description = "Typed PXE boot advertisement options for this routed segment.";
       };
 
+      ipv6OnlyPreferred = {
+        enable = mkEnableOption ''
+          RFC 8925 DHCP option 108 (IPv6-Only Preferred).
+
+          When enabled, Kea advertises option 108 to tell IPv6-capable clients
+          they may forgo their IPv4 address for the configured wait period.
+          This is intended for IPv6-mostly LANs with a working NAT64/DNS64 path.
+        '';
+
+        v6OnlyWaitSec = mkOption {
+          type = types.ints.between 0 65535;
+          default = 300;
+          description = ''
+            V6ONLY_WAIT timer in seconds (RFC 8925 section 3).
+            The client will prefer IPv6 for this duration before re-requesting
+            IPv4. RFC 8925 recommends 300-1800 seconds.
+          '';
+        };
+      };
+
       ha = {
         enable = mkEnableOption "Kea DHCPv4 High Availability (Load Balancing/Failover)";
         thisServerName = mkOption {
@@ -400,6 +424,22 @@ in
             Use a bare interface name (e.g. "eth0") instead.
           '';
         }
+        {
+          assertion = cfg.dhcp4.ipv6OnlyPreferred.enable -> nat64Enabled;
+          message = ''
+            router-kea: ipv6OnlyPreferred (DHCP option 108) requires a working NAT64
+            path. Enable services.router-nat64 or disable ipv6OnlyPreferred.
+            Without NAT64, IPv6-only clients will lose access to IPv4-only destinations.
+          '';
+        }
+        {
+          assertion = cfg.dhcp4.ipv6OnlyPreferred.enable -> dns64Enabled;
+          message = ''
+            router-kea: ipv6OnlyPreferred (DHCP option 108) requires DNS64 synthesis.
+            Enable services.router-dns64 or disable ipv6OnlyPreferred.
+            Without DNS64, IPv6-only clients cannot discover NAT64-translated addresses.
+          '';
+        }
       ]
       ++ concatMap (
         r:
@@ -433,6 +473,16 @@ in
       services.kea.dhcp4 = {
         enable = true;
         settings = {
+          # RFC 8925 option 108 is not a Kea built-in; define it as a custom option.
+          option-def = mkIf cfg.dhcp4.ipv6OnlyPreferred.enable [
+            {
+              name = "v6-only-preferred";
+              code = 108;
+              type = "uint32";
+              space = "dhcp4";
+            }
+          ];
+
           valid-lifetime = cfg.dhcp4.defaultLeaseTimeSec;
           max-valid-lifetime = cfg.dhcp4.maxLeaseTimeSec;
           renew-timer = cfg.dhcp4.defaultLeaseTimeSec / 4;
@@ -524,6 +574,13 @@ in
                 ++ optional (pxeCfg.enable && pxeCfg.bootFilename != null) {
                   name = "boot-file-name";
                   data = pxeCfg.bootFilename;
+                }
+                ++ optional cfg.dhcp4.ipv6OnlyPreferred.enable {
+                  code = 108;
+                  name = "v6-only-preferred";
+                  space = "dhcp4";
+                  csv-format = true;
+                  data = toString cfg.dhcp4.ipv6OnlyPreferred.v6OnlyWaitSec;
                 };
               reservations = map (
                 r:
