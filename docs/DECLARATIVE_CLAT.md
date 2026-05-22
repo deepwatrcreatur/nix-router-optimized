@@ -171,6 +171,10 @@ following become true:
 The control-plane contract should therefore be described in backend-agnostic
 terms even when Tayga is the first implementation target.
 
+The dedicated preserved contract note is:
+
+- [`docs/router-clat-control-plane-contract.md`](./router-clat-control-plane-contract.md)
+
 ## Declarative Ownership Rules
 
 The design should be explicit about who owns what.
