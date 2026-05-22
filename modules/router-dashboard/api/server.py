@@ -1710,17 +1710,23 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def decorate_inventory_with_runtime(self, inventory):
         runtime_leases = self.get_runtime_dhcp_leases()
+        neighbors = self.get_runtime_neighbors()
         declared_hosts = inventory.get('hosts', [])
         declared_by_address = {host.get('ipv4Address'): dict(host) for host in declared_hosts if host.get('ipv4Address')}
         runtime_by_address = {lease.get('address'): lease for lease in runtime_leases if lease.get('address')}
+        neighbor_by_address = {n.get('address'): n for n in neighbors if n.get('address')}
 
         merged_hosts = []
         conflict_count = 0
         runtime_only_count = 0
+        neighbor_only_count = 0
+        stale_count = 0
 
         for host in declared_hosts:
             merged = dict(host)
-            runtime = runtime_by_address.get(host.get('ipv4Address'))
+            address = host.get('ipv4Address')
+            runtime = runtime_by_address.get(address)
+            neighbor = neighbor_by_address.get(address)
             status = 'declared'
 
             if runtime:
@@ -1740,15 +1746,26 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                     'interface': runtime.get('interface'),
                 }
 
+            if neighbor:
+                merged['neighbor'] = neighbor
+                if neighbor.get('state') in ('STALE', 'FAILED'):
+                    if status == 'declared':
+                        status = 'stale'
+                        stale_count += 1
+
             merged['status'] = status
             merged_hosts.append(merged)
+
+        seen_addresses = set(declared_by_address.keys())
 
         for address, runtime in runtime_by_address.items():
             if address in declared_by_address:
                 continue
 
+            seen_addresses.add(address)
             runtime_only_count += 1
-            merged_hosts.append({
+            neighbor = neighbor_by_address.get(address)
+            entry = {
                 'id': f'runtime:{address}',
                 'label': runtime.get('hostname') or address,
                 'hostname': runtime.get('hostname') or None,
@@ -1772,6 +1789,37 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                     'scope': runtime.get('scope'),
                     'interface': runtime.get('interface'),
                 }
+            }
+            if neighbor:
+                entry['neighbor'] = neighbor
+            merged_hosts.append(entry)
+
+        for address, neighbor in neighbor_by_address.items():
+            if address in seen_addresses:
+                continue
+
+            neighbor_only_count += 1
+            status = 'neighbor-only'
+            if neighbor.get('state') in ('STALE', 'FAILED'):
+                status = 'stale'
+                stale_count += 1
+            merged_hosts.append({
+                'id': f'neighbor:{address}',
+                'label': address,
+                'hostname': None,
+                'ipv4Address': address,
+                'macAddress': neighbor.get('macAddress'),
+                'subnetRef': self.subnet_id_for_address(address, inventory.get('subnets', [])),
+                'sourceKind': 'arp-neighbor',
+                'status': status,
+                'provenance': [
+                    {
+                        'module': 'router-dashboard',
+                        'path': 'runtime-arp-neighbor',
+                        'authority': 'runtime'
+                    }
+                ],
+                'neighbor': neighbor,
             })
 
         inventory['hosts'] = sorted(
@@ -1795,15 +1843,19 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         for subnet in inventory.get('subnets', []):
             subnet_hosts = [host for host in inventory['hosts'] if host.get('subnetRef') == subnet.get('id')]
             runtime_only_hosts = [host for host in subnet_hosts if host.get('status') == 'runtime-only']
+            neighbor_only_hosts = [host for host in subnet_hosts if host.get('status') == 'neighbor-only']
+            stale_hosts = [host for host in subnet_hosts if host.get('status') == 'stale']
             subnet_conflicts = [host for host in subnet_hosts if host.get('status') == 'conflict']
             live_leases = [host for host in subnet_hosts if host.get('status') in ('leased', 'runtime-only', 'conflict')]
 
             dynamic_capacity = self.dynamic_pool_capacity(subnet.get('dynamicPools', []))
             occupied = len(live_leases)
             subnet['runtimeSummary'] = {
-                'declaredHostCount': len([host for host in subnet_hosts if host.get('sourceKind') != 'runtime-lease']),
+                'declaredHostCount': len([host for host in subnet_hosts if host.get('sourceKind') not in ('runtime-lease', 'arp-neighbor')]),
                 'liveLeaseCount': occupied,
                 'runtimeOnlyLeaseCount': len(runtime_only_hosts),
+                'neighborOnlyCount': len(neighbor_only_hosts),
+                'staleCount': len(stale_hosts),
                 'conflictCount': len(subnet_conflicts),
                 'dynamicAddressCapacity': dynamic_capacity,
                 'occupiedAddressCount': occupied,
@@ -1813,8 +1865,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         inventory['runtimeSummary'] = {
             'liveLeaseCount': len(runtime_leases),
             'runtimeOnlyLeaseCount': runtime_only_count,
+            'neighborOnlyCount': neighbor_only_count,
+            'staleCount': stale_count,
             'conflictCount': conflict_count,
-            'reconciliationStates': ['declared', 'leased', 'runtime-only', 'conflict']
+            'reconciliationStates': ['declared', 'leased', 'runtime-only', 'neighbor-only', 'stale', 'conflict']
         }
         return inventory
 
@@ -1866,6 +1920,44 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return kea_leases
 
         return []
+
+    def get_runtime_neighbors(self):
+        """Parse ARP/NDP neighbor table from `ip neigh show`."""
+        neighbors = []
+        try:
+            result = subprocess.run(
+                ['ip', 'neigh', 'show'],
+                capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.strip().splitlines():
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                address = parts[0]
+                # Skip IPv6 link-local and multicast
+                if ':' in address:
+                    continue
+                mac = None
+                state = 'UNKNOWN'
+                device = None
+                for i, token in enumerate(parts):
+                    if token == 'lladdr' and i + 1 < len(parts):
+                        mac = parts[i + 1]
+                    elif token == 'dev' and i + 1 < len(parts):
+                        device = parts[i + 1]
+                    elif token in ('REACHABLE', 'STALE', 'DELAY', 'PROBE',
+                                   'FAILED', 'NOARP', 'PERMANENT', 'INCOMPLETE'):
+                        state = token
+
+                neighbors.append({
+                    'address': address,
+                    'macAddress': mac,
+                    'device': device,
+                    'state': state,
+                })
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+        return neighbors
 
     def normalize_mac_address(self, value):
         return re.sub(r'[^0-9A-F]', '', (value or '').upper())

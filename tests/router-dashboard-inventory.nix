@@ -10,6 +10,8 @@ let
   findByAddress = address: items: builtins.filter (item: item.address == address) items;
   dashboardIndex = builtins.readFile ../modules/router-dashboard/index.html;
   dashboardMain = builtins.readFile ../modules/router-dashboard/js/main.js;
+  inventoryWidget = builtins.readFile ../modules/router-dashboard/js/widgets/inventory-widget.js;
+  dashboardCss = builtins.readFile ../modules/router-dashboard/css/dashboard.css;
 in
 {
   router-dashboard-inventory-router-dhcp-eval = eval.mkNixosEvalCheck "router-dashboard-inventory-router-dhcp" [
@@ -205,6 +207,48 @@ in
       };
 
       services.router-dashboard.enable = true;
+    }
+  ];
+
+  router-dashboard-inventory-reconciliation-contract-eval = eval.mkNixosEvalCheck "router-dashboard-inventory-reconciliation-contract" [
+    self.nixosModules.router-dashboard
+    {
+      services.router-dashboard.enable = true;
+    }
+    {
+      assertions = [
+        {
+          assertion =
+            lib.hasInfix "statusFilter" inventoryWidget
+            && lib.hasInfix "data-inventory-status-filter" inventoryWidget;
+          message = "router-dashboard inventory widget should provide status filter controls for reconciliation states.";
+        }
+        {
+          assertion =
+            lib.hasInfix "inventory-neighbor-chip" inventoryWidget
+            && lib.hasInfix "renderNeighborChip" inventoryWidget;
+          message = "router-dashboard inventory widget should render neighbor state chips.";
+        }
+        {
+          assertion =
+            lib.hasInfix "data-inventory-drill-subnet" inventoryWidget
+            && lib.hasInfix "data-inventory-drill-status" inventoryWidget;
+          message = "router-dashboard inventory widget should support drill-down from subnet detail into filtered host lists.";
+        }
+        {
+          assertion =
+            lib.hasInfix "inventory-status-neighbor-only" dashboardCss
+            && lib.hasInfix "inventory-status-stale" dashboardCss
+            && lib.hasInfix "inventory-neigh-reachable" dashboardCss;
+          message = "router-dashboard CSS should include styles for neighbor-only, stale, and ARP neighbor state chips.";
+        }
+        {
+          assertion =
+            lib.hasInfix "formatLeaseAge" inventoryWidget
+            && lib.hasInfix "leaseExpires" inventoryWidget;
+          message = "router-dashboard inventory widget should display relative lease age.";
+        }
+      ];
     }
   ];
 }
