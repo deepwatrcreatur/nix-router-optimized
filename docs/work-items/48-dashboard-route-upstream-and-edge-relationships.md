@@ -1,6 +1,6 @@
 # 48 - Dashboard Route Upstream and Edge Relationships
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -32,31 +32,31 @@ derived read-only view.
 
 ## Requirements
 
-- [ ] Extend the browse model to expose bounded relationship views for at least:
+- [x] Extend the browse model to expose bounded relationship views for at least:
       - interfaces to prefixes
       - prefixes to gateways / routes
       - upstream / WAN edges
       - overlay or peer interfaces where already modeled in the repo
-- [ ] Add a route/gateway or edge-oriented browser view that helps answer:
+- [x] Add a route/gateway or edge-oriented browser view that helps answer:
       - what is this segment's upstream
       - what route owns this destination
       - which interface is carrying this path
-- [ ] Reuse existing dashboard shell/navigation and make relationship views
+- [x] Reuse existing dashboard shell/navigation and make relationship views
       cross-link cleanly with inventory, status, and module-specific surfaces
-- [ ] Make provenance and confidence explicit where relationships are inferred
+- [x] Make provenance and confidence explicit where relationships are inferred
       rather than directly declared
-- [ ] Keep the result text/table/detail oriented; do not require a graphical
+- [x] Keep the result text/table/detail oriented; do not require a graphical
       topology canvas for the first slice
 
 ## Verification
 
-- [ ] An operator can browse from an interface or prefix to its relevant
+- [x] An operator can browse from an interface or prefix to its relevant
       route/gateway/upstream context
-- [ ] The dashboard can distinguish clearly declared relationships from runtime
+- [x] The dashboard can distinguish clearly declared relationships from runtime
       inference or observation
-- [ ] The first slice improves router troubleshooting without introducing
+- [x] The first slice improves router troubleshooting without introducing
       configuration mutation through the UI
-- [ ] The resulting relationship view remains small, inspectable, and consistent
+- [x] The resulting relationship view remains small, inspectable, and consistent
       with the repo's declarative authority model
 
 ## Notes

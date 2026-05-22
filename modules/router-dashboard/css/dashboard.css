@@ -981,6 +981,26 @@ header h1 {
   color: #fde68a;
 }
 
+.inventory-status-upstream {
+  background: rgba(14, 165, 233, 0.14);
+  color: #7dd3fc;
+}
+
+.inventory-status-segment {
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+
+.inventory-status-overlay {
+  background: rgba(34, 211, 238, 0.14);
+  color: #67e8f9;
+}
+
+.inventory-status-route {
+  background: rgba(196, 181, 253, 0.14);
+  color: #ddd6fe;
+}
+
 .inventory-conflict-text {
   color: #fca5a5;
 }

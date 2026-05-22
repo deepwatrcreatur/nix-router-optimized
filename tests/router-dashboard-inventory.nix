@@ -11,6 +11,7 @@ let
   findByAddress = address: items: builtins.filter (item: item.address == address) items;
   dashboardIndex = builtins.readFile ../modules/router-dashboard/index.html;
   dashboardMain = builtins.readFile ../modules/router-dashboard/js/main.js;
+  inventoryWidget = builtins.readFile ../modules/router-dashboard/js/widgets/inventory-widget.js;
 in
 {
   router-dashboard-inventory-router-dhcp-eval = eval.mkNixosEvalCheck "router-dashboard-inventory-router-dhcp" [
@@ -47,12 +48,14 @@ in
         wanIface = findInterfaceById "wan:wan";
         lanIface = findInterfaceById "routed:lan";
         lanPrefix = findPrefixById "prefix:routed:lan";
+        lanSegmentEdge = builtins.head (builtins.filter (e: e.id == "edge:segment:routed:lan") inventory.edges);
+        wanUpstreamEdge = builtins.head (builtins.filter (e: e.id == "edge:upstream:wan:wan") inventory.edges);
       in
       {
         assertions = [
           {
-            assertion = inventory.schemaVersion == 2;
-            message = "router-dashboard inventory export should declare schema version 2.";
+            assertion = inventory.schemaVersion == 3;
+            message = "router-dashboard inventory export should declare schema version 3.";
           }
           {
             assertion =
@@ -82,6 +85,17 @@ in
           {
             assertion = lanPrefix.cidr == "10.10.200.0/24" && lanPrefix.interfaceRef == "routed:lan";
             message = "router-dashboard inventory should export prefix entry linked to its interface.";
+          }
+          {
+            assertion =
+              lanSegmentEdge.kind == "segment"
+              && lanSegmentEdge.interfaceRef == "routed:lan"
+              && lanSegmentEdge.prefixRef == "prefix:routed:lan";
+            message = "router-dashboard inventory should export declared segment edges for prefixes.";
+          }
+          {
+            assertion = wanUpstreamEdge.kind == "upstream" && wanUpstreamEdge.interfaceRef == "wan:wan";
+            message = "router-dashboard inventory should export declared upstream edges for WAN interfaces.";
           }
         ];
       })
@@ -178,6 +192,12 @@ in
             lib.hasInfix "InventoryWidget" dashboardMain
             && lib.hasInfix "'inventory'" dashboardMain;
           message = "router-dashboard main script should wire the inventory page into the page model.";
+        }
+        {
+          assertion =
+            lib.hasInfix ''data-inventory-view="edges"'' inventoryWidget
+            && lib.hasInfix "renderEdgesView" inventoryWidget;
+          message = "router-dashboard inventory browser should expose an edge relationship view.";
         }
       ];
     }

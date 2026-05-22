@@ -12,6 +12,7 @@ class InventoryWidget extends BaseWidget {
     this.selectedHostId = null;
     this.selectedInterfaceId = null;
     this.selectedPrefixId = null;
+    this.selectedEdgeId = null;
     this.activeView = 'hosts';
   }
 
@@ -27,6 +28,7 @@ class InventoryWidget extends BaseWidget {
             <button class="inventory-view-tab is-active" type="button" data-inventory-view="hosts" role="tab">Hosts</button>
             <button class="inventory-view-tab" type="button" data-inventory-view="interfaces" role="tab">Interfaces</button>
             <button class="inventory-view-tab" type="button" data-inventory-view="prefixes" role="tab">Prefixes</button>
+            <button class="inventory-view-tab" type="button" data-inventory-view="edges" role="tab">Edges</button>
           </nav>
           <div class="inventory-toolbar-copy">
             <p>Browse declared reservations alongside live leases and neighbor evidence without leaving the router dashboard.</p>
@@ -107,6 +109,17 @@ class InventoryWidget extends BaseWidget {
         return;
       }
 
+      const edgeButton = event.target.closest('[data-inventory-edge-id]');
+      if (edgeButton) {
+        this.activeView = 'edges';
+        this.container.querySelectorAll('.inventory-view-tab').forEach(tab => {
+          tab.classList.toggle('is-active', tab.dataset.inventoryView === this.activeView);
+        });
+        this.selectedEdgeId = edgeButton.dataset.inventoryEdgeId;
+        this.renderActiveView();
+        return;
+      }
+
       const crossLink = event.target.closest('[data-inventory-cross-link]');
       if (crossLink) {
         const targetId = crossLink.dataset.inventoryCrossLink;
@@ -156,6 +169,9 @@ class InventoryWidget extends BaseWidget {
       if (!this.selectedPrefixId && (data.prefixes || []).length > 0) {
         this.selectedPrefixId = data.prefixes[0].id;
       }
+      if (!this.selectedEdgeId && (data.edges || []).length > 0) {
+        this.selectedEdgeId = data.edges[0].id;
+      }
 
       this.renderActiveView();
       this.hideLoading();
@@ -166,8 +182,15 @@ class InventoryWidget extends BaseWidget {
   }
 
   renderActiveView() {
+    const filterBar = this.container?.querySelector(`#${this.id}-status-filters`);
+    if (filterBar) {
+      filterBar.innerHTML = this.activeView === 'hosts' ? this.renderStatusFilters() : '';
+    }
+
     if (this.activeView === 'interfaces') {
       this.renderInterfacesView();
+    } else if (this.activeView === 'edges') {
+      this.renderEdgesView();
     } else if (this.activeView === 'prefixes') {
       this.renderPrefixesView();
     } else {
@@ -195,10 +218,6 @@ class InventoryWidget extends BaseWidget {
     const runtimeSummary = this.inventory.runtimeSummary || {};
 
     statusEl.textContent = `${subnets.length} subnets • ${reservations.length} reserved addresses • ${runtimeSummary.liveLeaseCount || 0} live leases • ${runtimeSummary.neighborCount || 0} neighbors • ${runtimeSummary.conflictCount || 0} conflicts`;
-    const filterBar = this.container?.querySelector(`#${this.id}-status-filters`);
-    if (filterBar) {
-      filterBar.innerHTML = this.renderStatusFilters();
-    }
 
     const visibleGroups = subnets
       .map(subnet => ({
@@ -369,6 +388,7 @@ class InventoryWidget extends BaseWidget {
           <div><dt>Lease Expires</dt><dd>${this.escape(host.runtimeLease?.leaseExpires || '—')}</dd></div>
         </dl>
         ${this.renderRuntimeEvidence(host)}
+        ${this.renderRelatedEdges(this.edgesForSubnet(host.subnetRef), 'Related Prefix Paths')}
         <div class="inventory-provenance">
           <h3>Provenance</h3>
           ${this.renderProvenance(host.provenance || [])}
@@ -416,6 +436,7 @@ class InventoryWidget extends BaseWidget {
           ${matchingPrefix ? `<div><dt>Prefix</dt><dd><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(matchingPrefix.id)}" data-inventory-cross-view="prefixes">${this.escape(matchingPrefix.cidr)}</button></dd></div>` : ''}
         </dl>
         ${this.renderSubnetRuntimeCollections(subnetHosts)}
+        ${this.renderRelatedEdges(this.edgesForSubnet(subnet.id), 'Upstream and Route Relationships')}
         <div class="inventory-provenance">
           <h3>Provenance</h3>
           ${this.renderProvenance(subnet.provenance || [])}
@@ -574,6 +595,7 @@ class InventoryWidget extends BaseWidget {
             </ul>
           </div>
         ` : ''}
+        ${this.renderRelatedEdges(this.edgesForInterface(iface.id), 'Related Edges')}
         <div class="inventory-provenance">
           <h3>Provenance</h3>
           ${this.renderProvenance(iface.provenance || [])}
@@ -714,9 +736,156 @@ class InventoryWidget extends BaseWidget {
             </ul>
           </div>
         ` : ''}
+        ${this.renderRelatedEdges(this.edgesForPrefix(prefix), 'Route and Upstream Relationships')}
         <div class="inventory-provenance">
           <h3>Provenance</h3>
           ${this.renderProvenance(prefix.provenance || [])}
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Edges view ──
+
+  renderEdgesView() {
+    const statusEl = this.container?.querySelector(`#${this.id}-status`);
+    const listEl = this.container?.querySelector(`#${this.id}-subnets`);
+    if (!statusEl || !listEl) return;
+
+    if (!this.inventory || this.inventory.available === false) {
+      statusEl.textContent = this.inventory?.message || 'Inventory unavailable';
+      listEl.innerHTML = '';
+      this.renderEmptyDetail(this.inventory?.message || 'Inventory unavailable');
+      return;
+    }
+
+    const edges = this.inventory.edges || [];
+    const edgeSummary = this.inventory.edgeSummary || {};
+    const visible = this.filter ? edges.filter(edge => this.edgeMatches(edge)) : edges;
+
+    statusEl.textContent = `${edgeSummary.edgeCount || edges.length} edges • ${edgeSummary.upstreamCount || 0} upstreams • ${edgeSummary.routeCount || 0} runtime routes`;
+
+    if (visible.length === 0) {
+      listEl.innerHTML = '<div class="inventory-empty-list">No edges match the current filter.</div>';
+      this.renderEmptyDetail('No matching edges.');
+      return;
+    }
+
+    const grouped = this.groupEdgesByKind(visible);
+    listEl.innerHTML = grouped.map(group => `
+      <section class="inventory-subnet-card">
+        <div class="inventory-subnet-header inventory-role-header">
+          <div>
+            <div class="inventory-subnet-name">${this.escape(group.label)}</div>
+            <div class="inventory-subnet-meta">${group.edges.length} relationship${group.edges.length !== 1 ? 's' : ''}</div>
+          </div>
+        </div>
+        <div class="inventory-host-list">
+          ${group.edges.map(edge => this.renderEdgeRow(edge)).join('')}
+        </div>
+      </section>
+    `).join('');
+
+    this.selectedEdgeId = visible.some(edge => edge.id === this.selectedEdgeId)
+      ? this.selectedEdgeId
+      : visible[0]?.id ?? null;
+
+    if (this.selectedEdgeId) {
+      this.renderEdgeDetail(this.selectedEdgeId);
+      this.highlightSelected('[data-inventory-edge-id]', this.selectedEdgeId, 'inventoryEdgeId');
+    }
+  }
+
+  groupEdgesByKind(edges) {
+    const labels = {
+      upstream: 'Upstreams',
+      segment: 'Segments',
+      overlay: 'Overlays',
+      route: 'Runtime Routes'
+    };
+    const groups = {};
+    for (const edge of edges) {
+      const kind = edge.kind || 'other';
+      (groups[kind] = groups[kind] || []).push(edge);
+    }
+    const order = ['upstream', 'segment', 'overlay', 'route'];
+    return order.filter(kind => groups[kind]?.length > 0).map(kind => ({
+      kind,
+      label: labels[kind] || kind,
+      edges: groups[kind]
+    }));
+  }
+
+  edgeMatches(edge) {
+    const text = [
+      edge.label || '',
+      edge.kind || '',
+      edge.destination || '',
+      edge.gatewayAddress || '',
+      edge.interfaceRef || '',
+      edge.confidence || '',
+      edge.inference || ''
+    ].join(' ').toLowerCase();
+    return text.includes(this.filter);
+  }
+
+  renderEdgeRow(edge) {
+    const selectedClass = edge.id === this.selectedEdgeId ? ' is-selected' : '';
+    const title = edge.destination ? `${edge.label} ${edge.destination}` : edge.label;
+    const meta = [edge.gatewayAddress ? `via ${edge.gatewayAddress}` : null, edge.interfaceRef || null, edge.confidence || null]
+      .filter(Boolean)
+      .join(' · ');
+    return `
+      <button class="inventory-host-row${selectedClass}" type="button" data-inventory-edge-id="${this.escape(edge.id)}">
+        <div class="inventory-host-main">
+          <span class="inventory-host-label">${this.escape(title || edge.id)} ${this.renderHostStatusChip(edge.kind)}</span>
+          <span class="inventory-host-ip">${this.escape(edge.destination || edge.gatewayAddress || '—')}</span>
+        </div>
+        <div class="inventory-host-meta">${this.escape(meta || edge.kind || 'edge')}</div>
+      </button>
+    `;
+  }
+
+  renderEdgeDetail(edgeId) {
+    const edge = (this.inventory?.edges || []).find(entry => entry.id === edgeId);
+    if (!edge) {
+      this.renderEmptyDetail('Select an edge to inspect details.');
+      return;
+    }
+
+    const detailEl = this.container?.querySelector(`#${this.id}-detail`);
+    if (!detailEl) return;
+
+    const iface = edge.interfaceRef
+      ? (this.inventory?.interfaces || []).find(entry => entry.id === edge.interfaceRef)
+      : null;
+    const prefix = edge.prefixRef
+      ? (this.inventory?.prefixes || []).find(entry => entry.id === edge.prefixRef)
+      : null;
+
+    detailEl.innerHTML = `
+      <div class="inventory-detail-card">
+        <div class="inventory-detail-header">
+          <div>
+            <div class="inventory-detail-title">${this.escape(edge.label || edge.id)}</div>
+            <div class="inventory-detail-subtitle">${this.escape(edge.kind || 'edge')} · ${this.escape(edge.confidence || 'unknown')}</div>
+          </div>
+          <span class="inventory-badge">Read-only</span>
+        </div>
+        <dl class="inventory-detail-list">
+          <div><dt>Kind</dt><dd>${this.escape(edge.kind || '—')}</dd></div>
+          <div><dt>Destination</dt><dd>${this.escape(edge.destination || '—')}</dd></div>
+          <div><dt>Gateway</dt><dd>${this.escape(edge.gatewayAddress || '—')}</dd></div>
+          <div><dt>Confidence</dt><dd>${this.escape(edge.confidence || '—')}</dd></div>
+          <div><dt>Inference</dt><dd>${this.escape(edge.inference || '—')}</dd></div>
+          <div><dt>Active</dt><dd>${this.escape(edge.active == null ? '—' : String(edge.active))}</dd></div>
+          ${iface ? `<div><dt>Interface</dt><dd><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(iface.id)}" data-inventory-cross-view="interfaces">${this.escape(iface.name)} (${this.escape(iface.device)})</button></dd></div>` : ''}
+          ${prefix ? `<div><dt>Prefix</dt><dd><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(prefix.id)}" data-inventory-cross-view="prefixes">${this.escape(prefix.cidr)}</button></dd></div>` : ''}
+        </dl>
+        ${this.renderEdgeRelatedLinks(edge)}
+        <div class="inventory-provenance">
+          <h3>Provenance</h3>
+          ${this.renderProvenance(edge.provenance || [])}
         </div>
       </div>
     `;
@@ -795,6 +964,57 @@ class InventoryWidget extends BaseWidget {
         </div>
       </div>
     `;
+  }
+
+  renderRelatedEdges(edges, title) {
+    if (!edges.length) {
+      return '';
+    }
+
+    return `
+      <div class="inventory-related">
+        <h3>${this.escape(title)}</h3>
+        <ul class="inventory-related-list">
+          ${edges.map(edge => `
+            <li><button type="button" class="inventory-cross-link" data-inventory-edge-id="${this.escape(edge.id)}">${this.escape(edge.label || edge.id)}${edge.destination ? ` — ${this.escape(edge.destination)}` : ''}</button></li>
+          `).join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  renderEdgeRelatedLinks(edge) {
+    const relatedEdges = (edge.upstreamEdgeRefs || [])
+      .map(id => (this.inventory?.edges || []).find(entry => entry.id === id))
+      .filter(Boolean);
+    const routeEdges = (edge.routeEdgeRefs || [])
+      .map(id => (this.inventory?.edges || []).find(entry => entry.id === id))
+      .filter(Boolean);
+
+    return `
+      ${this.renderRelatedEdges(relatedEdges, 'Upstream Paths')}
+      ${this.renderRelatedEdges(routeEdges, 'Observed Routes')}
+    `;
+  }
+
+  edgesForInterface(interfaceId) {
+    return (this.inventory?.edges || []).filter(edge => edge.interfaceRef === interfaceId);
+  }
+
+  edgesForPrefix(prefix) {
+    return (this.inventory?.edges || []).filter(edge =>
+      edge.prefixRef === prefix.id
+      || edge.destination === prefix.cidr
+      || ((edge.kind === 'upstream' || edge.kind === 'route') && prefix.role !== 'wan' && edge.destination === '0.0.0.0/0')
+    );
+  }
+
+  edgesForSubnet(subnetRef) {
+    const prefix = (this.inventory?.prefixes || []).find(entry => entry.id === `prefix:${subnetRef}`);
+    if (!prefix) {
+      return [];
+    }
+    return this.edgesForPrefix(prefix);
   }
 
   renderEmptyDetail(message) {
