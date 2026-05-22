@@ -21,6 +21,9 @@ tracked separately from the dashboard planning docs.
 - [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `in-progress`
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `in-progress`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `in-progress`
+- [46-dashboard-interface-and-prefix-detail-surface](./46-dashboard-interface-and-prefix-detail-surface.md) — `ready`
+- [47-dashboard-dhcp-neighbor-and-reservation-reconciliation](./47-dashboard-dhcp-neighbor-and-reservation-reconciliation.md) — `ready`
+- [48-dashboard-route-upstream-and-edge-relationships](./48-dashboard-route-upstream-and-edge-relationships.md) — `ready`
 
 ## Recently Completed
 
