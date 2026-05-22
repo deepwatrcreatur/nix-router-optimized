@@ -1,6 +1,6 @@
 # 46 - Dashboard Interface and Prefix Detail Surface
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 

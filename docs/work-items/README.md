@@ -18,13 +18,14 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `in-progress`
-- [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `in-progress`
-- [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `in-progress`
-- [46-dashboard-interface-and-prefix-detail-surface](./46-dashboard-interface-and-prefix-detail-surface.md) — `in-progress`
+(empty — all tracked items are complete)
 
 ## Recently Completed
 
+- [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `done`
+- [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `done`
+- [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `done`
+- [46-dashboard-interface-and-prefix-detail-surface](./46-dashboard-interface-and-prefix-detail-surface.md) — `done`
 - [39-router-clat-post-landing-cleanup-and-boundary-surfacing](./39-router-clat-post-landing-cleanup-and-boundary-surfacing.md) — `done`
 - [35-router-zones-composition-reset](./35-router-zones-composition-reset.md) — `done`
 - [38-router-clat-first-slice-contract-and-assertions](./38-router-clat-first-slice-contract-and-assertions.md) — `done`
