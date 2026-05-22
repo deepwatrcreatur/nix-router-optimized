@@ -102,10 +102,18 @@ class InventoryWidget extends BaseWidget {
           this.container.querySelectorAll('.inventory-view-tab').forEach(tab => {
             tab.classList.toggle('is-active', tab.dataset.inventoryView === this.activeView);
           });
+          const targetKind = crossLink.dataset.inventoryCrossKind;
           if (targetView === 'interfaces') this.selectedInterfaceId = targetId;
           if (targetView === 'prefixes') this.selectedPrefixId = targetId;
-          if (targetView === 'hosts') this.selectedHostId = targetId;
+          if (targetView === 'hosts' && targetKind === 'subnet') {
+            this.selectedHostId = null;
+          } else if (targetView === 'hosts') {
+            this.selectedHostId = targetId;
+          }
           this.renderActiveView();
+          if (targetView === 'hosts' && targetKind === 'subnet') {
+            this.renderSubnetDetail(targetId);
+          }
         }
         return;
       }
@@ -309,7 +317,7 @@ class InventoryWidget extends BaseWidget {
           <div><dt>Hostname</dt><dd>${this.escape(host.hostname || '—')}</dd></div>
           <div><dt>MAC</dt><dd>${this.escape(host.macAddress || '—')}</dd></div>
           <div><dt>Subnet</dt><dd>${subnet
-            ? `<a class="inventory-cross-link" data-inventory-cross-link="${this.escape(subnet.id)}" data-inventory-cross-view="hosts">${this.escape(subnet.label)} (${this.escape(subnet.cidr)})</a>`
+            ? `<button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(subnet.id)}" data-inventory-cross-view="hosts" data-inventory-cross-kind="subnet">${this.escape(subnet.label)} (${this.escape(subnet.cidr)})</button>`
             : this.escape(host.subnetRef || '—')}</dd></div>
           <div><dt>Status</dt><dd>${this.escape(host.status || 'declared')}</dd></div>
           <div><dt>Lease Expires</dt><dd>${this.escape(host.runtimeLease?.leaseExpires || '—')}</dd></div>
@@ -355,8 +363,8 @@ class InventoryWidget extends BaseWidget {
           <div><dt>Dynamic Pools</dt><dd>${this.escape(pools.map(pool => `${pool.start} - ${pool.end}`).join(', ') || '—')}</dd></div>
           <div><dt>Live Leases</dt><dd>${this.escape(String(subnet.runtimeSummary?.liveLeaseCount ?? 0))}</dd></div>
           <div><dt>Occupancy</dt><dd>${this.escape(this.formatOccupancy(subnet.runtimeSummary))}</dd></div>
-          ${matchingIface ? `<div><dt>Interface</dt><dd><a class="inventory-cross-link" data-inventory-cross-link="${this.escape(matchingIface.id)}" data-inventory-cross-view="interfaces">${this.escape(matchingIface.name)} (${this.escape(matchingIface.device)})</a></dd></div>` : ''}
-          ${matchingPrefix ? `<div><dt>Prefix</dt><dd><a class="inventory-cross-link" data-inventory-cross-link="${this.escape(matchingPrefix.id)}" data-inventory-cross-view="prefixes">${this.escape(matchingPrefix.cidr)}</a></dd></div>` : ''}
+          ${matchingIface ? `<div><dt>Interface</dt><dd><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(matchingIface.id)}" data-inventory-cross-view="interfaces">${this.escape(matchingIface.name)} (${this.escape(matchingIface.device)})</button></dd></div>` : ''}
+          ${matchingPrefix ? `<div><dt>Prefix</dt><dd><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(matchingPrefix.id)}" data-inventory-cross-view="prefixes">${this.escape(matchingPrefix.cidr)}</button></dd></div>` : ''}
         </dl>
         <div class="inventory-provenance">
           <h3>Provenance</h3>
@@ -424,11 +432,11 @@ class InventoryWidget extends BaseWidget {
         </section>
       `).join('');
 
+    this.selectedInterfaceId = visible.some(i => i.id === this.selectedInterfaceId)
+      ? this.selectedInterfaceId
+      : visible[0]?.id ?? null;
+
     if (this.selectedInterfaceId) {
-      this.renderInterfaceDetail(this.selectedInterfaceId);
-      this.highlightSelected('[data-inventory-iface-id]', this.selectedInterfaceId, 'inventoryIfaceId');
-    } else if (visible.length > 0) {
-      this.selectedInterfaceId = visible[0].id;
       this.renderInterfaceDetail(this.selectedInterfaceId);
       this.highlightSelected('[data-inventory-iface-id]', this.selectedInterfaceId, 'inventoryIfaceId');
     }
@@ -501,7 +509,7 @@ class InventoryWidget extends BaseWidget {
             <h3>Subnets</h3>
             <ul class="inventory-related-list">
               ${linkedSubnets.map(subnet => `
-                <li><a class="inventory-cross-link" data-inventory-cross-link="${this.escape(subnet.id)}" data-inventory-cross-view="hosts">${this.escape(subnet.label)} — ${this.escape(subnet.cidr)}</a></li>
+                <li><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(subnet.id)}" data-inventory-cross-view="hosts" data-inventory-cross-kind="subnet">${this.escape(subnet.label)} — ${this.escape(subnet.cidr)}</button></li>
               `).join('')}
             </ul>
           </div>
@@ -511,7 +519,7 @@ class InventoryWidget extends BaseWidget {
             <h3>Prefixes</h3>
             <ul class="inventory-related-list">
               ${linkedPrefixes.map(prefix => `
-                <li><a class="inventory-cross-link" data-inventory-cross-link="${this.escape(prefix.id)}" data-inventory-cross-view="prefixes">${this.escape(prefix.cidr)} — ${this.escape(prefix.label)}</a></li>
+                <li><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(prefix.id)}" data-inventory-cross-view="prefixes">${this.escape(prefix.cidr)} — ${this.escape(prefix.label)}</button></li>
               `).join('')}
             </ul>
           </div>
@@ -565,11 +573,11 @@ class InventoryWidget extends BaseWidget {
       </section>
     `;
 
+    this.selectedPrefixId = visible.some(p => p.id === this.selectedPrefixId)
+      ? this.selectedPrefixId
+      : visible[0]?.id ?? null;
+
     if (this.selectedPrefixId) {
-      this.renderPrefixDetail(this.selectedPrefixId);
-      this.highlightSelected('[data-inventory-prefix-id]', this.selectedPrefixId, 'inventoryPrefixId');
-    } else if (visible.length > 0) {
-      this.selectedPrefixId = visible[0].id;
       this.renderPrefixDetail(this.selectedPrefixId);
       this.highlightSelected('[data-inventory-prefix-id]', this.selectedPrefixId, 'inventoryPrefixId');
     }
@@ -643,14 +651,14 @@ class InventoryWidget extends BaseWidget {
           <div><dt>DHCP Backend</dt><dd>${this.escape(prefix.dhcpBackend || 'none')}</dd></div>
           <div><dt>Dynamic Pools</dt><dd>${this.escape(pools.map(pool => `${pool.start} - ${pool.end}`).join(', ') || '—')}</dd></div>
           <div><dt>Declared Hosts</dt><dd>${prefix.hostCount}</dd></div>
-          ${iface ? `<div><dt>Interface</dt><dd><a class="inventory-cross-link" data-inventory-cross-link="${this.escape(iface.id)}" data-inventory-cross-view="interfaces">${this.escape(iface.name)} (${this.escape(iface.device)})</a></dd></div>` : ''}
+          ${iface ? `<div><dt>Interface</dt><dd><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(iface.id)}" data-inventory-cross-view="interfaces">${this.escape(iface.name)} (${this.escape(iface.device)})</button></dd></div>` : ''}
         </dl>
         ${hostsInPrefix.length > 0 ? `
           <div class="inventory-related">
             <h3>Addresses in this prefix</h3>
             <ul class="inventory-related-list">
               ${hostsInPrefix.slice(0, 20).map(host => `
-                <li><a class="inventory-cross-link" data-inventory-cross-link="${this.escape(host.id)}" data-inventory-cross-view="hosts">${this.escape(host.ipv4Address)} — ${this.escape(host.label)}</a></li>
+                <li><button type="button" class="inventory-cross-link" data-inventory-cross-link="${this.escape(host.id)}" data-inventory-cross-view="hosts">${this.escape(host.ipv4Address)} — ${this.escape(host.label)}</button></li>
               `).join('')}
               ${hostsInPrefix.length > 20 ? `<li class="inventory-related-more">+ ${hostsInPrefix.length - 20} more</li>` : ''}
             </ul>
