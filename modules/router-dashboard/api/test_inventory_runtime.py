@@ -38,6 +38,17 @@ class InventoryRuntimeTests(unittest.TestCase):
                 "state": "REACHABLE",
             }
         ]
+        handler.get_runtime_routes = lambda: [
+            {
+                "destination": "0.0.0.0/0",
+                "interface": "eth0",
+                "gatewayAddress": "198.51.100.1",
+                "protocol": "dhcp",
+                "scope": "global",
+                "table": "main",
+                "type": "unicast",
+            }
+        ]
 
         inventory = {
             "subnets": [
@@ -48,6 +59,67 @@ class InventoryRuntimeTests(unittest.TestCase):
                     "dynamicPools": [{"start": "10.10.200.100", "end": "10.10.200.199"}],
                     "provenance": [],
                 }
+            ],
+            "interfaces": [
+                {
+                    "id": "wan:wan",
+                    "name": "wan",
+                    "device": "eth0",
+                    "role": "wan",
+                    "kind": "physical",
+                    "provenance": [],
+                },
+                {
+                    "id": "routed:lan",
+                    "name": "lan",
+                    "device": "eth1",
+                    "role": "lan",
+                    "kind": "physical",
+                    "subnetRefs": ["routed:lan"],
+                    "provenance": [],
+                },
+            ],
+            "prefixes": [
+                {
+                    "id": "prefix:routed:lan",
+                    "cidr": "10.10.200.0/24",
+                    "label": "LAN",
+                    "interfaceRef": "routed:lan",
+                    "gatewayAddress": "10.10.200.1",
+                    "role": "lan",
+                    "dhcpBackend": "kea",
+                    "provenance": [],
+                }
+            ],
+            "edges": [
+                {
+                    "id": "edge:segment:routed:lan",
+                    "kind": "segment",
+                    "label": "LAN segment",
+                    "interfaceRef": "routed:lan",
+                    "prefixRef": "prefix:routed:lan",
+                    "subnetRef": "routed:lan",
+                    "destination": "10.10.200.0/24",
+                    "gatewayAddress": "10.10.200.1",
+                    "active": True,
+                    "confidence": "declared",
+                    "inference": "declared",
+                    "provenance": [],
+                },
+                {
+                    "id": "edge:upstream:wan:wan",
+                    "kind": "upstream",
+                    "label": "wan upstream",
+                    "interfaceRef": "wan:wan",
+                    "prefixRef": None,
+                    "subnetRef": None,
+                    "destination": "0.0.0.0/0",
+                    "gatewayAddress": None,
+                    "active": False,
+                    "confidence": "declared",
+                    "inference": "declared",
+                    "provenance": [],
+                },
             ],
             "hosts": [
                 {
@@ -76,6 +148,12 @@ class InventoryRuntimeTests(unittest.TestCase):
         self.assertEqual(result["runtimeSummary"]["liveLeaseCount"], 1)
         self.assertEqual(result["runtimeSummary"]["neighborCount"], 1)
         self.assertEqual(result["subnets"][0]["runtimeSummary"]["declaredHostCount"], 1)
+        self.assertEqual(result["edgeSummary"]["upstreamCount"], 1)
+        upstream = next(edge for edge in result["edges"] if edge["kind"] == "upstream")
+        self.assertEqual(upstream["gatewayAddress"], "198.51.100.1")
+        self.assertTrue(upstream["active"])
+        segment = next(edge for edge in result["edges"] if edge["id"] == "edge:segment:routed:lan")
+        self.assertIn(upstream["runtimeRouteRef"], segment["upstreamEdgeRefs"])
 
     def test_decorate_inventory_with_runtime_marks_conflict_and_runtime_only_neighbor(self):
         handler = self.make_handler()
@@ -163,6 +241,33 @@ class InventoryRuntimeTests(unittest.TestCase):
 
         self.assertEqual([entry["address"] for entry in neighbors], ["10.10.200.20", "10.10.200.40"])
         self.assertEqual(neighbors[1]["state"], "STALE")
+
+    def test_get_runtime_routes_parses_ip_json(self):
+        handler = self.make_handler()
+        payload = json.dumps([
+            {
+                "dst": "default",
+                "dev": "eth0",
+                "gateway": "198.51.100.1",
+                "protocol": "dhcp",
+                "scope": "global",
+                "table": "main",
+            },
+            {
+                "dst": "10.10.200.0/24",
+                "dev": "eth1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "main",
+            },
+        ])
+
+        with mock.patch.object(subprocess, "run", return_value=mock.Mock(returncode=0, stdout=payload, stderr="")):
+            routes = handler.get_runtime_routes()
+
+        self.assertEqual(routes[0]["destination"], "0.0.0.0/0")
+        self.assertEqual(routes[0]["gatewayAddress"], "198.51.100.1")
+        self.assertEqual(routes[1]["destination"], "10.10.200.0/24")
 
 
 if __name__ == "__main__":

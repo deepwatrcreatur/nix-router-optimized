@@ -11,6 +11,7 @@ let
   findByAddress = address: items: builtins.filter (item: item.address == address) items;
   dashboardIndex = builtins.readFile ../modules/router-dashboard/index.html;
   dashboardMain = builtins.readFile ../modules/router-dashboard/js/main.js;
+  inventoryWidget = builtins.readFile ../modules/router-dashboard/js/widgets/inventory-widget.js;
 in
 {
   router-dashboard-inventory-router-dhcp-eval = eval.mkNixosEvalCheck "router-dashboard-inventory-router-dhcp" [
@@ -42,12 +43,19 @@ in
           builtins.readFile config.systemd.services.router-dashboard.environment.DASHBOARD_INVENTORY_FILE
         );
         routedLan = builtins.head (findById "routed:lan" inventory.subnets);
+        findInterfaceById = id: builtins.head (builtins.filter (i: i.id == id) inventory.interfaces);
+        findPrefixById = id: builtins.head (builtins.filter (p: p.id == id) inventory.prefixes);
+        wanIface = findInterfaceById "wan:wan";
+        lanIface = findInterfaceById "routed:lan";
+        lanPrefix = findPrefixById "prefix:routed:lan";
+        lanSegmentEdge = builtins.head (builtins.filter (e: e.id == "edge:segment:routed:lan") inventory.edges);
+        wanUpstreamEdge = builtins.head (builtins.filter (e: e.id == "edge:upstream:wan:wan") inventory.edges);
       in
       {
         assertions = [
           {
-            assertion = inventory.schemaVersion == 1;
-            message = "router-dashboard inventory export should declare schema version 1.";
+            assertion = inventory.schemaVersion == 3;
+            message = "router-dashboard inventory export should declare schema version 3.";
           }
           {
             assertion =
@@ -65,6 +73,29 @@ in
           {
             assertion = inventory.hosts == [ ] && inventory.reservedAddresses == [ ];
             message = "router-dashboard inventory export should stay empty for host/reservation records when router-dhcp has no declared static leases.";
+          }
+          {
+            assertion = wanIface.device == "eth0" && wanIface.role == "wan";
+            message = "router-dashboard inventory should export WAN interface entry.";
+          }
+          {
+            assertion = lanIface.device == "eth1" && lanIface.role == "lan" && lanIface.subnetRefs == [ "routed:lan" ];
+            message = "router-dashboard inventory should export routed interface entry with subnet refs.";
+          }
+          {
+            assertion = lanPrefix.cidr == "10.10.200.0/24" && lanPrefix.interfaceRef == "routed:lan";
+            message = "router-dashboard inventory should export prefix entry linked to its interface.";
+          }
+          {
+            assertion =
+              lanSegmentEdge.kind == "segment"
+              && lanSegmentEdge.interfaceRef == "routed:lan"
+              && lanSegmentEdge.prefixRef == "prefix:routed:lan";
+            message = "router-dashboard inventory should export declared segment edges for prefixes.";
+          }
+          {
+            assertion = wanUpstreamEdge.kind == "upstream" && wanUpstreamEdge.interfaceRef == "wan:wan";
+            message = "router-dashboard inventory should export declared upstream edges for WAN interfaces.";
           }
         ];
       })
@@ -117,6 +148,7 @@ in
         );
         keaSubnet = builtins.head (findById "kea:dhcp4" inventory.subnets);
         printerReservation = builtins.head (findById "kea:10.10.210.20" inventory.hosts);
+        keaPrefix = builtins.head (builtins.filter (p: p.id == "prefix:kea:dhcp4") inventory.prefixes);
       in
       {
         assertions = [
@@ -133,6 +165,10 @@ in
               && printerReservation.subnetRef == "routed:lan"
               && printerReservation.sourceKind == "kea-reservation";
             message = "router-dashboard inventory export should include Kea reservations as inventory hosts.";
+          }
+          {
+            assertion = keaPrefix.cidr == "10.10.210.0/24" && keaPrefix.dhcpBackend == "kea";
+            message = "router-dashboard inventory should export Kea prefix entry.";
           }
         ];
       })
@@ -156,6 +192,12 @@ in
             lib.hasInfix "InventoryWidget" dashboardMain
             && lib.hasInfix "'inventory'" dashboardMain;
           message = "router-dashboard main script should wire the inventory page into the page model.";
+        }
+        {
+          assertion =
+            lib.hasInfix ''data-inventory-view="edges"'' inventoryWidget
+            && lib.hasInfix "renderEdgesView" inventoryWidget;
+          message = "router-dashboard inventory browser should expose an edge relationship view.";
         }
       ];
     }

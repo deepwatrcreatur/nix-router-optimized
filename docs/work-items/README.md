@@ -21,8 +21,7 @@ tracked separately from the dashboard planning docs.
 - [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `in-progress`
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `in-progress`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `in-progress`
-- [46-dashboard-interface-and-prefix-detail-surface](./46-dashboard-interface-and-prefix-detail-surface.md) — `ready`
-- [48-dashboard-route-upstream-and-edge-relationships](./48-dashboard-route-upstream-and-edge-relationships.md) — `ready`
+- [46-dashboard-interface-and-prefix-detail-surface](./46-dashboard-interface-and-prefix-detail-surface.md) — `in-progress`
 
 ## Recently Completed
 
@@ -35,6 +34,7 @@ tracked separately from the dashboard planning docs.
 - [44-dashboard-inventory-browser-page-and-api](./44-dashboard-inventory-browser-page-and-api.md) — `done`
 - [45-dashboard-inventory-reconciliation-and-subnet-summary](./45-dashboard-inventory-reconciliation-and-subnet-summary.md) — `done`
 - [47-dashboard-dhcp-neighbor-and-reservation-reconciliation](./47-dashboard-dhcp-neighbor-and-reservation-reconciliation.md) — `done`
+- [48-dashboard-route-upstream-and-edge-relationships](./48-dashboard-route-upstream-and-edge-relationships.md) — `done`
 - [34-router-bgp-auth-afi-and-policy](./34-router-bgp-auth-afi-and-policy.md) — `done`
 - [33-router-bgp-ha-boundaries-and-guardrails](./33-router-bgp-ha-boundaries-and-guardrails.md) — `done`
 - [32-router-bgp-firewall-and-validation](./32-router-bgp-firewall-and-validation.md) — `done`

@@ -1711,6 +1711,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
     def decorate_inventory_with_runtime(self, inventory):
         runtime_leases = self.get_runtime_dhcp_leases()
         runtime_neighbors = self.get_runtime_neighbors()
+        runtime_routes = self.get_runtime_routes()
         declared_hosts = inventory.get('hosts', [])
         declared_by_address = {host.get('ipv4Address'): dict(host) for host in declared_hosts if host.get('ipv4Address')}
         runtime_by_address = {lease.get('address'): lease for lease in runtime_leases if lease.get('address')}
@@ -1913,7 +1914,100 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'staleCount': stale_count,
             'reconciliationStates': ['reserved', 'leased', 'runtime-only', 'conflict', 'stale']
         }
+        inventory['runtimeRoutes'] = runtime_routes
+        inventory['edges'] = self.build_inventory_edges(inventory, runtime_routes)
+        inventory['edgeSummary'] = {
+            'edgeCount': len(inventory['edges']),
+            'runtimeRouteCount': len(runtime_routes),
+            'upstreamCount': len([edge for edge in inventory['edges'] if edge.get('kind') == 'upstream']),
+            'routeCount': len([edge for edge in inventory['edges'] if edge.get('kind') == 'route']),
+        }
         return inventory
+
+    def build_inventory_edges(self, inventory, runtime_routes):
+        interfaces = inventory.get('interfaces', [])
+        prefixes = inventory.get('prefixes', [])
+        declared_edges = [dict(edge) for edge in inventory.get('edges', [])]
+        interfaces_by_id = {iface.get('id'): iface for iface in interfaces if iface.get('id')}
+        interfaces_by_device = {iface.get('device'): iface for iface in interfaces if iface.get('device')}
+        prefixes_by_cidr = {prefix.get('cidr'): prefix for prefix in prefixes if prefix.get('cidr')}
+        default_route_edges = []
+        route_edges = []
+
+        for route in runtime_routes:
+            interface = interfaces_by_device.get(route.get('interface'))
+            interface_ref = interface.get('id') if interface else None
+            prefix = prefixes_by_cidr.get(route.get('destination'))
+            route_kind = 'default-route' if route.get('destination') == '0.0.0.0/0' else 'route'
+            route_edge = {
+                'id': self.runtime_route_edge_id(route),
+                'kind': 'route',
+                'routeKind': route_kind,
+                'label': self.runtime_route_label(route),
+                'interfaceRef': interface_ref,
+                'prefixRef': prefix.get('id') if prefix else None,
+                'subnetRef': (prefix.get('id') or '').replace('prefix:', '') if prefix else None,
+                'destination': route.get('destination'),
+                'gatewayAddress': route.get('gatewayAddress'),
+                'routeProtocol': route.get('protocol'),
+                'scope': route.get('scope'),
+                'table': route.get('table'),
+                'active': True,
+                'confidence': 'runtime-observed',
+                'inference': 'runtime-observed',
+                'provenance': self.runtime_route_provenance_entries(),
+            }
+            route_edges.append(route_edge)
+            if route.get('destination') == '0.0.0.0/0':
+                default_route_edges.append(route_edge)
+
+        merged_edges = []
+        for edge in declared_edges:
+            merged = dict(edge)
+            if merged.get('kind') == 'upstream':
+                observed_route = next((
+                    route for route in default_route_edges
+                    if route.get('interfaceRef') == merged.get('interfaceRef')
+                ), None)
+                if observed_route:
+                    merged['gatewayAddress'] = observed_route.get('gatewayAddress')
+                    merged['active'] = True
+                    merged['confidence'] = 'runtime-observed'
+                    merged['inference'] = 'runtime-observed'
+                    merged['runtimeRouteRef'] = observed_route.get('id')
+                    merged['provenance'] = list(merged.get('provenance', [])) + self.runtime_route_provenance_entries()
+                else:
+                    merged['active'] = False
+            elif merged.get('kind') == 'segment':
+                prefix = prefixes_by_cidr.get(merged.get('destination'))
+                if prefix and prefix.get('role') != 'wan':
+                    merged['upstreamEdgeRefs'] = [edge_id for edge_id in (
+                        route_edge.get('id') for route_edge in default_route_edges
+                    ) if edge_id]
+                    merged['confidence'] = 'inferred'
+                    merged['inference'] = 'derived-from-default-route'
+                matching_route = next((
+                    route for route in route_edges
+                    if route.get('destination') == merged.get('destination')
+                    and route.get('interfaceRef') == merged.get('interfaceRef')
+                ), None)
+                if matching_route:
+                    merged['routeEdgeRefs'] = [matching_route.get('id')]
+            elif merged.get('kind') == 'overlay':
+                iface = interfaces_by_id.get(merged.get('interfaceRef'))
+                merged['active'] = True if iface else None
+
+            merged_edges.append(merged)
+
+        merged_edges.extend(route_edges)
+        return sorted(
+            merged_edges,
+            key=lambda edge: (
+                self.edge_kind_sort_key(edge.get('kind')),
+                edge.get('destination') or 'zzzz',
+                edge.get('label') or edge.get('id') or ''
+            )
+        )
 
     def runtime_provenance_entries(self, runtime_lease, runtime_neighbor):
         entries = []
@@ -1936,6 +2030,45 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def neighbor_state_is_stale(self, state):
         return (state or '').upper() in ('STALE', 'DELAY', 'PROBE', 'FAILED', 'INCOMPLETE')
+
+    def runtime_route_provenance_entries(self):
+        return [
+            {
+                'module': 'router-dashboard',
+                'path': 'runtime-routes',
+                'authority': 'runtime'
+            }
+        ]
+
+    def edge_kind_sort_key(self, kind):
+        order = {
+            'upstream': 0,
+            'segment': 1,
+            'overlay': 2,
+            'route': 3,
+        }
+        return order.get(kind, 99)
+
+    def runtime_route_edge_id(self, route):
+        destination = (route.get('destination') or 'route').replace('/', '-')
+        interface_name = route.get('interface') or 'unknown'
+        gateway = route.get('gatewayAddress') or 'direct'
+        return f"edge:route:{destination}:{interface_name}:{gateway}"
+
+    def runtime_route_label(self, route):
+        destination = route.get('destination') or 'route'
+        gateway = route.get('gatewayAddress')
+        interface_name = route.get('interface') or 'unknown-interface'
+        if destination == '0.0.0.0/0':
+            return f"default via {gateway or interface_name}"
+        if gateway:
+            return f"{destination} via {gateway}"
+        return f"{destination} on {interface_name}"
+
+    def normalize_route_destination(self, destination):
+        if not destination or destination == 'default':
+            return '0.0.0.0/0'
+        return destination
 
     def get_runtime_neighbors(self):
         try:
@@ -1967,6 +2100,45 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return sorted(
                 neighbors,
                 key=lambda neighbor: self.parse_ipv4_address(neighbor.get('address') or '0.0.0.0') or 0
+            )
+        except Exception:
+            return []
+
+    def get_runtime_routes(self):
+        try:
+            result = subprocess.run(
+                ['ip', '-4', '-j', 'route', 'show'],
+                capture_output=True, text=True, timeout=3
+            )
+            if result.returncode != 0:
+                return []
+
+            routes = []
+            payload = json.loads(result.stdout or '[]')
+            for entry in payload:
+                destination = self.normalize_route_destination(entry.get('dst'))
+                interface_name = (entry.get('dev') or '').strip()
+                gateway_address = (entry.get('gateway') or entry.get('via') or '').strip()
+                if not destination:
+                    continue
+
+                routes.append({
+                    'destination': destination,
+                    'interface': interface_name,
+                    'gatewayAddress': gateway_address or None,
+                    'protocol': entry.get('protocol') or entry.get('proto') or None,
+                    'scope': entry.get('scope') or None,
+                    'table': entry.get('table') or None,
+                    'type': entry.get('type') or 'unicast',
+                })
+
+            return sorted(
+                routes,
+                key=lambda route: (
+                    route.get('destination') != '0.0.0.0/0',
+                    route.get('destination') or '',
+                    route.get('interface') or ''
+                )
             )
         except Exception:
             return []

@@ -788,14 +788,8 @@ header h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
-}
-
-.inventory-toolbar-copy p {
-  margin: 0;
-  color: var(--text-secondary);
-  max-width: 720px;
 }
 
 .inventory-filter input {
@@ -987,6 +981,26 @@ header h1 {
   color: #fde68a;
 }
 
+.inventory-status-upstream {
+  background: rgba(14, 165, 233, 0.14);
+  color: #7dd3fc;
+}
+
+.inventory-status-segment {
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+
+.inventory-status-overlay {
+  background: rgba(34, 211, 238, 0.14);
+  color: #67e8f9;
+}
+
+.inventory-status-route {
+  background: rgba(196, 181, 253, 0.14);
+  color: #ddd6fe;
+}
+
 .inventory-conflict-text {
   color: #fca5a5;
 }
@@ -1150,6 +1164,96 @@ header h1 {
 .inventory-empty-subnet {
   color: var(--text-secondary);
   padding: 20px;
+}
+
+.inventory-view-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.inventory-view-tab {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.inventory-view-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.inventory-view-tab.is-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+.inventory-role-header {
+  cursor: default;
+}
+
+.inventory-cross-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-primary);
+  cursor: pointer;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.inventory-cross-link:hover {
+  border-bottom-color: var(--accent-primary);
+}
+
+.inventory-related {
+  margin-bottom: 18px;
+}
+
+.inventory-related h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.inventory-related-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inventory-related-list li {
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.92rem;
+}
+
+.inventory-related-more {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.inventory-kind-vlan {
+  background: rgba(168, 85, 247, 0.14);
+  color: #c4b5fd;
+}
+
+.inventory-kind-virtual {
+  background: rgba(34, 211, 238, 0.14);
+  color: #67e8f9;
 }
 
 /* Services table */

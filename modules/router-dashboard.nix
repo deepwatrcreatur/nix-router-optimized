@@ -355,9 +355,188 @@ let
     }
   ) inventoryHosts);
 
+  # --- Interface-centric inventory entries ---
+
+  networkingCfg = if hasRouterNetworking then config.services.router-networking else null;
+
+  wanInterfaceEntries =
+    if networkingCfg == null then [ ]
+    else
+      let
+        mkWanEntry = name: wan: {
+          id = "wan:${name}";
+          name = name;
+          device = wan.device;
+          kind =
+            if wan.vlanId != null then "vlan"
+            else "physical";
+          role = "wan";
+          parentDevice = wan.parentDevice;
+          vlanId = wan.vlanId;
+          ipv4Address = wan.ipv4Address;
+          ipv6Prefix = null;
+          mtu = wan.mtu;
+          subnetRefs = [ ];
+          provenance = [
+            (mkProvenance "router-networking" "services.router-networking.${if name == "wan" then "wan" else "wans.${name}"}")
+          ];
+        };
+        primaryWanEntry =
+          if networkingCfg.wan or null != null then
+            [ (mkWanEntry "wan" networkingCfg.wan) ]
+          else
+            [ ];
+        additionalWans = mapAttrsToList (
+          name: wan: mkWanEntry name wan
+        ) (networkingCfg.wans or { });
+      in
+      primaryWanEntry ++ additionalWans;
+
+  routedInterfaceEntries =
+    if !hasRouterNetworking then [ ]
+    else
+      mapAttrsToList (
+        name: iface:
+        let
+          matchingSubnetIds = map (s: s.id) (
+            filter (s: s.id == "routed:${name}") inventorySubnets
+          );
+        in
+        {
+          id = "routed:${name}";
+          name = name;
+          device = iface.device;
+          kind =
+            if iface.vlanId != null then "vlan"
+            else "physical";
+          role = iface.role;
+          parentDevice = iface.parentDevice;
+          vlanId = iface.vlanId;
+          ipv4Address = iface.ipv4Address;
+          ipv6Prefix = iface.ipv6Prefix;
+          mtu = iface.mtu;
+          subnetRefs = matchingSubnetIds;
+          provenance = [
+            (mkProvenance "router-networking" "services.router-networking.routedInterfaces.${name}")
+          ];
+        }
+      ) routedInterfaces;
+
+  vpnInterfaceEntries = map (
+    vpn:
+    {
+      id = "vpn:${vpn.name}";
+      name = vpn.name;
+      device = vpn.interface;
+      kind = "virtual";
+      role = "vpn";
+      parentDevice = null;
+      vlanId = null;
+      ipv4Address = null;
+      ipv6Prefix = null;
+      mtu = null;
+      subnetRefs = [ ];
+      provenance = [
+        (mkProvenance "router-dashboard" "services.router-dashboard.vpnServices")
+      ];
+    }
+  ) effectiveVpnServices;
+
+  inventoryInterfaces = sortById (wanInterfaceEntries ++ routedInterfaceEntries ++ vpnInterfaceEntries);
+
+  # --- Prefix-centric inventory entries ---
+
+  inventoryPrefixes = sortById (map (
+    subnet:
+    {
+      id = "prefix:${subnet.id}";
+      cidr = subnet.cidr;
+      label = subnet.label;
+      interfaceRef =
+        if strings.hasPrefix "routed:" subnet.id then
+          subnet.id
+        else if subnet.interface != null then
+          let
+            matches = filter (i:
+              i.device == subnet.interface.device
+              && i.role == subnet.interface.role
+            ) inventoryInterfaces;
+          in
+          if matches != [ ] then (builtins.head matches).id else null
+        else null;
+      gatewayAddress = subnet.gatewayAddress;
+      role = if subnet.interface != null then subnet.interface.role else null;
+      dhcpBackend = subnet.dhcpBackend;
+      hostCount = length (filter (h: h.subnetRef == subnet.id) inventoryHosts);
+      dynamicPools = subnet.dynamicPools;
+      provenance = subnet.provenance;
+    }
+  ) inventorySubnets);
+
+  inventoryEdges =
+    let
+      segmentEdges = map (
+        prefix:
+        let
+          subnetRef = strings.removePrefix "prefix:" prefix.id;
+        in
+        {
+          id = "edge:segment:${subnetRef}";
+          kind = "segment";
+          label = "${prefix.label} segment";
+          interfaceRef = prefix.interfaceRef;
+          prefixRef = prefix.id;
+          inherit subnetRef;
+          destination = prefix.cidr;
+          gatewayAddress = prefix.gatewayAddress;
+          active = true;
+          confidence = "declared";
+          inference = "declared";
+          provenance = prefix.provenance;
+        }
+      ) inventoryPrefixes;
+
+      upstreamEdges = map (
+        iface:
+        {
+          id = "edge:upstream:${iface.id}";
+          kind = "upstream";
+          label = "${iface.name} upstream";
+          interfaceRef = iface.id;
+          prefixRef = null;
+          subnetRef = null;
+          destination = "0.0.0.0/0";
+          gatewayAddress = null;
+          active = false;
+          confidence = "declared";
+          inference = "declared";
+          provenance = iface.provenance;
+        }
+      ) (filter (iface: iface.role == "wan") inventoryInterfaces);
+
+      overlayEdges = map (
+        iface:
+        {
+          id = "edge:overlay:${iface.id}";
+          kind = "overlay";
+          label = "${iface.name} overlay";
+          interfaceRef = iface.id;
+          prefixRef = null;
+          subnetRef = null;
+          destination = null;
+          gatewayAddress = null;
+          active = null;
+          confidence = "declared";
+          inference = "declared";
+          provenance = iface.provenance;
+        }
+      ) (filter (iface: iface.role == "vpn" || iface.kind == "virtual") inventoryInterfaces);
+    in
+    sortById (segmentEdges ++ upstreamEdges ++ overlayEdges);
+
   inventoryArtifact = pkgs.writeText "router-dashboard-inventory.json" (
     builtins.toJSON {
-      schemaVersion = 1;
+      schemaVersion = 3;
       authoritative = false;
       authoritySurface = "declarative-router-config";
       notes = [
@@ -367,6 +546,9 @@ let
       subnets = inventorySubnets;
       hosts = inventoryHosts;
       reservedAddresses = inventoryReservedAddresses;
+      interfaces = inventoryInterfaces;
+      prefixes = inventoryPrefixes;
+      edges = inventoryEdges;
     }
   );
 
