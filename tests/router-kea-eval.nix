@@ -105,6 +105,246 @@ in
     }
   ];
 
+  # ── Option 108 (IPv6-Only Preferred) ──────────────────────────────────────
+
+  router-kea-option-108-enabled-eval = eval.mkNixosEvalCheck "router-kea-option-108-enabled" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-dns-service
+    self.nixosModules.router-kea
+    self.nixosModules.router-nat64
+    self.nixosModules.router-dns64
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+        routedInterfaces.lan = {
+          device = "eth1";
+          ipv4Address = "10.10.200.1/24";
+        };
+      };
+
+      services.router-dns-service = {
+        enable = true;
+        provider = "unbound";
+      };
+
+      services.router-nat64.enable = true;
+      services.router-dns64.enable = true;
+
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          subnet = "10.10.200.0/24";
+          gatewayAddress = "10.10.200.1";
+          dnsServers = [ "10.10.200.1" ];
+          poolRanges = [
+            { start = "10.10.200.10"; end = "10.10.200.200"; }
+          ];
+          ipv6OnlyPreferred.enable = true;
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions =
+        let
+          scopeOptions = (builtins.head config.services.kea.dhcp4.settings.subnet4).option-data;
+          opt108 = findOption "v6-only-preferred" scopeOptions;
+          optionDefs = config.services.kea.dhcp4.settings.option-def;
+        in
+        [
+          {
+            assertion = opt108 != [ ];
+            message = "router-kea option 108 should be present when ipv6OnlyPreferred is enabled.";
+          }
+          {
+            assertion = opt108 != [ ] && (builtins.head opt108).data == "300";
+            message = "router-kea option 108 should default to 300 seconds.";
+          }
+          {
+            assertion = opt108 != [ ] && (builtins.head opt108).code == 108;
+            message = "router-kea option 108 should use DHCP option code 108.";
+          }
+          {
+            assertion = optionDefs != [ ] && (builtins.head optionDefs).code == 108;
+            message = "router-kea should define custom option 108 in option-def.";
+          }
+        ];
+    })
+  ];
+
+  router-kea-option-108-custom-timer-eval = eval.mkNixosEvalCheck "router-kea-option-108-custom-timer" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-dns-service
+    self.nixosModules.router-kea
+    self.nixosModules.router-nat64
+    self.nixosModules.router-dns64
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+        routedInterfaces.lan = {
+          device = "eth1";
+          ipv4Address = "10.10.200.1/24";
+        };
+      };
+
+      services.router-dns-service = {
+        enable = true;
+        provider = "unbound";
+      };
+
+      services.router-nat64.enable = true;
+      services.router-dns64.enable = true;
+
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          subnet = "10.10.200.0/24";
+          gatewayAddress = "10.10.200.1";
+          dnsServers = [ "10.10.200.1" ];
+          poolRanges = [
+            { start = "10.10.200.10"; end = "10.10.200.200"; }
+          ];
+          ipv6OnlyPreferred = {
+            enable = true;
+            v6OnlyWaitSec = 900;
+          };
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions =
+        let
+          scopeOptions = (builtins.head config.services.kea.dhcp4.settings.subnet4).option-data;
+          opt108 = findOption "v6-only-preferred" scopeOptions;
+        in
+        [
+          {
+            assertion = opt108 != [ ] && (builtins.head opt108).data == "900";
+            message = "router-kea option 108 should honour custom v6OnlyWaitSec timer.";
+          }
+        ];
+    })
+  ];
+
+  router-kea-option-108-without-nat64-fails = eval.mkNixosEvalFailureCheck "router-kea-option-108-without-nat64" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-dns-service
+    self.nixosModules.router-kea
+    self.nixosModules.router-nat64
+    self.nixosModules.router-dns64
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+        routedInterfaces.lan = {
+          device = "eth1";
+          ipv4Address = "10.10.200.1/24";
+        };
+      };
+
+      services.router-dns-service = {
+        enable = true;
+        provider = "unbound";
+      };
+
+      # NAT64 intentionally NOT enabled
+      services.router-dns64.enable = true;
+
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          subnet = "10.10.200.0/24";
+          gatewayAddress = "10.10.200.1";
+          dnsServers = [ "10.10.200.1" ];
+          poolRanges = [
+            { start = "10.10.200.10"; end = "10.10.200.200"; }
+          ];
+          ipv6OnlyPreferred.enable = true;
+        };
+      };
+    }
+  ];
+
+  router-kea-option-108-without-dns64-fails = eval.mkNixosEvalFailureCheck "router-kea-option-108-without-dns64" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-dns-service
+    self.nixosModules.router-kea
+    self.nixosModules.router-nat64
+    self.nixosModules.router-dns64
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+        routedInterfaces.lan = {
+          device = "eth1";
+          ipv4Address = "10.10.200.1/24";
+        };
+      };
+
+      services.router-dns-service = {
+        enable = true;
+        provider = "unbound";
+      };
+
+      services.router-nat64.enable = true;
+      # DNS64 intentionally NOT enabled
+
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          subnet = "10.10.200.0/24";
+          gatewayAddress = "10.10.200.1";
+          dnsServers = [ "10.10.200.1" ];
+          poolRanges = [
+            { start = "10.10.200.10"; end = "10.10.200.200"; }
+          ];
+          ipv6OnlyPreferred.enable = true;
+        };
+      };
+    }
+  ];
+
+  router-kea-option-108-disabled-no-option-eval = eval.mkNixosEvalCheck "router-kea-option-108-disabled-no-option" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-kea
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+        routedInterfaces.lan = {
+          device = "eth1";
+          ipv4Address = "10.10.200.1/24";
+        };
+      };
+
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          subnet = "10.10.200.0/24";
+          gatewayAddress = "10.10.200.1";
+          dnsServers = [ "10.10.200.1" ];
+          poolRanges = [
+            { start = "10.10.200.10"; end = "10.10.200.200"; }
+          ];
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions =
+        let
+          scopeOptions = (builtins.head config.services.kea.dhcp4.settings.subnet4).option-data;
+          opt108 = findOption "v6-only-preferred" scopeOptions;
+        in
+        [
+          {
+            assertion = opt108 == [ ];
+            message = "router-kea should not include option 108 when ipv6OnlyPreferred is disabled.";
+          }
+        ];
+    })
+  ];
+
   router-kea-ntp-fallback-requires-allowed-subnet = eval.mkNixosEvalCheck "router-kea-ntp-fallback-requires-allowed-subnet" [
     self.nixosModules.router-networking
     self.nixosModules.router-ntp
