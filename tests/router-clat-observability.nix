@@ -6,7 +6,7 @@
 }:
 
 {
-  router-clat-dashboard-status-wiring-eval = eval.mkNixosEvalCheck "router-clat-dashboard-status-wiring" [
+  router-clat-dashboard-metadata-eval = eval.mkNixosEvalCheck "router-clat-dashboard-metadata" [
     self.nixosModules.router-clat
     self.nixosModules.router-dashboard
     {
@@ -19,19 +19,21 @@
       services.router-dashboard.enable = true;
     }
     ({ config, ... }:
+      let
+        services = builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_SERVICES;
+        statusFile = config.systemd.services.router-dashboard.environment.DASHBOARD_CLAT_STATUS_FILE;
+      in
       {
         assertions = [
           {
             assertion =
-              config.systemd.services.router-dashboard.environment.DASHBOARD_CLAT_STATUS_FILE
-              == "/run/router-clat/status.json";
-            message = "router-dashboard should export CLAT status file path when router-clat is enabled.";
+              builtins.elem "router-clat-tayga" services
+              && builtins.elem "router-clat-dns" services;
+            message = "router-dashboard should include CLAT services in the monitored service list.";
           }
           {
-            assertion =
-              let services = builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_SERVICES;
-              in builtins.elem "router-clat-tayga" services && builtins.elem "router-clat-dns" services;
-            message = "router-dashboard should include CLAT services in monitored service list.";
+            assertion = statusFile == "/run/router-clat/status.json";
+            message = "router-dashboard should export the CLAT status file path for the dashboard API.";
           }
         ];
       })

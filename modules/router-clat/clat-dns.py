@@ -17,6 +17,7 @@ import os
 import signal
 import socket
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -694,9 +695,6 @@ class ClatStatusServer:
             os.replace(tmp, self.status_path)
         except OSError as e:
             logger.warning("Failed to write status file: %s", e)
-
-
-import subprocess  # needed for systemctl check
 
 
 # ---------------------------------------------------------------------------
