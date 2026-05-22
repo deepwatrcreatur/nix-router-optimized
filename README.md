@@ -673,6 +673,7 @@ Additional docs:
 - `docs/IMPLEMENTATION-STATUS.md` for current module maturity
 - `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
 - `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
+- `docs/router-clat-control-plane-contract.md` for the backend-neutral CLAT control-plane contract
 - `docs/router-bgp.md` for BGP support boundaries, examples, and operational verification
 
 ## PPPoE Example
