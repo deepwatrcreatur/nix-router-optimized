@@ -1710,68 +1710,155 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def decorate_inventory_with_runtime(self, inventory):
         runtime_leases = self.get_runtime_dhcp_leases()
+        runtime_neighbors = self.get_runtime_neighbors()
         declared_hosts = inventory.get('hosts', [])
         declared_by_address = {host.get('ipv4Address'): dict(host) for host in declared_hosts if host.get('ipv4Address')}
         runtime_by_address = {lease.get('address'): lease for lease in runtime_leases if lease.get('address')}
+        neighbor_by_address = {neighbor.get('address'): neighbor for neighbor in runtime_neighbors if neighbor.get('address')}
 
         merged_hosts = []
         conflict_count = 0
         runtime_only_count = 0
+        stale_count = 0
 
         for host in declared_hosts:
             merged = dict(host)
-            runtime = runtime_by_address.get(host.get('ipv4Address'))
-            status = 'declared'
+            address = host.get('ipv4Address')
+            runtime = runtime_by_address.get(address)
+            neighbor = neighbor_by_address.get(address)
+            status = 'reserved'
+            tags = [ 'reserved' ]
+            runtime_evidence = []
+            declared_provenance = list(host.get('provenance', []))
 
             if runtime:
                 status = 'leased'
+                tags.append('leased')
                 declared_mac = self.normalize_mac_address(host.get('macAddress', ''))
                 runtime_mac = self.normalize_mac_address(runtime.get('hardwareAddress', ''))
                 if declared_mac and runtime_mac and declared_mac != runtime_mac:
                     status = 'conflict'
                     conflict_count += 1
+                    tags.append('conflict')
 
-                merged['runtimeLease'] = {
+                runtime_evidence.append({
+                    'type': 'dhcp-lease',
+                    'label': runtime.get('hostname') or runtime.get('address') or 'runtime lease',
                     'address': runtime.get('address'),
                     'hostname': runtime.get('hostname'),
                     'hardwareAddress': runtime.get('hardwareAddress'),
                     'leaseExpires': runtime.get('leaseExpires'),
                     'scope': runtime.get('scope'),
                     'interface': runtime.get('interface'),
-                }
+                })
+
+            if neighbor:
+                tags.append('neighbor')
+                neighbor_mac = self.normalize_mac_address(neighbor.get('hardwareAddress', ''))
+                declared_mac = self.normalize_mac_address(host.get('macAddress', ''))
+                runtime_mac = self.normalize_mac_address(runtime.get('hardwareAddress', '')) if runtime else ''
+                if (
+                    status != 'conflict'
+                    and declared_mac
+                    and neighbor_mac
+                    and declared_mac != neighbor_mac
+                    and (not runtime_mac or runtime_mac != declared_mac)
+                ):
+                    status = 'conflict'
+                    conflict_count += 1
+                    tags.append('conflict')
+
+                if self.neighbor_state_is_stale(neighbor.get('state')):
+                    tags.append('stale')
+                    stale_count += 1
+
+                runtime_evidence.append({
+                    'type': 'neighbor',
+                    'label': neighbor.get('address') or 'neighbor',
+                    'address': neighbor.get('address'),
+                    'hardwareAddress': neighbor.get('hardwareAddress'),
+                    'interface': neighbor.get('interface'),
+                    'state': neighbor.get('state'),
+                })
 
             merged['status'] = status
+            merged['reconciliationTags'] = self.unique_tags(tags)
+            merged['runtimeLease'] = next((entry for entry in runtime_evidence if entry.get('type') == 'dhcp-lease'), None)
+            merged['runtimeNeighbor'] = next((entry for entry in runtime_evidence if entry.get('type') == 'neighbor'), None)
+            merged['runtimeEvidence'] = runtime_evidence
+            merged['provenance'] = declared_provenance + self.runtime_provenance_entries(runtime, neighbor)
             merged_hosts.append(merged)
 
-        for address, runtime in runtime_by_address.items():
+        for address in sorted(
+            set(runtime_by_address.keys()) | set(neighbor_by_address.keys()),
+            key=lambda value: self.parse_ipv4_address(value or '0.0.0.0') or 0
+        ):
             if address in declared_by_address:
                 continue
+
+            runtime = runtime_by_address.get(address)
+            neighbor = neighbor_by_address.get(address)
+            tags = [ 'runtime-only' ]
+            status = 'runtime-only'
+            if runtime:
+                tags.append('leased')
+            if neighbor:
+                tags.append('neighbor')
+                if self.neighbor_state_is_stale(neighbor.get('state')):
+                    tags.append('stale')
+                    status = 'stale'
+                    stale_count += 1
 
             runtime_only_count += 1
             merged_hosts.append({
                 'id': f'runtime:{address}',
-                'label': runtime.get('hostname') or address,
-                'hostname': runtime.get('hostname') or None,
+                'label': (runtime or {}).get('hostname') or address,
+                'hostname': (runtime or {}).get('hostname') or None,
                 'ipv4Address': address,
-                'macAddress': runtime.get('hardwareAddress') or None,
+                'macAddress': (runtime or {}).get('hardwareAddress') or (neighbor or {}).get('hardwareAddress') or None,
                 'subnetRef': self.subnet_id_for_address(address, inventory.get('subnets', [])),
-                'sourceKind': 'runtime-lease',
-                'status': 'runtime-only',
-                'provenance': [
-                    {
-                        'module': 'router-dashboard',
-                        'path': 'runtime-dhcp-leases',
-                        'authority': 'runtime'
-                    }
-                ],
+                'sourceKind': 'runtime-lease' if runtime else 'runtime-neighbor',
+                'status': status,
+                'reconciliationTags': self.unique_tags(tags),
+                'provenance': self.runtime_provenance_entries(runtime, neighbor),
                 'runtimeLease': {
+                    'type': 'dhcp-lease',
+                    'label': runtime.get('hostname') or runtime.get('address') or 'runtime lease',
                     'address': runtime.get('address'),
                     'hostname': runtime.get('hostname'),
                     'hardwareAddress': runtime.get('hardwareAddress'),
                     'leaseExpires': runtime.get('leaseExpires'),
                     'scope': runtime.get('scope'),
                     'interface': runtime.get('interface'),
-                }
+                } if runtime else None,
+                'runtimeNeighbor': {
+                    'type': 'neighbor',
+                    'label': neighbor.get('address') or 'neighbor',
+                    'address': neighbor.get('address'),
+                    'hardwareAddress': neighbor.get('hardwareAddress'),
+                    'interface': neighbor.get('interface'),
+                    'state': neighbor.get('state'),
+                } if neighbor else None,
+                'runtimeEvidence': [entry for entry in [
+                    {
+                        'type': 'dhcp-lease',
+                        'label': runtime.get('hostname') or runtime.get('address') or 'runtime lease',
+                        'address': runtime.get('address'),
+                        'hostname': runtime.get('hostname'),
+                        'hardwareAddress': runtime.get('hardwareAddress'),
+                        'leaseExpires': runtime.get('leaseExpires'),
+                        'scope': runtime.get('scope'),
+                        'interface': runtime.get('interface'),
+                    } if runtime else None,
+                    {
+                        'type': 'neighbor',
+                        'label': neighbor.get('address') or 'neighbor',
+                        'address': neighbor.get('address'),
+                        'hardwareAddress': neighbor.get('hardwareAddress'),
+                        'interface': neighbor.get('interface'),
+                        'state': neighbor.get('state'),
+                    } if neighbor else None,
+                ] if entry is not None],
             })
 
         inventory['hosts'] = sorted(
@@ -1786,25 +1873,33 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 'subnetRef': host.get('subnetRef'),
                 'sourceKind': host.get('sourceKind'),
                 'status': host.get('status'),
+                'reconciliationTags': host.get('reconciliationTags', []),
                 'provenance': host.get('provenance', [])
             }
             for host in inventory['hosts']
-            if host.get('ipv4Address')
+            if host.get('ipv4Address') and host.get('sourceKind') not in ('runtime-lease', 'runtime-neighbor')
         ], key=lambda entry: self.parse_ipv4_address(entry.get('address') or '0.0.0.0') or 0)
 
         for subnet in inventory.get('subnets', []):
             subnet_hosts = [host for host in inventory['hosts'] if host.get('subnetRef') == subnet.get('id')]
             runtime_only_hosts = [host for host in subnet_hosts if host.get('status') == 'runtime-only']
+            stale_hosts = [host for host in subnet_hosts if 'stale' in host.get('reconciliationTags', [])]
             subnet_conflicts = [host for host in subnet_hosts if host.get('status') == 'conflict']
             live_leases = [host for host in subnet_hosts if host.get('status') in ('leased', 'runtime-only', 'conflict')]
+            neighbor_hosts = [host for host in subnet_hosts if 'neighbor' in host.get('reconciliationTags', [])]
 
             dynamic_capacity = self.dynamic_pool_capacity(subnet.get('dynamicPools', []))
             occupied = len(live_leases)
             subnet['runtimeSummary'] = {
-                'declaredHostCount': len([host for host in subnet_hosts if host.get('sourceKind') != 'runtime-lease']),
+                'declaredHostCount': len([
+                    host for host in subnet_hosts
+                    if host.get('sourceKind') not in ('runtime-lease', 'runtime-neighbor')
+                ]),
                 'liveLeaseCount': occupied,
+                'neighborCount': len(neighbor_hosts),
                 'runtimeOnlyLeaseCount': len(runtime_only_hosts),
                 'conflictCount': len(subnet_conflicts),
+                'staleCount': len(stale_hosts),
                 'dynamicAddressCapacity': dynamic_capacity,
                 'occupiedAddressCount': occupied,
                 'occupancyPercent': round((occupied / dynamic_capacity) * 100, 1) if dynamic_capacity > 0 else 0.0,
@@ -1812,11 +1907,69 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
         inventory['runtimeSummary'] = {
             'liveLeaseCount': len(runtime_leases),
+            'neighborCount': len(runtime_neighbors),
             'runtimeOnlyLeaseCount': runtime_only_count,
             'conflictCount': conflict_count,
-            'reconciliationStates': ['declared', 'leased', 'runtime-only', 'conflict']
+            'staleCount': stale_count,
+            'reconciliationStates': ['reserved', 'leased', 'runtime-only', 'conflict', 'stale']
         }
         return inventory
+
+    def runtime_provenance_entries(self, runtime_lease, runtime_neighbor):
+        entries = []
+        if runtime_lease:
+            entries.append({
+                'module': 'router-dashboard',
+                'path': 'runtime-dhcp-leases',
+                'authority': 'runtime'
+            })
+        if runtime_neighbor:
+            entries.append({
+                'module': 'router-dashboard',
+                'path': 'runtime-neighbors',
+                'authority': 'runtime'
+            })
+        return entries
+
+    def unique_tags(self, tags):
+        return list(dict.fromkeys([tag for tag in tags if tag]))
+
+    def neighbor_state_is_stale(self, state):
+        return (state or '').upper() in ('STALE', 'DELAY', 'PROBE', 'FAILED', 'INCOMPLETE')
+
+    def get_runtime_neighbors(self):
+        try:
+            result = subprocess.run(
+                ['ip', '-4', '-j', 'neigh', 'show'],
+                capture_output=True, text=True, timeout=3
+            )
+            if result.returncode != 0:
+                return []
+
+            neighbors = []
+            payload = json.loads(result.stdout or '[]')
+            for entry in payload:
+                address = (entry.get('dst') or '').strip()
+                if not address:
+                    continue
+
+                state = entry.get('state') or entry.get('nud') or ''
+                if isinstance(state, list):
+                    state = ' '.join(str(part) for part in state if part)
+
+                neighbors.append({
+                    'address': address,
+                    'hardwareAddress': (entry.get('lladdr') or '').strip(),
+                    'interface': (entry.get('dev') or '').strip(),
+                    'state': str(state).upper(),
+                })
+
+            return sorted(
+                neighbors,
+                key=lambda neighbor: self.parse_ipv4_address(neighbor.get('address') or '0.0.0.0') or 0
+            )
+        except Exception:
+            return []
 
     def get_runtime_dhcp_leases(self):
         kea_leases = self.get_kea_dhcp_leases()

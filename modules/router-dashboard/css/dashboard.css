@@ -812,6 +812,31 @@ header h1 {
   font-size: 0.92rem;
 }
 
+.inventory-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inventory-filter-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  padding: 7px 11px;
+  text-transform: uppercase;
+}
+
+.inventory-filter-chip.is-active,
+.inventory-filter-chip:hover {
+  background: rgba(245, 176, 104, 0.12);
+  border-color: rgba(245, 176, 104, 0.26);
+  color: var(--text-primary);
+}
+
 .inventory-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
@@ -862,6 +887,23 @@ header h1 {
 .inventory-host-meta {
   color: var(--text-secondary);
   font-size: 0.88rem;
+}
+
+.inventory-tag-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-left: 8px;
+}
+
+.inventory-inline-tag {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  text-transform: uppercase;
 }
 
 .inventory-subnet-summary {
@@ -920,6 +962,11 @@ header h1 {
   color: #93c5fd;
 }
 
+.inventory-status-reserved {
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+
 .inventory-status-leased {
   background: rgba(74, 222, 128, 0.14);
   color: #86efac;
@@ -933,6 +980,11 @@ header h1 {
 .inventory-status-conflict {
   background: rgba(248, 113, 113, 0.16);
   color: #fca5a5;
+}
+
+.inventory-status-stale {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
 }
 
 .inventory-conflict-text {
@@ -996,6 +1048,77 @@ header h1 {
 .inventory-provenance h3 {
   margin: 0 0 10px;
   font-size: 0.95rem;
+}
+
+.inventory-evidence,
+.inventory-related {
+  margin: 0 0 18px;
+}
+
+.inventory-evidence h3,
+.inventory-related h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.inventory-evidence-list,
+.inventory-related-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inventory-evidence-card,
+.inventory-related-section {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.inventory-evidence-title,
+.inventory-related-title {
+  color: var(--text-primary);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inventory-evidence-meta {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  margin-top: 4px;
+}
+
+.inventory-related-title {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.inventory-related-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.inventory-related-host {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.inventory-related-host:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .inventory-provenance-list {
