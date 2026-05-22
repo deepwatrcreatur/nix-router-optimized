@@ -453,9 +453,14 @@ let
       cidr = subnet.cidr;
       label = subnet.label;
       interfaceRef =
-        if subnet.interface != null then
+        if strings.hasPrefix "routed:" subnet.id then
+          subnet.id
+        else if subnet.interface != null then
           let
-            matches = filter (i: i.device == subnet.interface.device) inventoryInterfaces;
+            matches = filter (i:
+              i.device == subnet.interface.device
+              && i.role == subnet.interface.role
+            ) inventoryInterfaces;
           in
           if matches != [ ] then (builtins.head matches).id else null
         else null;
