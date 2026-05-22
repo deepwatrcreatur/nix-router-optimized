@@ -186,5 +186,14 @@ IPv6 multi-WAN.
 IPv4 failover is mostly a metric problem.
 IPv6 multi-WAN often becomes a source-address correctness problem.
 
+Current bounded guardrails in the repo:
+
+- broad `ipv6Masquerade` on a router with additional WANs now requires an
+  explicit `vpnExit`, rather than silently spraying translated traffic toward
+  ambiguous uplinks
+- mixing PvD/native multi-prefix signalling with explicit steered or translated
+  exit behavior remains possible, but is treated as an advanced/manual shape and
+  should be validated deliberately
+
 For the current IPv4-first failover boundary, see
 [`docs/router-mwan.md`](./router-mwan.md).

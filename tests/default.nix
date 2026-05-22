@@ -62,6 +62,10 @@ let
   routerClatObservabilityChecks = import ./router-clat-observability.nix {
     inherit self lib eval;
   };
+
+  routerIpv6MultiwanChecks = import ./router-ipv6-multiwan.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -104,6 +108,7 @@ in
 // routerSecurityHardeningChecks
 // routerZonesChecks
 // routerClatObservabilityChecks
+// routerIpv6MultiwanChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (

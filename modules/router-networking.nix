@@ -610,7 +610,39 @@ in
           assertion = iface.vlanId == null || iface.parentDevice != null;
           message = "router-networking.routedInterfaces.${name}.parentDevice must be set when vlanId is used.";
         })
+        cfg.routedInterfaces
+      ++ mapAttrsToList
+        (name: iface: {
+          assertion =
+            !(iface.ipv6Masquerade && cfg.wans != { } && iface.vpnExit == null);
+          message = ''
+            router-networking.routedInterfaces.${name}.ipv6Masquerade requires an explicit
+            vpnExit when additional WANs are configured.
+
+            On a multi-WAN router, broad IPv6 masquerade without an explicit egress uplink
+            makes source/uplink correctness ambiguous. Set routedInterfaces.${name}.vpnExit
+            to the intended IPv6 exit interface or disable ipv6Masquerade for this segment.
+          '';
+        })
         cfg.routedInterfaces;
+
+    warnings =
+      flatten (
+        mapAttrsToList
+          (name: iface:
+            let
+              pvdEnabled = iface.pvd != null || iface.pvds != [ ];
+              steeredIpv6 = iface.vpnExit != null || iface.policyRouting.enable || iface.ipv6Masquerade;
+            in
+            optional (pvdEnabled && steeredIpv6) ''
+              router-networking.routedInterfaces.${name} mixes PvD/native multi-prefix signalling
+              with explicit steered or translated IPv6 egress (vpnExit, policyRouting, or
+              ipv6Masquerade). Treat this as an advanced/manual IPv6 multi-WAN shape and
+              validate source-address correctness explicitly.
+            ''
+          )
+          cfg.routedInterfaces
+      );
 
     networking.useNetworkd = mkIf cfg.useNetworkd true;
     networking.useDHCP = mkIf cfg.useNetworkd false;
