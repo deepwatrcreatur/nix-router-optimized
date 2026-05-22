@@ -399,10 +399,16 @@ class InventoryWidget extends BaseWidget {
       return;
     }
 
-    const roleOrder = ['wan', 'lan', 'management', 'opt', 'vpn', 'other'];
-    const roleLabels = { wan: 'WAN', lan: 'LAN', management: 'Management', opt: 'Optional', vpn: 'VPN', other: 'Other' };
+    const roleOrder = ['wan', 'lan', 'management', 'mgmt', 'opt', 'vpn', 'other'];
+    const roleLabels = { wan: 'WAN', lan: 'LAN', management: 'Management', mgmt: 'Management', opt: 'Optional', vpn: 'VPN', other: 'Other' };
 
-    listEl.innerHTML = roleOrder
+    const rolesInData = Object.keys(byRole);
+    const displayRoles = [
+      ...roleOrder.filter(role => rolesInData.includes(role)),
+      ...rolesInData.filter(role => !roleOrder.includes(role))
+    ];
+
+    listEl.innerHTML = displayRoles
       .filter(role => byRole[role]?.length > 0)
       .map(role => `
         <section class="inventory-subnet-card">

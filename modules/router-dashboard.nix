@@ -363,7 +363,6 @@ let
     if networkingCfg == null then [ ]
     else
       let
-        primaryWan = networkingCfg.wan;
         mkWanEntry = name: wan: {
           id = "wan:${name}";
           name = name;
@@ -379,14 +378,19 @@ let
           mtu = wan.mtu;
           subnetRefs = [ ];
           provenance = [
-            (mkProvenance "router-networking" "services.router-networking.${name}")
+            (mkProvenance "router-networking" "services.router-networking.${if name == "wan" then "wan" else "wans.${name}"}")
           ];
         };
+        primaryWanEntry =
+          if networkingCfg.wan or null != null then
+            [ (mkWanEntry "wan" networkingCfg.wan) ]
+          else
+            [ ];
         additionalWans = mapAttrsToList (
           name: wan: mkWanEntry name wan
         ) (networkingCfg.wans or { });
       in
-      [ (mkWanEntry "wan" primaryWan) ] ++ additionalWans;
+      primaryWanEntry ++ additionalWans;
 
   routedInterfaceEntries =
     if !hasRouterNetworking then [ ]
