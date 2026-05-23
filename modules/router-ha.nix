@@ -5,6 +5,28 @@ with lib;
 let
   cfg = config.services.router-ha;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
+  hasRouterBgp = hasAttrByPath [ "services" "router-bgp" "enable" ] options;
+  bgpSingleActiveOwner =
+    hasRouterBgp
+    && (config.services.router-bgp.enable or false)
+    && (config.services.router-bgp.ha.singleActiveOwner or false);
+  bgpAsn = if bgpSingleActiveOwner then config.services.router-bgp.asn else 0;
+  bgpNeighborIps = if bgpSingleActiveOwner then attrNames (config.services.router-bgp.neighbors or { }) else [ ];
+
+  bgpPromoteScript = pkgs.writeShellScript "keepalived-bgp-promote" ''
+    echo "BGP: Promoting — activating neighbors..."
+    ${concatMapStringsSep "\n" (ip: ''
+      ${pkgs.frr}/bin/vtysh -c "configure terminal" -c "router bgp ${toString bgpAsn}" -c "no neighbor ${ip} shutdown"
+    '') bgpNeighborIps}
+  '';
+
+  bgpDemoteScript = pkgs.writeShellScript "keepalived-bgp-demote" ''
+    echo "BGP: Demoting — shutting down neighbors..."
+    ${concatMapStringsSep "\n" (ip: ''
+      ${pkgs.frr}/bin/vtysh -c "configure terminal" -c "router bgp ${toString bgpAsn}" -c "neighbor ${ip} shutdown"
+    '') bgpNeighborIps}
+  '';
+
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
   virtualIpIsIpv6 = hasInfix ":" virtualIpAddress;
 in
@@ -95,22 +117,37 @@ in
               auth_type PASS
               auth_pass ${cfg.vrrpPassword}
             }
-            ${optionalString cfg.wan.enable ''
+            ${optionalString (cfg.wan.enable || bgpSingleActiveOwner) ''
               notify_master "${pkgs.writeShellScript "keepalived-master" ''
-                echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
-                ${optionalString (cfg.wan.clonedMac != null) ''
-                  ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} address ${cfg.wan.clonedMac}
+                ${optionalString cfg.wan.enable ''
+                  echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
+                  ${optionalString (cfg.wan.clonedMac != null) ''
+                    ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} address ${cfg.wan.clonedMac}
+                  ''}
+                  ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} up
+                  ${pkgs.systemd}/bin/systemctl restart systemd-networkd
                 ''}
-                ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} up
-                ${pkgs.systemd}/bin/systemctl restart systemd-networkd
+                ${optionalString bgpSingleActiveOwner ''
+                  ${bgpPromoteScript}
+                ''}
               ''}"
               notify_backup "${pkgs.writeShellScript "keepalived-backup" ''
-                echo "Transitioning to BACKUP: Bringing down WAN ${cfg.wan.interface}..."
-                ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
+                ${optionalString cfg.wan.enable ''
+                  echo "Transitioning to BACKUP: Bringing down WAN ${cfg.wan.interface}..."
+                  ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
+                ''}
+                ${optionalString bgpSingleActiveOwner ''
+                  ${bgpDemoteScript}
+                ''}
               ''}"
               notify_fault "${pkgs.writeShellScript "keepalived-fault" ''
-                echo "Transitioning to FAULT: Bringing down WAN ${cfg.wan.interface}..."
-                ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
+                ${optionalString cfg.wan.enable ''
+                  echo "Transitioning to FAULT: Bringing down WAN ${cfg.wan.interface}..."
+                  ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
+                ''}
+                ${optionalString bgpSingleActiveOwner ''
+                  ${bgpDemoteScript}
+                ''}
               ''}"
             ''}
           '';

@@ -18,6 +18,8 @@ let
     hasRouterOption [ "services" "router-ha" "enable" ]
     && (config.services.router-ha.enable or false);
 
+  neighborIps = attrNames cfg.neighbors;
+
   sanitize = value: replaceStrings [ "." ":" "/" "-" ] [ "_" "_" "_" "_" ] value;
 
   afiHeading =
@@ -161,6 +163,7 @@ let
         neighbor ${ip} remote-as ${toString neighbor.remoteAs}
         ${optionalString (neighbor.description != "") "neighbor ${ip} description ${neighbor.description}"}
         ${optionalString (neighbor.passwordFile != null) "neighbor ${ip} password __ROUTER_BGP_SECRET_${sanitize ip}__"}
+        ${optionalString cfg.ha.singleActiveOwner "neighbor ${ip} shutdown"}
       '') cfg.neighbors)}
       ${concatStringsSep "\n" (
         concatMap
@@ -366,6 +369,23 @@ in
         };
       };
     };
+
+    ha = {
+      singleActiveOwner = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Enable promotion-aware BGP ownership for HA deployments.
+
+          When true, all BGP neighbors start in shutdown state. The VRRP
+          master promotion hook activates them via vtysh, and demotion
+          shuts them down again. This ensures only the active HA node
+          presents BGP peering identity.
+
+          Requires services.router-ha.enable = true.
+        '';
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -383,12 +403,20 @@ in
     assertions =
       [
         {
-          assertion = !routerHaEnabled;
+          assertion = !routerHaEnabled || cfg.ha.singleActiveOwner;
           message = ''
-            services.router-bgp does not currently support services.router-ha.
-            This repo has not yet implemented promotion-aware BGP ownership or a
-            single-active-owner signal for FRR peering, so the combination is
-            blocked for now instead of being implied as failover-ready.
+            services.router-bgp with services.router-ha requires explicit
+            promotion-aware ownership. Set:
+              services.router-bgp.ha.singleActiveOwner = true;
+            This ensures BGP neighbors are shutdown on backup nodes and only
+            activated on VRRP master promotion.
+          '';
+        }
+        {
+          assertion = cfg.ha.singleActiveOwner -> routerHaEnabled;
+          message = ''
+            services.router-bgp.ha.singleActiveOwner requires
+            services.router-ha.enable = true.
           '';
         }
       ]
