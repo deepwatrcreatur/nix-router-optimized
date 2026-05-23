@@ -3072,3 +3072,180 @@ header h1 {
     width: 100%;
   }
 }
+
+/* ── Light Theme ────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-primary: #f8f5f0;
+  --bg-secondary: #f0ebe4;
+  --bg-card: #ffffff;
+  --bg-input: #f4f0ea;
+  --bg-sidebar: #e8e2d8;
+  --bg-topbar: #efe9e0;
+  --bg-search: #f4f0ea;
+  --bg-widget-solid: #ffffff;
+  --border-color: rgba(140, 90, 30, 0.20);
+  --border-subtle: rgba(140, 90, 30, 0.12);
+  --border-active: #b07830;
+  --text-primary: #2c2014;
+  --text-secondary: #5a4630;
+  --text-muted: #8a7460;
+  --text-inverted: #f8f5f0;
+  --accent-primary: #b07830;
+  --accent-button: #b07830;
+  --accent-blue: #b07830;
+  --accent-green: #1e8e3e;
+  --accent-red: #d93025;
+  --accent-yellow: #c07020;
+  --accent-purple: #5a5ac0;
+  --accent-cyan: #1a6fa0;
+  --chart-rx: #b07830;
+  --chart-tx: #8a5c22;
+  --gauge-cpu: #b07830;
+  --gauge-mem: #1e8e3e;
+  --gauge-disk: #c07020;
+  --panel-glow: rgba(140, 90, 30, 0.05);
+  --panel-glow-strong: rgba(140, 90, 30, 0.10);
+}
+
+[data-theme="light"] .dashboard-sidebar {
+  box-shadow: 1px 0 0 var(--border-color);
+}
+
+[data-theme="light"] .dashboard-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .dashboard-tab.is-active {
+  background: var(--accent-primary);
+  color: var(--text-inverted);
+}
+
+[data-theme="light"] .brand-mark {
+  background: var(--accent-primary);
+  color: var(--text-inverted);
+}
+
+[data-theme="light"] .status-badge.status-active,
+[data-theme="light"] .status-badge.status-running {
+  background: rgba(30, 142, 62, 0.12);
+  color: #1e8e3e;
+}
+
+[data-theme="light"] .status-badge.status-inactive,
+[data-theme="light"] .status-badge.status-stopped {
+  background: rgba(217, 48, 37, 0.10);
+  color: #d93025;
+}
+
+[data-theme="light"] .dashboard-tab:hover:not(.is-active) {
+  background: rgba(140, 90, 30, 0.08);
+}
+
+[data-theme="light"] .gs-item-content {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .header-search input {
+  border: 1px solid var(--border-color);
+}
+
+[data-theme="light"] .inventory-host-row:hover,
+[data-theme="light"] .inventory-row:hover {
+  background: rgba(140, 90, 30, 0.06);
+}
+
+[data-theme="light"] code,
+[data-theme="light"] .mono {
+  background: rgba(140, 90, 30, 0.08);
+}
+
+/* Override hardcoded dark backgrounds */
+[data-theme="light"] .dashboard-sidebar {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+}
+
+[data-theme="light"] .sidebar-brand {
+  border-bottom: 1px solid var(--border-color);
+}
+
+[data-theme="light"] .brand-mark {
+  background: var(--accent-primary);
+  border-color: var(--border-color);
+  color: var(--text-inverted);
+}
+
+[data-theme="light"] .topbar {
+  background: var(--bg-topbar);
+  border-bottom: 1px solid var(--border-color);
+}
+
+[data-theme="light"] .topbar-search-wrap {
+  background: var(--bg-input);
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+[data-theme="light"] .topbar-search-wrap:focus-within {
+  border-color: var(--accent-primary);
+}
+
+[data-theme="light"] .widget-header {
+  background: var(--bg-secondary);
+}
+
+[data-theme="light"] .dashboard-empty-state {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+[data-theme="light"] .grid-stack-placeholder > .placeholder-content {
+  background: rgba(140, 90, 30, 0.06);
+  border-color: var(--border-color);
+}
+
+[data-theme="light"] .dashboard-tab.is-active::before {
+  color: var(--text-inverted);
+}
+
+[data-theme="light"] .dashboard-tab {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .dashboard-tab:hover:not(.is-active) {
+  color: var(--text-primary);
+}
+
+/* Light theme inventory overrides */
+[data-theme="light"] .inventory-page {
+  background: var(--bg-primary);
+}
+
+[data-theme="light"] .inventory-sidebar {
+  background: var(--bg-card);
+}
+
+[data-theme="light"] .inventory-main {
+  background: var(--bg-primary);
+}
+
+/* Light theme scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(140, 90, 30, 0.25);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 90, 30, 0.40);
+}
+
+[data-theme="light"] .f2b-jail-banned {
+  background: var(--bg-input);
+}
+
+[data-theme="light"] .widget-select {
+  background: var(--bg-input);
+}

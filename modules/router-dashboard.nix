@@ -709,9 +709,13 @@ let
           broadcastAddress = device.broadcastAddress;
           port = device.port;
         }) cfg.wakeOnLan.devices)},
-        refreshInterval: ${toString cfg.refreshInterval}
+        refreshInterval: ${toString cfg.refreshInterval},
+        theme: ${builtins.toJSON cfg.theme}
       };
       EOF
+
+      # Inject theme into HTML
+      ${pkgs.gnused}/bin/sed -i 's/<html lang="en">/<html lang="en" data-theme="${cfg.theme}">/' $out/index.html
     '';
   };
 
