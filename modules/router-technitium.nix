@@ -122,6 +122,22 @@ let
   };
   scopeModule = types.submodule {
     options = {
+      option108 = mkOption {
+        type = types.submodule {
+          options = {
+            enable = mkEnableOption "RFC 8925 DHCPv4 option 108 (IPv6-Only Preferred)";
+          };
+        };
+        default = { };
+        description = ''
+          Explicit DHCP option 108 boundary for the Technitium backend.
+
+          The current Technitium synchronization surface does not provide a
+          first-class declarative option 108 path, so enabling this flag fails
+          fast instead of implying silent support.
+        '';
+      };
+
       legacyNames = mkOption {
         type = types.listOf types.str;
         default = [ ];
@@ -1168,6 +1184,13 @@ in
       {
         assertion = cfg.ntpServers == [ ] || hasTokenSource;
         message = "services.router-technitium.ntpServers requires a Technitium API token or bootstrap password secret.";
+      }
+      {
+        assertion = all (scope: !(scope.option108.enable or false)) (attrValues cfg.scopes);
+        message = ''
+          services.router-technitium.scopes.<name>.option108.enable is not supported declaratively.
+          The current Technitium DHCP synchronization path has no first-class RFC 8925 / option 108 support.
+        '';
       }
       {
         assertion = cfg.listenEndPoints == [ ] || hasTokenSource;
