@@ -12,6 +12,7 @@ let
   dashboardIndex = builtins.readFile ../modules/router-dashboard/index.html;
   dashboardMain = builtins.readFile ../modules/router-dashboard/js/main.js;
   inventoryWidget = builtins.readFile ../modules/router-dashboard/js/widgets/inventory-widget.js;
+  dashboardCss = builtins.readFile ../modules/router-dashboard/css/dashboard.css;
 in
 {
   router-dashboard-inventory-router-dhcp-eval = eval.mkNixosEvalCheck "router-dashboard-inventory-router-dhcp" [
@@ -259,4 +260,44 @@ in
     python3 test_inventory_runtime.py -v
     touch $out
   '';
+
+  # ── Light Theme Contract ───────────────────────────────────────────────────
+
+  router-dashboard-light-theme-css-eval = eval.mkNixosEvalCheck "router-dashboard-light-theme-css" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-dashboard
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+      };
+      services.router-dashboard = {
+        enable = true;
+        theme = "light";
+      };
+    }
+    ({ config, ... }:
+    let
+      staticDrv = config.systemd.services.router-dashboard.environment.DASHBOARD_STATIC or "";
+    in {
+      assertions = [
+        {
+          assertion = lib.hasInfix "data-theme" dashboardCss;
+          message = "dashboard.css must contain data-theme selector for light theme.";
+        }
+        {
+          assertion = lib.hasInfix "--bg-primary: #f8f5f0" dashboardCss;
+          message = "dashboard.css must define light theme --bg-primary variable.";
+        }
+        {
+          assertion = lib.hasInfix "--text-primary: #2c2014" dashboardCss;
+          message = "dashboard.css must define light theme --text-primary variable.";
+        }
+        {
+          assertion = config.systemd.services.router-dashboard.environment.DASHBOARD_THEME == "light";
+          message = "DASHBOARD_THEME env var should be set to light.";
+        }
+      ];
+    })
+  ];
 }

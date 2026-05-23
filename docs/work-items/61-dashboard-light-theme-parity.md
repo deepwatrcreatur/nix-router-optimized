@@ -1,6 +1,6 @@
 # 61 - Dashboard Light Theme Parity
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
