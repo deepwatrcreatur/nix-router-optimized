@@ -878,6 +878,40 @@ in
     touch $out
   '';
 
+  router-clat-elixir-unit-tests = pkgs.runCommand "router-clat-elixir-unit-tests" {
+    nativeBuildInputs = [ pkgs.elixir ];
+  } ''
+    cp ${self}/modules/router-clat/clat_control_plane_elixir.ex clat_control_plane_elixir.ex
+    cp ${self}/modules/router-clat/test_clat_elixir.exs test_clat_elixir.exs
+    cp -r ${self}/modules/router-clat/fixtures fixtures
+    elixir test_clat_elixir.exs
+    touch $out
+  '';
+
+  docs-router-clat-elixir-selector-eval = mkDocExampleCheck "docs-router-clat-elixir-selector" [
+    self.nixosModules.router-clat
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+        controlPlane = {
+          backend = "elixir-preview";
+          allowExperimentalElixir = true;
+        };
+      };
+    }
+  ] (config: [
+    {
+      assertion = lib.hasInfix "/bin/elixir" config.systemd.services.router-clat-dns.serviceConfig.ExecStart;
+      message = "router-clat should switch ExecStart to Elixir when controlPlane.backend = elixir-preview.";
+    }
+    {
+      assertion = lib.hasInfix "clat-dns-elixir.exs" config.systemd.services.router-clat-dns.serviceConfig.ExecStart;
+      message = "router-clat elixir preview should invoke the elixir control-plane runner.";
+    }
+  ]);
+
   docs-router-clat-reject-nat64-pool-subset-overlap-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-nat64-pool-subset-overlap" [
     self.nixosModules.router-clat
     self.nixosModules.router-nat64

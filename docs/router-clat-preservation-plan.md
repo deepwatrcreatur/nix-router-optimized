@@ -65,6 +65,8 @@ It does three things:
    satisfy those fixtures
 3. validates a fake non-Tayga backend status fixture so the preservation suite
    does not silently encode Tayga as the only legal architecture
+4. allows a bounded Elixir preview path to consume the same fixtures without
+   silently becoming the default control plane
 
 That last point matters. The repo currently ships Tayga as the first data-plane
 backend, but the preservation suite must remain about the public contract rather

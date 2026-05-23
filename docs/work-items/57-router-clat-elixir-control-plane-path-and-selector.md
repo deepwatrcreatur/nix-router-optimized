@@ -1,6 +1,6 @@
 # 57 - Router CLAT Elixir Control-Plane Path and Selector
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -24,27 +24,27 @@ decision is already complete.
 
 ## Requirements
 
-- [ ] Add an explicit control-plane selection surface for `router-clat`, such as
+- [x] Add an explicit control-plane selection surface for `router-clat`, such as
       a module option that can distinguish the current Python path from a new
       Elixir path
-- [ ] Keep the control-plane input/output contract backend-neutral rather than
+- [x] Keep the control-plane input/output contract backend-neutral rather than
       encoding Tayga config details as the public API
-- [ ] Implement the first bounded Elixir path against the frozen control-plane
+- [x] Implement the first bounded Elixir path against the frozen control-plane
       contract, including:
       - mapping state
       - TTL / GC
       - artifact generation
       - reload/apply orchestration
       - status surface
-- [ ] Ensure unsupported or partial parity states are surfaced honestly rather
+- [x] Ensure unsupported or partial parity states are surfaced honestly rather
       than defaulting silently to the new path
 
 ## Verification
 
-- [ ] A contributor can run the Python or Elixir control-plane path
+- [x] A contributor can run the Python or Elixir control-plane path
       intentionally rather than by accidental packaging drift
-- [ ] The Elixir path consumes and emits the declared contract surfaces
-- [ ] The resulting module boundary remains explicit about experimental / parity
+- [x] The Elixir path consumes and emits the declared contract surfaces
+- [x] The resulting module boundary remains explicit about experimental / parity
       state if the new path is not yet the default
 
 ## Notes
