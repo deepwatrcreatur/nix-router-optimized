@@ -25,6 +25,7 @@ tracked separately from the dashboard planning docs.
 
 ## Recently Completed
 
+- [75-router-kea-ha-reentry-prerequisites-and-evidence-gate](./75-router-kea-ha-reentry-prerequisites-and-evidence-gate.md) — `done`
 - [74-router-dhcp-single-active-boundary-and-promotion-runbook](./74-router-dhcp-single-active-boundary-and-promotion-runbook.md) — `done`
 - [73-lan-shortname-resolution-boundary-and-validation](./73-lan-shortname-resolution-boundary-and-validation.md) — `done`
 - [63-live-router-kea-ha-convergence-evidence-and-closure](./63-live-router-kea-ha-convergence-evidence-and-closure.md) — `done`
