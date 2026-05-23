@@ -1,6 +1,6 @@
 # 42 - Router CLAT Observability and Runtime Validation
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
