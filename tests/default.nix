@@ -75,6 +75,10 @@ let
     inherit self eval;
   };
 
+  routerHaBoundaryChecks = import ./router-ha-boundaries.nix {
+    inherit self lib eval;
+  };
+
   routerDashboardServiceControlChecks = import ./router-dashboard-service-control.nix {
     inherit self eval lib pkgs;
   };
@@ -124,6 +128,7 @@ in
 // routerClatObservabilityChecks
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
+// routerHaBoundaryChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (
