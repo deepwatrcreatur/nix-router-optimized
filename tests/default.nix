@@ -66,6 +66,10 @@ let
   routerDhcpOption108BoundaryChecks = import ./router-dhcp-option108-boundary.nix {
     inherit self lib eval;
   };
+
+  routerMwanChecks = import ./router-mwan-eval.nix {
+    inherit self eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -109,6 +113,7 @@ in
 // routerZonesChecks
 // routerClatObservabilityChecks
 // routerDhcpOption108BoundaryChecks
+// routerMwanChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (

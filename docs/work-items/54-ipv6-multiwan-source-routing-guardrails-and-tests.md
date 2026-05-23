@@ -1,6 +1,6 @@
 # 54 - IPv6 Multi-WAN Source-Routing Guardrails and Tests
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -29,23 +29,23 @@ multi-WAN slice.
 
 ## Requirements
 
-- [ ] Review the current IPv6 multi-uplink shapes and add assertions, warnings,
+- [x] Review the current IPv6 multi-uplink shapes and add assertions, warnings,
       or guidance where obviously unsafe combinations are easy to express
-- [ ] Add focused tests or eval-time validation around at least:
+- [x] Add focused tests or eval-time validation around at least:
       - source-based policy-routing precedence
       - multi-prefix / uplink interaction where relevant
       - NPTv6 coexistence with multi-uplink routing expectations
-- [ ] Make the operator-visible boundary explicit for configurations that remain
+- [x] Make the operator-visible boundary explicit for configurations that remain
       advanced/manual rather than fully guarded
-- [ ] If the repo already has enough information to generate or validate safer
+- [x] If the repo already has enough information to generate or validate safer
       source-based routing defaults, document or implement that narrow guardrail
 
 ## Verification
 
-- [ ] The repo has at least one concrete validation surface covering IPv6
+- [x] The repo has at least one concrete validation surface covering IPv6
       multi-WAN source/uplink correctness
-- [ ] Unsafe or unsupported combinations fail more clearly than they do today
-- [ ] The resulting tests/docs make the IPv6 multi-WAN support boundary more
+- [x] Unsafe or unsupported combinations fail more clearly than they do today
+- [x] The resulting tests/docs make the IPv6 multi-WAN support boundary more
       trustworthy and less guess-based
 
 ## Notes
