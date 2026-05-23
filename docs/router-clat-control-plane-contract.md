@@ -27,6 +27,7 @@ This contract covers:
 This contract does **not** freeze:
 
 - the current Python file layout
+- a particular Elixir module/file layout
 - exact Tayga config syntax as a public API
 - repository split decisions
 - HA/failover behavior beyond the current single-owner boundary
@@ -66,6 +67,7 @@ These are repo-local concerns:
 - systemd lifecycle
 - firewall integration
 - support-boundary assertions and warnings
+- explicit non-default control-plane selector wiring
 
 These matter operationally, but they are not the same thing as the control
 plane contract itself.

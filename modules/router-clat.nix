@@ -58,6 +58,8 @@ let
   # Python control-plane daemon with its dependencies
   clatDnsPython = pkgs.python3.withPackages (_ps: []);
   clatDnsScript = ./router-clat/clat-dns.py;
+  clatDnsElixir = pkgs.elixir;
+  clatDnsElixirScript = ./router-clat/clat-dns-elixir.exs;
 
   # Build upstream resolver CLI args
   upstreamArgs = concatMapStringsSep " " (r: "--upstream ${r}") cfg.upstreamResolvers;
@@ -139,6 +141,20 @@ in
       default = true;
       description = "Inject router-firewall rules for CLAT traffic when router-firewall is enabled.";
     };
+
+    controlPlane = {
+      backend = mkOption {
+        type = types.enum [ "python" "elixir-preview" ];
+        default = "python";
+        description = "Select the CLAT control-plane implementation path.";
+      };
+
+      allowExperimentalElixir = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Require an explicit opt-in before selecting the experimental Elixir preview path.";
+      };
+    };
   };
 
   config = mkIf cfg.enable (mkMerge [
@@ -164,12 +180,19 @@ in
           assertion = !nat64Enabled || !ipv6PrefixesOverlap cfg.mappingPrefix6 (nat64Cfg.ipv6Prefix or "::/128");
           message = "router-clat: mappingPrefix6 (${cfg.mappingPrefix6}) must not overlap router-nat64.ipv6Prefix (${nat64Cfg.ipv6Prefix or "?"}).";
         }
+        {
+          assertion = cfg.controlPlane.backend != "elixir-preview" || cfg.controlPlane.allowExperimentalElixir;
+          message = "router-clat: controlPlane.backend = elixir-preview requires controlPlane.allowExperimentalElixir = true so preview selection cannot happen silently.";
+        }
       ];
 
       warnings = [
         "router-clat: this is an experimental first-slice module. It currently validates contract and topology assumptions, but does not yet claim a complete router-grade runtime translation implementation."
         "router-clat: the current slice should be treated as single-router and non-HA. Active-owner/failover behavior remains intentionally narrow."
         "router-clat: the `router-clat` name remains provisional until the runtime story and operator-facing boundary stabilize."
+      ] ++ optional (cfg.controlPlane.backend == "elixir-preview")
+        "router-clat: controlPlane.backend = elixir-preview is a non-default parity path. It should be treated as experimental until preservation and operator evidence are stronger."
+      ++ [
       ] ++ optional (hasRouterFirewall && !routerFirewallEnabled)
         "router-clat: router-firewall is not enabled. Defense-in-depth recommends enabling router-firewall when using CLAT translation.";
 
@@ -238,8 +261,8 @@ in
 
         serviceConfig = {
           ExecStart = concatStringsSep " " ([
-            "${clatDnsPython}/bin/python3"
-            "${clatDnsScript}"
+            (if cfg.controlPlane.backend == "python" then "${clatDnsPython}/bin/python3" else "${clatDnsElixir}/bin/elixir")
+            (if cfg.controlPlane.backend == "python" then "${clatDnsScript}" else "${clatDnsElixirScript}")
             "--pool ${cfg.legacyIpv4Pool}"
             "--mapping-ttl ${toString cfg.mappingTtl}"
             "--gc-interval ${toString cfg.gcInterval}"
