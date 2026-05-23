@@ -50,6 +50,7 @@ unspoken permanent ABI."
 - [ ] Define the minimum backend contract that a NAT64 engine must satisfy for
       this repo, including at least:
       - address/prefix inputs
+      - MTU / fragmentation behavior and any MSS-clamping expectations
       - interface/runtime lifecycle expectations
       - firewall integration points
       - observability/status surfaces
