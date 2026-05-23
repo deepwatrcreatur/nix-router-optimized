@@ -22,10 +22,10 @@ tracked separately from the dashboard planning docs.
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `in-progress`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `in-progress`
 - [72-router-ha-ntp-ownership-adapter-or-explicit-non-support](./72-router-ha-ntp-ownership-adapter-or-explicit-non-support.md) — `ready`
-- [74-router-dhcp-single-active-boundary-and-promotion-runbook](./74-router-dhcp-single-active-boundary-and-promotion-runbook.md) — `ready`
 
 ## Recently Completed
 
+- [74-router-dhcp-single-active-boundary-and-promotion-runbook](./74-router-dhcp-single-active-boundary-and-promotion-runbook.md) — `done`
 - [73-lan-shortname-resolution-boundary-and-validation](./73-lan-shortname-resolution-boundary-and-validation.md) — `done`
 - [63-live-router-kea-ha-convergence-evidence-and-closure](./63-live-router-kea-ha-convergence-evidence-and-closure.md) — `done`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`

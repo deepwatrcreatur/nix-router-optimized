@@ -7,7 +7,7 @@ The `nix-router-optimized` flake provides multiple ways to serve DHCP to your LA
 | Feature | `services.router-dhcp` | `services.router-kea` | `services.router-technitium` |
 | --- | --- | --- | --- |
 | **Backend** | `systemd-networkd` | ISC Kea 3.x | Technitium DNS/DHCP |
-| **HA / VRRP** | ❌ None | ✅ Robust (Load Balancing) | ⚠️ Manual Sync |
+| **HA / VRRP** | ❌ None | ⚠️ Advanced / topology-sensitive | ⚠️ Manual Sync |
 | **Performance** | ✅ Extreme (Kernel-integrated) | ✅ High (Carrier-grade) | ⚠️ Moderate (.NET) |
 | **Complexity** | ✅ Very Low | ❌ High | ✅ Low |
 | **Dynamic DNS**| ❌ No | ✅ Robust (RFC 2136) | ✅ Integrated |
@@ -25,14 +25,21 @@ Best for single-router setups or simple labs where HA is not required.
   services.router-dhcp.enable = true;
   ```
 
-## 2. `services.router-kea` (The Professional Choice)
-Best for High-Availability deployments and enterprise-grade networks.
+## 2. `services.router-kea` (The Advanced DHCP/DDNS Choice)
+Best for advanced DHCP/DDNS deployments, and only for HA topologies where the
+operator is willing to validate the exact transport and ownership model.
 
-- **Pros:** Native HA load balancing; robust Dynamic DNS support via `kea-dhcp-ddns`.
-- **Cons:** **High technical sensitivity.** Requires careful socket and interface configuration.
+- **Pros:** Strong Dynamic DNS support via `kea-dhcp-ddns`; bounded declarative HA
+  primitives exist for operators who really need them.
+- **Cons:** **High technical sensitivity.** Requires careful socket, interface,
+  and ownership configuration. Do not treat “Kea supports HA” as proof that
+  your reference pair has safe automatic DHCP failover.
 - **Critical Guardrails (Learned from Incident 2026-04-23):**
     - **Raw Sockets:** Default and recommended. Do NOT use address-qualified interfaces (e.g., `eth0/10.0.0.1`) as Kea 3.x will fail to poll for broadcasts.
     - **HA Outbound:** Always use `outboundInterface = "use-routing"` in HA/VRRP setups to ensure the kernel correctly delivers replies.
+- **Reference pair boundary:** the current project-maintained router pair is
+  documented as **single-active DHCP with manual promotion**, not active Kea HA
+  service. See [`router-dhcp-single-active.md`](./router-dhcp-single-active.md).
 - **Usage:**
   ```nix
   services.router-kea.enable = true;

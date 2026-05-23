@@ -43,7 +43,9 @@ If you are assigning or running agents against this repo, start with:
 - **BGP**: Advanced / experimental FRR bgpd wrapper for declarative internal peering
 - **High Availability (HA)**: 
   - **VRRP (Keepalived)**: Virtual IP (VIP) sharing between master and backup router nodes.
-  - **Kea DHCP HA**: Load-balancing and failover support for Kea DHCPv4.
+  - **Kea DHCP HA**: Advanced Kea HA primitives for opt-in topologies. The
+    current reference router pair is documented as **single-active DHCP with
+    manual promotion**, not active automatic DHCP failover.
   - **WAN HA**: Integrated "Golden MAC" cloning and interface management for seamless ISP failover when using an unmanaged switch topology.
 - **Multi-WAN Failover**: Automatic health-checking and priority switching between multiple ISP uplinks.
 - **WAN MAC Cloning**: Declarative MAC address spoofing for seamless ISP handover
@@ -78,6 +80,12 @@ rather than full maturity claims.
 ### High Availability Setup
 
 NixOS Router Optimizations supports advanced High Availability (HA) patterns. 
+
+Important boundary: WAN and active-owner primitives are available, but the
+current reference router pair is **not** documented as running active automatic
+Kea DHCP failover. See
+[`docs/router-dhcp-single-active.md`](./docs/router-dhcp-single-active.md)
+before assuming DHCP follows VRRP automatically.
 
 #### WAN Topology (Unmanaged Switch)
 To share a single-IP ISP modem between two routers without a managed switch:
@@ -533,6 +541,11 @@ TSIG secret is injected at runtime via an `ExecStartPre` script so it never ente
 When `router-ntp` is enabled, Kea automatically advertises the router/gateway address as the
 LAN NTP server via DHCP option 42 unless you override `dhcp4.ntpServers`, but only when
 `services.router-ntp.lanSubnets` actually allows the served DHCP subnet.
+
+For the current reference router pair, treat DHCP ownership as
+**single-active/manual-promotion** rather than automatic failover unless you
+have explicitly validated a different consumer-specific operating mode. See
+[`docs/router-dhcp-single-active.md`](./docs/router-dhcp-single-active.md).
 
 ```nix
 services.router-kea = {
