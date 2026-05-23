@@ -18,12 +18,13 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `in-progress`
-- [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `in-progress`
-- [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `in-progress`
+- No active items right now.
 
 ## Recently Completed
 
+- [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `done`
+- [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `done`
+- [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `done`
 - [75-router-kea-ha-reentry-prerequisites-and-evidence-gate](./75-router-kea-ha-reentry-prerequisites-and-evidence-gate.md) — `done`
 - [72-router-ha-ntp-ownership-adapter-or-explicit-non-support](./72-router-ha-ntp-ownership-adapter-or-explicit-non-support.md) — `done`
 - [74-router-dhcp-single-active-boundary-and-promotion-runbook](./74-router-dhcp-single-active-boundary-and-promotion-runbook.md) — `done`
