@@ -55,18 +55,13 @@ class WolWidget extends BaseWidget {
     this.setStatus(`Sending magic packet to ${device.name}...`);
 
     try {
-      const response = await fetch('/api/wol/wake', {
+      const data = await this.fetchMutationAPI('/wol/wake', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(device)
       });
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        throw new Error(data.error || `Wake request failed (${response.status})`);
-      }
 
       this.setStatus(`Magic packet sent to ${device.name}`, false);
     } catch (error) {
