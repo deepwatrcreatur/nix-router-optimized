@@ -1760,6 +1760,88 @@ header h1 {
   font-size: 0.85em;
 }
 
+.data-table-compact th,
+.data-table-compact td {
+  padding: 8px 10px;
+}
+
+.widget-section {
+  margin-top: 14px;
+}
+
+.section-title {
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.metric-note {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.firewall-flowtable-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.firewall-flowtable-name,
+.firewall-rule-summary {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.firewall-flowtable-meta,
+.firewall-rule-meta {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.firewall-flowtable-meta span {
+  margin-right: 10px;
+}
+
+.firewall-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.firewall-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.firewall-activity-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+}
+
+.firewall-activity-inline {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
 /* Fail2ban Widget Styles */
 .f2b-jail-card {
   background: var(--bg-input);
@@ -2360,6 +2442,10 @@ header h1 {
   .firewall-log-toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .firewall-activity-grid {
+    grid-template-columns: 1fr;
   }
 
   .system-info-grid {

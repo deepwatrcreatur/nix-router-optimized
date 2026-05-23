@@ -213,11 +213,11 @@ modules/
 - [x] Fail2ban integration
 - [x] Blocked IP display
 - [x] Jail status monitoring
+- [x] Bounded recent firewall activity summary with top prefixes, top sources/ports, and fail2ban overlap
 
 ### Planned
 
-- [ ] nftables rule hit counters (requires counter rules in nftables config)
-- [ ] Flowtable offload statistics (requires flowtable configuration)
+- [ ] Broader security/firewall drill-down beyond bounded counter detail, recent activity summary, and raw live log stream, if operators still need deeper CLI-only troubleshooting views
 
 ### Widgets Added
 
@@ -232,12 +232,14 @@ modules/
 | Endpoint | Description |
 |----------|-------------|
 | `/api/fail2ban/status` | Fail2ban jails, banned IPs, statistics |
+| `/api/firewall/activity-summary` | Bounded summary of recent firewall events, noisy sources/ports, and fail2ban overlap |
 
 ### Notes
 
 - Fail2ban widget requires sudoers rule for fail2ban-client (automatically configured)
-- nftables hit counters require counter rules to be defined in nftables config
-- Flowtable statistics require flowtable to be configured in the kernel
+- nftables hit-counter detail still depends on counter-bearing rules being present in nftables config
+- flowtable detail remains bounded to configured flowtables and best-effort offload visibility from the local runtime
+- recent firewall activity summary remains intentionally bounded to recent kernel log samples plus current fail2ban state; it is not a long-retention security analytics surface
 
 ## Phase 5: Advanced Features - COMPLETE
 

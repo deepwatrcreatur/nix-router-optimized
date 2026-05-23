@@ -59,6 +59,10 @@ let
     inherit self eval lib pkgs;
   };
 
+  routerDashboardFirewallChecks = import ./router-dashboard-firewall.nix {
+    inherit self eval lib;
+  };
+
   routerClatObservabilityChecks = import ./router-clat-observability.nix {
     inherit self lib eval;
   };
@@ -105,6 +109,7 @@ in
 // pvdChecks
 // keaChecks
 // routerDashboardInventoryChecks
+// routerDashboardFirewallChecks
 // routerSecurityHardeningChecks
 // routerZonesChecks
 // routerClatObservabilityChecks
