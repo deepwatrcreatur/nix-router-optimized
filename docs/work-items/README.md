@@ -33,6 +33,7 @@ tracked separately from the dashboard planning docs.
 - [60-router-bgp-promotion-aware-ha-ownership](./60-router-bgp-promotion-aware-ha-ownership.md) — `ready`
 - [61-dashboard-light-theme-parity](./61-dashboard-light-theme-parity.md) — `ready`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `ready`
+- [63-router-nat64-backend-abstraction-and-jool-spike](./63-router-nat64-backend-abstraction-and-jool-spike.md) — `ready`
 
 ## Recently Completed
 
