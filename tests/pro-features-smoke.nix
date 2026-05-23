@@ -215,6 +215,53 @@ in
     }
   ];
 
+  # BGP+HA with singleActiveOwner should pass and produce neighbor shutdown
+  router-bgp-ha-single-active-owner-eval = eval.mkNixosEvalCheck "router-bgp-ha-single-active-owner" [
+    self.nixosModules.router-ha
+    self.nixosModules.router-bgp
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "lan0";
+      };
+
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.10.1";
+        ha.singleActiveOwner = true;
+        neighbors."10.10.10.2" = { remoteAs = 65002; };
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = config.services.frr.bgpd.enable;
+        message = "router-bgp should enable bgpd even with HA when singleActiveOwner is set.";
+      }
+      {
+        assertion = lib.hasInfix "neighbor 10.10.10.2 shutdown" config.services.frr.config;
+        message = "router-bgp should add neighbor shutdown in static config when singleActiveOwner is enabled.";
+      }
+    ])
+  ];
+
+  # singleActiveOwner without HA should fail
+  router-bgp-single-active-without-ha-fails = eval.mkNixosEvalFailureCheck "router-bgp-single-active-without-ha" [
+    self.nixosModules.router-ha
+    self.nixosModules.router-bgp
+    {
+      services.router-bgp = {
+        enable = true;
+        asn = 65001;
+        routerId = "10.10.10.1";
+        ha.singleActiveOwner = true;
+        neighbors."10.10.10.2" = { remoteAs = 65002; };
+      };
+    }
+  ];
+
   router-bgp-auth-afi-policy-eval = eval.mkNixosEvalCheck "router-bgp-auth-afi-policy" [
     self.nixosModules.router-bgp
     {

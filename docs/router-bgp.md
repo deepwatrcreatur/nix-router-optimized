@@ -228,42 +228,44 @@ ip route
 
 ## HA Boundary
 
-This module is **not yet documented or validated as HA-ready**.
+BGP with HA is supported through a **single-active-owner** model:
 
-Current assumption:
+```nix
+services.router-bgp = {
+  enable = true;
+  asn = 65001;
+  routerId = "10.10.10.1";
+  ha.singleActiveOwner = true;
+  neighbors."10.10.254.2" = { remoteAs = 65010; };
+};
 
-- enabling `router-bgp` means this node is intended to participate actively in
-  BGP
+services.router-ha = {
+  enable = true;
+  role = "master";
+  virtualIp = "10.10.10.1/24";
+  vrrpInterface = "lan0";
+};
+```
 
-That means you should **not** assume two `router-ha` peers can safely advertise
-the same routing identity or take over cleanly without additional design.
+### How it works
 
-Current short-term policy:
+1. FRR `bgpd` starts on both nodes with all neighbors in `shutdown` state
+2. When a node becomes VRRP **MASTER**, keepalived runs `vtysh` to activate
+   each neighbor (`no neighbor <ip> shutdown`)
+3. When a node becomes **BACKUP** or **FAULT**, keepalived shuts down all
+   neighbors again
 
-- `router-bgp` + `router-ha` is blocked by assertion
-- the repo intentionally refuses the combination instead of implying that two HA
-  peers can casually own active BGP identity
+This ensures only one node presents active BGP peering identity at any time.
 
-This is intentionally conservative. The repo does not yet have a real
-promotion-aware ownership signal for BGP sessions, and it should not present
-VRRP failover as equivalent to safe dynamic-routing ownership.
+### Constraints
 
-## What Future Promotion-Aware BGP Ownership Would Need
-
-Before the repo can safely allow `router-bgp` with `router-ha`, it would need at
-least:
-
-- a single-active-owner signal that other modules can consume declaratively
-- a clear rule for when FRR `bgpd` should start, stop, or withhold peering on
-  standby nodes
-- an explicit decision on whether standby nodes should:
-  - keep FRR installed but inactive
-  - keep peering config rendered but the service disabled
-  - or participate in a different promotion-aware routing design
-- operational validation that failover does not briefly create split-brain
-  routing identity
-- docs that explain exactly what ownership transition behavior users should
-  expect
+- `ha.singleActiveOwner` requires `services.router-ha.enable = true`
+- Without `singleActiveOwner`, BGP + HA is still blocked by assertion
+- The promotion/demotion window is bounded by vtysh execution time, not
+  by a full FRR restart
+- Both nodes must have identical FRR config (same ASN, neighbors, policies)
+- Split-brain is possible if VRRP itself partitions — this is a VRRP
+  limitation, not a BGP ownership limitation
 
 ## Roadmap Boundary
 

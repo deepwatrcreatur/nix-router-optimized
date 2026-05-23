@@ -1,6 +1,6 @@
 # 60 - Router BGP Promotion-Aware HA Ownership
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
