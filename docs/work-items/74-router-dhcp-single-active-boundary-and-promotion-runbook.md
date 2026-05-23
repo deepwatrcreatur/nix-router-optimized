@@ -1,6 +1,6 @@
 # 74 - Router DHCP Single-Active Boundary and Promotion Runbook
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -38,32 +38,42 @@ failover that are false today.
 
 ## Requirements
 
-- [ ] Make the current DHCP support boundary explicit in the relevant router
+- [x] Make the current DHCP support boundary explicit in the relevant router
       docs:
       - `router` is the active DHCP node
       - `router-backup` is a manual promotion target
       - Kea HA is not currently supported as an active service on this pair
-- [ ] Add or update a bounded promotion runbook for `router-backup`
-- [ ] Decide whether dormant Kea HA config should:
+- [x] Add or update a bounded promotion runbook for `router-backup`
+- [x] Decide whether dormant Kea HA config should:
       - be removed from the live path entirely
       - or be preserved only behind an explicit future-design boundary
-- [ ] Remove or rewrite comments and notes that still imply the pair is
+- [x] Remove or rewrite comments and notes that still imply the pair is
       expected to converge back to active Kea HA without a new design stream
-- [ ] Keep the resulting boundary consistent with the incident closure and the
+- [x] Keep the resulting boundary consistent with the incident closure and the
       Round 127 decision
 
 ## Verification
 
-- [ ] An operator can answer “what happens if `router` dies?” from repo docs
+- [x] An operator can answer “what happens if `router` dies?” from repo docs
       without guessing
-- [ ] The repo no longer implies automatic DHCP failover where none exists
-- [ ] Any preserved HA hooks/config are clearly marked as deferred future work
+- [x] The repo no longer implies automatic DHCP failover where none exists
+- [x] Any preserved HA hooks/config are clearly marked as deferred future work
       rather than present-tense support
-- [ ] Incident `2026-04-23` and the standing router docs tell the same story
+- [x] Incident `2026-04-23` and the standing router docs tell the same story
 
 ## Notes
 
 This item is about **support-boundary cleanup and operator guidance**.
+
+Outcome:
+
+- the repo now has a dedicated
+  [`router-dhcp-single-active.md`](../router-dhcp-single-active.md) note for
+  the current router pair
+- README and the DHCP server selection guide now stop implying automatic DHCP
+  failover for the maintained reference pair
+- the dormant HA path is explicitly described as deferred future-design surface
+  rather than current support
 
 It is not, by itself:
 
