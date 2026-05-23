@@ -1,8 +1,9 @@
 # Incident: DHCP / VRRP Regression
 
-**Status:** ACTIVE
+**Status:** RESOLVED
 **Severity:** P1
 **Opened:** 2026-04-23
+**Resolved:** 2026-05-23
 **IC:** shared / rotating
 **Ops:** shared / rotating
 
@@ -12,6 +13,12 @@ During the HA/VRRP transition, fresh LAN clients stopped receiving DHCP leases.
 The root symptom was not one bug but a stack of issues across Kea runtime
 shape, HA control-plane reachability, missing HA hook support, and finally
 deployment divergence between `router` and `router-backup`.
+
+This incident is now resolved as an **explicit single-active DHCP boundary**:
+fresh live evidence and current source state agree that the pair is not running
+Kea HA at all, `router` is the active DHCP node, and `router-backup` is
+currently a manual promotion target rather than an automatic DHCP failover
+peer.
 
 ## Confirmed Facts
 
@@ -27,17 +34,26 @@ deployment divergence between `router` and `router-backup`.
 5. The staged production design uses per-node LAN HA addresses
    (`10.10.10.2`, `10.10.10.3`) and a backup-only carrier guard. Source: E39,
    E40, E41.
-6. The current live pair is not yet in a verified common HA state. After the
-   PCI move and cable changes, `router-backup` now has LAN carrier, but its
-   live Kea config is still on management-plane HA URLs while `router` is
-   targeting LAN-plane HA URLs. Source: E42, E43.
+6. The current live pair is not running Kea HA at all. Fresh 2026-05-22 live
+   evidence shows `router` serving DHCP successfully from `10.10.10.2`, but
+   its live DHCP4 config exposes no HA hook library or HA control commands,
+   while `router-backup` has the same non-HA config shape and its
+   `kea-dhcp4-server` unit is intentionally skipped by `ExecCondition=exit 1`.
+   Source: E42, E44.
+7. The project has now made an explicit design decision not to treat active
+   Kea HA restoration as the default next move for this pair. The honest
+   current support boundary is single-active DHCP with manual promotion of
+   `router-backup` if needed. Source: E45.
 
-## Active Hypotheses
+## Closing Decision
 
-- [ ] **H8:** The remaining blocker is deployment mismatch, not another Kea
-  defect. Owner: open. Probe: deploy `router-backup` to the same LAN-plane HA
-  config as `router`, then inspect `config-get`, `ss`, and HA state on both
-  nodes.
+- [x] The stale “HA convergence” framing is retired.
+- [x] The current live and source-of-truth picture is now explicit:
+  `router` is the sole active DHCP node and `router-backup` is a manual
+  promotion target.
+- [x] Any future Kea HA revival is deferred to a fresh design stream with a
+  stricter proof bar on this actual pair rather than being treated as the
+  expected closure path for this incident.
 
 ## Ruled-Out Hypotheses
 
@@ -46,6 +62,9 @@ deployment divergence between `router` and `router-backup`.
 - ~~**H7:** The only remaining issue is missing software support in Kea HA.~~
   Disproven by E39 through E43; software blockers were cleared, then rollout
   state and topology became the active boundary.
+- ~~**H9:** The incident must remain open until the live pair is restored to
+  active Kea HA.~~ Retired by E44 and E45; the current support boundary is
+  explicit single-active DHCP, not “nearly restored” HA.
 
 ## Timeline
 
@@ -57,14 +76,18 @@ deployment divergence between `router` and `router-backup`.
 | 2026-04-24 | Missing `libdhcp_lease_cmds.so` requirement identified and patched |
 | 2026-04-24 | LAN-plane HA design and backup carrier guard staged and built |
 | 2026-04-24 | Live evidence showed `router` and `router-backup` still running different HA transports |
+| 2026-05-22 | Fresh live evidence showed `router` serving DHCP without any active Kea HA hook/config, while `router-backup` skipped Kea entirely via `ExecCondition` |
+| 2026-05-23 | A real multi-seat planning round concluded that the honest current boundary is single-active DHCP with manual promotion, not active Kea HA restoration |
 
-## Current Blockers
+## Residual Follow-Ups
 
-- [ ] `router` and `router-backup` are not yet deployed to the same HA transport.
-- [ ] Full HA restoration is unverified until both nodes converge over the same
-  live LAN-plane configuration.
-- [ ] Root workspace planning files are informative, but repo-tracked incident
-  history must stay authoritative for committed state.
+- [ ] Make the manual promotion boundary and runbook explicit in the router docs
+      and support surface.
+- [ ] Decide whether the dormant Kea HA configuration should be removed
+      entirely from the live design path or preserved only behind a clearly
+      deferred future-design boundary.
+- [ ] Keep any future Kea HA work in a new design/revalidation stream rather
+      than reopening this incident implicitly.
 
 ## Change Control
 
@@ -72,19 +95,21 @@ deployment divergence between `router` and `router-backup`.
 - **Mutation owner:** not currently assigned
 - **Rollback anchor:** existing router generations and `nixos-rebuild test`
   workflow on each node
-- **Success signal:** both nodes expose matching LAN-plane HA URLs, heartbeat
-  succeeds, and HA state is coherent on both nodes
-- **Failure signal:** peer heartbeat refusal/timeout continues after matching
-  deployment, or fresh-client DHCP regresses again
+- **Success signal:** the repo and incident history consistently describe
+  single-active DHCP on `router`, manual promotion of `router-backup`, and no
+  false claim that Kea HA is currently in service
+- **Failure signal:** the docs drift back into implying active or nearly-active
+  Kea HA without a fresh design/proof stream, or live DHCP on the intended
+  active node regresses again
 
 ## Next Action
 
-**Who:** Ops
-**What:** Deploy `router-backup` to the current staged LAN-plane HA config and
-re-check live HA state on both nodes.
-**Method:** `nixos-rebuild test/switch` for `router-backup`, followed by
-`config-get`, `list-commands`, `ss -ltnp '( sport = :8000 or sport = :67 )'`,
-and Kea journal inspection on both routers.
+**Who:** Router follow-up owner
+**What:** Carry the manual-promotion / non-HA boundary into the remaining
+router docs and runbook surface.
+**Method:** complete the follow-up work item that standardizes `router-backup`
+as a promotion target and decides how the dormant HA config is preserved or
+removed.
 
 ## Navigation
 

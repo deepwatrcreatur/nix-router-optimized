@@ -18,11 +18,17 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `ready`
-- [63-router-nat64-backend-abstraction-and-jool-spike](./63-router-nat64-backend-abstraction-and-jool-spike.md) — `ready`
+- [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `in-progress`
+- [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `in-progress`
+- [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `in-progress`
+- [72-router-ha-ntp-ownership-adapter-or-explicit-non-support](./72-router-ha-ntp-ownership-adapter-or-explicit-non-support.md) — `ready`
+- [74-router-dhcp-single-active-boundary-and-promotion-runbook](./74-router-dhcp-single-active-boundary-and-promotion-runbook.md) — `ready`
 
 ## Recently Completed
 
+- [73-lan-shortname-resolution-boundary-and-validation](./73-lan-shortname-resolution-boundary-and-validation.md) — `done`
+- [63-live-router-kea-ha-convergence-evidence-and-closure](./63-live-router-kea-ha-convergence-evidence-and-closure.md) — `done`
+- [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [60-router-bgp-promotion-aware-ha-ownership](./60-router-bgp-promotion-aware-ha-ownership.md) — `done`
 - [61-dashboard-light-theme-parity](./61-dashboard-light-theme-parity.md) — `done`
 - [59-dashboard-service-control-auth-and-boundary](./59-dashboard-service-control-auth-and-boundary.md) — `done`
@@ -42,9 +48,6 @@ tracked separately from the dashboard planning docs.
 - [45-dashboard-inventory-reconciliation-and-subnet-summary](./45-dashboard-inventory-reconciliation-and-subnet-summary.md) — `done`
 - [44-dashboard-inventory-browser-page-and-api](./44-dashboard-inventory-browser-page-and-api.md) — `done`
 - [43-dashboard-inventory-data-contract-and-export](./43-dashboard-inventory-data-contract-and-export.md) — `done`
-- [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `done`
-- [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `done`
-- [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `done`
 - [39-router-clat-post-landing-cleanup-and-boundary-surfacing](./39-router-clat-post-landing-cleanup-and-boundary-surfacing.md) — `done`
 - [38-router-clat-first-slice-contract-and-assertions](./38-router-clat-first-slice-contract-and-assertions.md) — `done`
 - [37-declarative-clat-design-and-incubation](./37-declarative-clat-design-and-incubation.md) — `done`
