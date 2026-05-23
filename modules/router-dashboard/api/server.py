@@ -149,6 +149,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_service_logs(query)
         elif path == '/api/firewall/stats':
             self.handle_firewall_stats()
+        elif path == '/api/firewall/activity-summary':
+            self.handle_firewall_activity_summary(query)
         elif path == '/api/firewall/logs/recent':
             self.handle_firewall_logs_recent(query)
         elif path == '/api/firewall/logs/stream':
@@ -1229,6 +1231,22 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             })
         except Exception as e:
             self.send_error_json(500, str(e))
+
+    def handle_firewall_activity_summary(self, query):
+        """Return a bounded summary of recent firewall activity"""
+        limit = self.parse_positive_int(query.get('limit', ['120'])[0], default=120, minimum=10, maximum=400)
+
+        try:
+            logs = self.read_firewall_logs(limit=limit)
+            fail2ban = self.get_fail2ban_status_data()
+            banned_ips = set(fail2ban.get('allBannedIPs', [])) if fail2ban.get('available') else set()
+
+            activity = self.summarize_firewall_activity(logs, banned_ips)
+            activity['fail2banAvailable'] = fail2ban.get('available', False)
+            activity['currentlyBanned'] = fail2ban.get('totalCurrentlyBanned', 0) if fail2ban.get('available') else 0
+            self.send_json(activity)
+        except Exception as e:
+            self.send_error_json(500, f'Failed to summarize firewall activity: {e}')
 
     def handle_gateway_health(self):
         """Ping upstream gateways and DNS servers"""
@@ -2373,7 +2391,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'displayedLeases': min(len(leases), 100),
         })
 
-    def handle_fail2ban_status(self):
+    def get_fail2ban_status_data(self):
         """Get Fail2ban jail status and banned IPs"""
         try:
             # Find fail2ban-client
@@ -2388,11 +2406,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                     continue
 
             if not f2b_client:
-                self.send_json({
+                return {
                     'available': False,
                     'message': 'fail2ban-client not found'
-                })
-                return
+                }
 
             if os.geteuid() == 0:
                 status_cmd = [f2b_client, 'status']
@@ -2412,11 +2429,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             )
 
             if result.returncode != 0:
-                self.send_json({
+                return {
                     'available': False,
                     'message': result.stderr.strip() or result.stdout.strip() or 'Failed to get fail2ban status'
-                })
-                return
+                }
 
             # Parse jail list
             jails = []
@@ -2468,18 +2484,22 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 total_banned += stats['currentlyBanned']
                 jail_stats.append(stats)
 
-            self.send_json({
+            return {
                 'available': True,
                 'jails': jail_stats,
                 'totalCurrentlyBanned': total_banned,
                 'allBannedIPs': list(set(all_banned_ips))
-            })
+            }
 
         except Exception as e:
-            self.send_json({
+            return {
                 'available': False,
                 'message': str(e)
-            })
+            }
+
+    def handle_fail2ban_status(self):
+        """Get Fail2ban jail status and banned IPs"""
+        self.send_json(self.get_fail2ban_status_data())
 
     def handle_speedtest_run(self):
         """Start a speed test"""
@@ -2978,6 +2998,49 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'srcPort': fields.get('SPT'),
             'dst': dst,
             'dstPort': fields.get('DPT')
+        }
+
+    def summarize_firewall_activity(self, logs, banned_ips):
+        """Build a bounded summary from parsed firewall log entries"""
+        prefix_counts = {}
+        source_counts = {}
+        destination_port_counts = {}
+        protocol_counts = {}
+        banned_hits = []
+
+        for entry in logs:
+            prefix = entry.get('prefix') or 'FW-LOG'
+            source = entry.get('src') or '--'
+            protocol = entry.get('protocol') or '--'
+            destination_port = entry.get('dstPort') or '--'
+
+            prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+            source_counts[source] = source_counts.get(source, 0) + 1
+            protocol_counts[protocol] = protocol_counts.get(protocol, 0) + 1
+            destination_port_counts[destination_port] = destination_port_counts.get(destination_port, 0) + 1
+
+            if source in banned_ips:
+                banned_hits.append({
+                    'ip': source,
+                    'prefix': prefix,
+                    'summary': entry.get('summary') or entry.get('raw') or '',
+                    'timestamp': entry.get('timestamp') or ''
+                })
+
+        def top_items(counts, key_name):
+            return [
+                {key_name: key, 'count': value}
+                for key, value in sorted(counts.items(), key=lambda item: item[1], reverse=True)[:5]
+            ]
+
+        return {
+            'eventsAnalyzed': len(logs),
+            'prefixCounts': top_items(prefix_counts, 'prefix'),
+            'topSources': top_items(source_counts, 'ip'),
+            'topDestinationPorts': top_items(destination_port_counts, 'port'),
+            'protocolCounts': top_items(protocol_counts, 'protocol'),
+            'bannedSourceHits': banned_hits[:5],
+            'mostRecentEvent': logs[-1] if logs else None
         }
 
     def write_sse_event(self, event_name, payload):
