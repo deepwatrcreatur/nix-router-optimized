@@ -102,6 +102,6 @@ For now:
 
 ## Related Notes
 
-- [`docs/router-clat-control-plane-contract.md`](./router-clat-control-plane-contract.md)
-- [`docs/router-clat-preservation-plan.md`](./router-clat-preservation-plan.md)
-- [`docs/work-items/57-router-clat-elixir-control-plane-path-and-selector.md`](./work-items/57-router-clat-elixir-control-plane-path-and-selector.md)
+- [`router-clat-control-plane-contract.md`](./router-clat-control-plane-contract.md)
+- [`router-clat-preservation-plan.md`](./router-clat-preservation-plan.md)
+- [`57-router-clat-elixir-control-plane-path-and-selector.md`](./work-items/57-router-clat-elixir-control-plane-path-and-selector.md)
