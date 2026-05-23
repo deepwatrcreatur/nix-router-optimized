@@ -19,6 +19,7 @@ tracked separately from the dashboard planning docs.
 ## Current Ranked Queue
 
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `ready`
+- [63-router-nat64-backend-abstraction-and-jool-spike](./63-router-nat64-backend-abstraction-and-jool-spike.md) — `ready`
 
 ## Recently Completed
 
