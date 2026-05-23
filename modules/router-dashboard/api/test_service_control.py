@@ -65,24 +65,35 @@ class ServiceControlTests(unittest.TestCase):
         self.assertEqual(handler._response[0], 403)
         self.assertIn("Only the restart action is supported", handler._response[1]["error"])
 
+    def test_handle_service_control_rejects_invalid_content_length(self):
+        handler = self.make_handler()
+        handler.headers = {"Content-Length": "abc"}
+        handler.rfile = io.BytesIO(b"{}")
+
+        with mock.patch.object(server, "DASHBOARD_SERVICE_CONTROL", [{"name": "caddy", "unit": "caddy.service", "allowedActions": ["restart"]}]):
+            handler.handle_service_control()
+
+        self.assertEqual(handler._response[0], 400)
+        self.assertIn("Invalid Content-Length header", handler._response[1]["error"])
+
     def test_handle_service_control_restarts_allowlisted_service(self):
         handler = self.make_handler()
-        payload = {"service": "caddy", "action": "restart"}
+        payload = {"service": "web", "action": "restart"}
         body = json.dumps(payload).encode("utf-8")
         handler.headers = {"Content-Length": str(len(body))}
         handler.rfile = io.BytesIO(body)
-        handler.find_systemctl = lambda: "/run/current-system/sw/bin/systemctl"
+        handler.find_systemctl = lambda: "/nix/store/test-systemd/bin/systemctl"
 
         status_calls = [
             {
-                "name": "caddy",
+                "name": "caddy.service",
                 "unit": "caddy.service",
                 "systemdUnit": "caddy.service",
                 "status": "active",
                 "active": True,
             },
             {
-                "name": "caddy",
+                "name": "caddy.service",
                 "unit": "caddy.service",
                 "systemdUnit": "caddy.service",
                 "status": "active",
@@ -94,7 +105,7 @@ class ServiceControlTests(unittest.TestCase):
         with mock.patch.object(
             server,
             "DASHBOARD_SERVICE_CONTROL",
-            [{"name": "caddy", "unit": "caddy.service", "allowedActions": ["restart"]}],
+            [{"name": "web", "unit": "caddy.service", "allowedActions": ["restart"]}],
         ), mock.patch.object(
             subprocess,
             "run",
@@ -105,9 +116,10 @@ class ServiceControlTests(unittest.TestCase):
         self.assertEqual(handler._response[0], 200)
         self.assertEqual(handler._response[1]["status"], "ok")
         self.assertEqual(handler._response[1]["service"]["control"]["actions"], ["restart"])
+        self.assertEqual(handler._response[1]["service"]["name"], "web")
         self.assertEqual(
             run_mock.call_args.args[0],
-            ["/run/wrappers/bin/sudo", "/run/current-system/sw/bin/systemctl", "restart", "caddy.service"],
+            ["/run/wrappers/bin/sudo", "/nix/store/test-systemd/bin/systemctl", "restart", "caddy.service"],
         )
 
 

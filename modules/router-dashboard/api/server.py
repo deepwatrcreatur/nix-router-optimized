@@ -57,6 +57,7 @@ try:
     DASHBOARD_SERVICE_CONTROL = json.loads(os.environ.get('DASHBOARD_SERVICE_CONTROL_SERVICES', '[]'))
 except json.JSONDecodeError:
     DASHBOARD_SERVICE_CONTROL = []
+DASHBOARD_SYSTEMCTL_PATH = os.environ.get('DASHBOARD_SYSTEMCTL_PATH', '')
 INVENTORY_FILE = os.environ.get('DASHBOARD_INVENTORY_FILE', '')
 INVENTORY_ENABLED = os.environ.get('DASHBOARD_INVENTORY_ENABLED', '0') == '1'
 
@@ -213,6 +214,24 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
     def send_error_json(self, status, message):
         """Send JSON error response"""
         self.send_json({'error': message}, status)
+
+    def read_json_request(self, max_length=1024 * 1024):
+        """Read a small JSON request body safely"""
+        try:
+            content_length = int(self.headers.get('Content-Length', '0'))
+        except (TypeError, ValueError):
+            raise ValueError('Invalid Content-Length header')
+
+        if content_length < 0:
+            raise ValueError('Invalid Content-Length header')
+        if content_length > max_length:
+            raise ValueError(f'Request body too large (max {max_length} bytes)')
+
+        raw_body = self.rfile.read(content_length) if content_length > 0 else b'{}'
+        try:
+            return json.loads(raw_body.decode('utf-8'))
+        except json.JSONDecodeError as exc:
+            raise ValueError('Invalid JSON payload') from exc
 
     def get_mutation_auth_token(self):
         """Read the shared dashboard mutation token from its runtime file"""
@@ -2768,11 +2787,9 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         try:
-            content_length = int(self.headers.get('Content-Length', '0'))
-            raw_body = self.rfile.read(content_length) if content_length > 0 else b'{}'
-            payload = json.loads(raw_body.decode('utf-8'))
-        except json.JSONDecodeError:
-            self.send_error_json(400, 'Invalid JSON payload')
+            payload = self.read_json_request()
+        except ValueError as exc:
+            self.send_error_json(400, str(exc))
             return
 
         mac_address = str(payload.get('macAddress', '')).strip()
@@ -2806,11 +2823,9 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         try:
-            content_length = int(self.headers.get('Content-Length', '0'))
-            raw_body = self.rfile.read(content_length) if content_length > 0 else b'{}'
-            payload = json.loads(raw_body.decode('utf-8'))
-        except json.JSONDecodeError:
-            self.send_error_json(400, 'Invalid JSON payload')
+            payload = self.read_json_request()
+        except ValueError as exc:
+            self.send_error_json(400, str(exc))
             return
 
         service_name = str(payload.get('service', '')).strip()
@@ -2830,14 +2845,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_json(500, 'systemctl not found')
             return
 
-        service_status = self.get_service_status(systemctl, service_entry.get('name') or service_entry.get('unit'))
+        service_status = self.get_service_status(systemctl, service_entry['unit'])
         if not service_status.get('systemdUnit'):
             self.send_error_json(404, f'Service {service_name} is not present on this system')
             return
 
         command = [
             '/run/wrappers/bin/sudo',
-            '/run/current-system/sw/bin/systemctl',
+            systemctl,
             'restart',
             service_entry['unit'],
         ]
@@ -2859,7 +2874,8 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_json(500, message)
             return
 
-        refreshed = self.get_service_status(systemctl, service_entry.get('name') or service_entry.get('unit'))
+        refreshed = self.get_service_status(systemctl, service_entry['unit'])
+        refreshed['name'] = service_entry['name']
         refreshed['control'] = self.get_service_control_metadata(refreshed)
         self.send_json({
             'status': 'ok',
@@ -2972,6 +2988,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def find_systemctl(self):
         """Find a working systemctl binary"""
+        if DASHBOARD_SYSTEMCTL_PATH:
+            resolved = self.find_executable([DASHBOARD_SYSTEMCTL_PATH], ['--version'])
+            if resolved:
+                return resolved
         return self.find_executable(
             ['/run/current-system/sw/bin/systemctl', '/usr/bin/systemctl', 'systemctl'],
             ['--version']

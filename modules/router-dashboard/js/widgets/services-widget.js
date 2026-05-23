@@ -114,7 +114,8 @@ class ServicesWidget extends BaseWidget {
     const statusText = service.status || 'unknown';
     const displayName = this.formatServiceName(service.name);
     const control = service.control || { allowed: false, actions: [] };
-    const controlCell = control.allowed
+    const mutationsAvailable = Boolean(this.controlBoundary?.authConfigured);
+    const controlCell = control.allowed && mutationsAvailable
       ? `
         <button class="service-action-btn" data-service="${this.escape(service.name)}" data-action="restart">
           Restart

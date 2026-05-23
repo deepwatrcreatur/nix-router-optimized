@@ -32,6 +32,12 @@ in
         }
         {
           assertion =
+            config.systemd.services.router-dashboard.environment.DASHBOARD_SYSTEMCTL_PATH
+            == "${pkgs.systemd}/bin/systemctl";
+          message = "router-dashboard should export the exact systemctl path used by the sudo boundary.";
+        }
+        {
+          assertion =
             builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_SERVICE_CONTROL_SERVICES
             == [
               {
@@ -87,7 +93,8 @@ in
         {
           assertion =
             lib.hasInfix "service-control-panel" servicesWidget
-            && lib.hasInfix "fetchMutationAPI('/services/control'" servicesWidget;
+            && lib.hasInfix "fetchMutationAPI('/services/control'" servicesWidget
+            && lib.hasInfix "this.controlBoundary?.authConfigured" servicesWidget;
           message = "router-dashboard services widget should expose the authenticated restart control surface.";
         }
       ];

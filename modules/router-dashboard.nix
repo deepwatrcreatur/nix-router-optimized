@@ -960,6 +960,7 @@ in {
           }) effectiveInterfaces);
           DASHBOARD_SERVICES = builtins.toJSON monitoredServiceNames;
           DASHBOARD_MUTATION_AUTH_TOKEN_FILE = if dashboardMutationAuthTokenFile == null then "" else dashboardMutationAuthTokenFile;
+          DASHBOARD_SYSTEMCTL_PATH = "${pkgs.systemd}/bin/systemctl";
           DASHBOARD_SERVICE_CONTROL_SERVICES = builtins.toJSON normalizedServiceControlServices;
           DASHBOARD_VPNS = builtins.toJSON effectiveVpnServices;
           DASHBOARD_TUNNELS = builtins.toJSON effectiveTunnels;
