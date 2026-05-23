@@ -15,6 +15,7 @@ Current state:
 - assertion coverage exists for listen/upstream topology and NAT64 overlap
 - optional `router-firewall` hooks exist for the bounded CLAT path
 - enable-time warnings now call out the experimental and non-HA boundary
+- a non-default Elixir preview path now exists behind an explicit selector
 
 What it does **not** yet claim:
 
@@ -22,8 +23,14 @@ What it does **not** yet claim:
 - mature operator guidance for broad deployment
 - HA/active-owner failover support
 - stable final naming beyond the current provisional `router-clat` label
+- a separate extracted release boundary for the Elixir path
 
-For the actual design and boundary, see [`DECLARATIVE_CLAT.md`](./DECLARATIVE_CLAT.md).
+For the actual design and boundary, see:
+
+- [`DECLARATIVE_CLAT.md`](./DECLARATIVE_CLAT.md)
+- [`router-clat-control-plane-contract.md`](./router-clat-control-plane-contract.md)
+- [`router-clat-preservation-plan.md`](./router-clat-preservation-plan.md)
+- [`router-clat-elixir-extraction-decision.md`](./router-clat-elixir-extraction-decision.md)
 
 ## Phase 1: Core Dashboard - COMPLETE
 
