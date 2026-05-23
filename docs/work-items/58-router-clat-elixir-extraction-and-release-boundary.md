@@ -1,6 +1,6 @@
 # 58 - Router CLAT Elixir Extraction and Release Boundary
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -28,25 +28,25 @@ maintainability enough to justify:
 
 ## Requirements
 
-- [ ] Evaluate whether the Elixir path has reached enough contract stability and
+- [x] Evaluate whether the Elixir path has reached enough contract stability and
       preservation-test confidence to justify extraction
-- [ ] Define the release boundary if extraction is chosen, including:
+- [x] Define the release boundary if extraction is chosen, including:
       - versioning strategy
       - artifact/release packaging
       - compatibility contract between repos
       - ownership of integration tests
-- [ ] Define the non-extraction rationale if the project decides the Elixir path
+- [x] Define the non-extraction rationale if the project decides the Elixir path
       should remain in-repo for the foreseeable future
-- [ ] Make the chosen boundary explicit in docs so contributors do not infer that
+- [x] Make the chosen boundary explicit in docs so contributors do not infer that
       repo layout is undecided by accident
 
 ## Verification
 
-- [ ] The project has an explicit recorded decision on whether the Elixir path is
+- [x] The project has an explicit recorded decision on whether the Elixir path is
       extracted or remains in-repo
-- [ ] If extracted, the release and compatibility boundary is clear enough to
+- [x] If extracted, the release and compatibility boundary is clear enough to
       avoid guess-based cross-repo coupling
-- [ ] If not extracted, the repo documents why the control plane remains local
+- [x] If not extracted, the repo documents why the control plane remains local
 
 ## Notes
 
@@ -55,3 +55,15 @@ This item should follow:
 - the control-plane contract work
 - preservation tests
 - and at least a bounded Elixir path proving whether the split is worth it
+
+## Outcome Notes
+
+The current decision is **not to extract yet**.
+
+Reason:
+
+- the Elixir path is real enough to evaluate, but still too early to justify a
+  separate release, compatibility, and packaging boundary
+- preservation evidence is still lighter than the level the repo should demand
+  before introducing a second repo and release matrix
+- dedicated CLAT VM lifecycle coverage is still missing

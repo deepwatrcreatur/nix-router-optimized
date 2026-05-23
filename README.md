@@ -612,7 +612,8 @@ services.router-clat = {
 If you enable `router-clat`, read [`docs/DECLARATIVE_CLAT.md`](./docs/DECLARATIVE_CLAT.md)
 for the current boundary. The present slice is contract-heavy on purpose: it
 surfaces assumptions and safety checks before the repo claims a complete CLAT
-runtime implementation.
+runtime implementation. The Elixir path is currently an explicit in-repo
+preview, not an extracted external dependency.
 
 ### router-sqm
 Smart queue management for WAN uplink shaping. Wraps `tc` with fq_codel/CAKE via a
@@ -675,6 +676,7 @@ Additional docs:
 - `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
 - `docs/router-clat-control-plane-contract.md` for the backend-neutral CLAT control-plane contract
 - `docs/router-clat-preservation-plan.md` for preserved behavior fixtures and parity scope
+- `docs/router-clat-elixir-extraction-decision.md` for the current non-extraction decision and future extraction gates
 - `services.router-clat.controlPlane.backend = "elixir-preview"` for the non-default Elixir parity path
 - `docs/router-bgp.md` for BGP support boundaries, examples, and operational verification
 
