@@ -25,8 +25,7 @@ tracked separately from the dashboard planning docs.
 - [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `ready`
 - [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `ready`
 - [54-ipv6-multiwan-source-routing-guardrails-and-tests](./54-ipv6-multiwan-source-routing-guardrails-and-tests.md) — `ready`
-- [55-router-clat-control-plane-contract-and-preservation-spec](./55-router-clat-control-plane-contract-and-preservation-spec.md) — `ready`
-- [56-router-clat-preservation-fixtures-and-parity-tests](./56-router-clat-preservation-fixtures-and-parity-tests.md) — `ready`
+- [56-router-clat-preservation-fixtures-and-parity-tests](./56-router-clat-preservation-fixtures-and-parity-tests.md) — `in-progress`
 - [57-router-clat-elixir-control-plane-path-and-selector](./57-router-clat-elixir-control-plane-path-and-selector.md) — `ready`
 - [58-router-clat-elixir-extraction-and-release-boundary](./58-router-clat-elixir-extraction-and-release-boundary.md) — `ready`
 - [59-dashboard-service-control-auth-and-boundary](./59-dashboard-service-control-auth-and-boundary.md) — `ready`
@@ -46,6 +45,7 @@ tracked separately from the dashboard planning docs.
 - [48-dashboard-route-upstream-and-edge-relationships](./48-dashboard-route-upstream-and-edge-relationships.md) — `done`
 - [49-dhcp-option-108-support-boundary-and-docs](./49-dhcp-option-108-support-boundary-and-docs.md) — `done`
 - [50-router-kea-dhcp-option-108-and-guardrails](./50-router-kea-dhcp-option-108-and-guardrails.md) — `done`
+- [55-router-clat-control-plane-contract-and-preservation-spec](./55-router-clat-control-plane-contract-and-preservation-spec.md) — `done`
 - [43-dashboard-inventory-data-contract-and-export](./43-dashboard-inventory-data-contract-and-export.md) — `done`
 - [44-dashboard-inventory-browser-page-and-api](./44-dashboard-inventory-browser-page-and-api.md) — `done`
 - [45-dashboard-inventory-reconciliation-and-subnet-summary](./45-dashboard-inventory-reconciliation-and-subnet-summary.md) — `done`

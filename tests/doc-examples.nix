@@ -871,7 +871,10 @@ in
   } ''
     cp ${self}/modules/router-clat/clat-dns.py clat-dns.py
     cp ${self}/modules/router-clat/test_clat_dns.py test_clat_dns.py
+    cp ${self}/modules/router-clat/test_preservation_fixtures.py test_preservation_fixtures.py
+    cp -r ${self}/modules/router-clat/fixtures fixtures
     python3 test_clat_dns.py -v
+    python3 test_preservation_fixtures.py -v
     touch $out
   '';
 

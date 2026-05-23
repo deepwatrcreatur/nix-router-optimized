@@ -1,0 +1,10 @@
+{
+  "poolCidr": "100.64.46.0/24",
+  "mappingTtlSec": 0.1,
+  "gcIntervalSec": 3600,
+  "expected": {
+    "beforeGcMappingCount": 1,
+    "afterGcMappingCount": 0,
+    "removedMappings": 1
+  }
+}
