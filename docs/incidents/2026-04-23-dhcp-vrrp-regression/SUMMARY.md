@@ -81,12 +81,13 @@ peer.
 
 ## Residual Follow-Ups
 
-- [ ] Make the manual promotion boundary and runbook explicit in the router docs
+- [x] Make the manual promotion boundary and runbook explicit in the router docs
       and support surface.
-- [ ] Decide whether the dormant Kea HA configuration should be removed
-      entirely from the live design path or preserved only behind a clearly
-      deferred future-design boundary.
-- [ ] Keep any future Kea HA work in a new design/revalidation stream rather
+      See [`router-dhcp-single-active.md`](../../router-dhcp-single-active.md).
+- [x] Define explicit prerequisites and evidence gates for any future Kea HA
+      re-entry attempt.
+      See [`router-kea-ha-reentry-gate.md`](../../router-kea-ha-reentry-gate.md).
+- [x] Keep any future Kea HA work in a new design/revalidation stream rather
       than reopening this incident implicitly.
 
 ## Change Control
