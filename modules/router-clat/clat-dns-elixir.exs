@@ -2,26 +2,30 @@
 
 Code.require_file("clat_control_plane_elixir.ex", __DIR__)
 
-alias RouterClatElixir.{ControlPlane, MappingStore}
+alias RouterClatElixir.{ControlPlane, Dns, MappingStore, UpstreamSocketPool}
 
 defmodule RouterClatElixir.Main do
   def run(argv) do
     opts = ControlPlane.parse_args(argv)
     {:ok, store_pid} = MappingStore.start_link(opts)
+    {:ok, upstream_pool} = UpstreamSocketPool.start_link(opts.upstreams)
+    runtime_opts = Map.put(opts, :upstream_pool, upstream_pool)
 
-    spawn_link(fn -> gc_loop(store_pid, opts) end)
-    spawn_link(fn -> status_file_loop(store_pid, opts) end)
-    spawn_link(fn -> status_http_loop(store_pid, opts) end)
+    spawn_link(fn -> gc_loop(store_pid, runtime_opts) end)
+    spawn_link(fn -> status_file_loop(store_pid, runtime_opts) end)
+    spawn_link(fn -> status_http_loop(store_pid, runtime_opts) end)
 
     sockets =
-      Enum.map(opts.listen_addresses, fn listen_addr ->
+      Enum.map(runtime_opts.listen_addresses, fn listen_addr ->
         {:ok, ip} = :inet.parse_address(String.to_charlist(listen_addr))
-        {:ok, socket} = :gen_udp.open(opts.port, [:binary, {:ip, ip}, active: false, reuseaddr: true])
+        {:ok, socket} = :gen_udp.open(runtime_opts.port, [:binary, {:ip, ip}, active: false, reuseaddr: true])
         socket
       end)
 
     Enum.each(sockets, fn socket ->
-      spawn_link(fn -> serve_dns(socket, store_pid, opts) end)
+      Enum.each(1..max(2, System.schedulers_online()), fn _ ->
+        spawn_link(fn -> serve_dns(socket, store_pid, runtime_opts) end)
+      end)
     end)
 
     Process.sleep(:infinity)
@@ -30,13 +34,25 @@ defmodule RouterClatElixir.Main do
   defp serve_dns(socket, store_pid, opts) do
     case :gen_udp.recv(socket, 0) do
       {:ok, {ip, port, data}} ->
-        response = ControlPlane.handle_query(data, store_pid, opts)
-        if response, do: :gen_udp.send(socket, ip, port, response)
+        Task.start(fn -> handle_dns_query(socket, ip, port, data, store_pid, opts) end)
         serve_dns(socket, store_pid, opts)
 
       {:error, _reason} ->
         :ok
     end
+  end
+
+  defp handle_dns_query(socket, ip, port, data, store_pid, opts) do
+    response =
+      try do
+        ControlPlane.handle_query(data, store_pid, opts)
+      rescue
+        _ -> Dns.build_servfail(data)
+      catch
+        _, _ -> Dns.build_servfail(data)
+      end
+
+    if response, do: :gen_udp.send(socket, ip, port, response)
   end
 
   defp gc_loop(store_pid, opts) do
@@ -61,7 +77,7 @@ defmodule RouterClatElixir.Main do
   defp accept_loop(listen_socket, store_pid, opts) do
     case :gen_tcp.accept(listen_socket) do
       {:ok, socket} ->
-        spawn(fn -> handle_status_conn(socket, store_pid, opts) end)
+        Task.start(fn -> handle_status_conn(socket, store_pid, opts) end)
         accept_loop(listen_socket, store_pid, opts)
 
       {:error, _reason} ->

@@ -8,7 +8,8 @@ defmodule RouterClatElixirTest do
   use ExUnit.Case, async: false
 
   defp base_opts do
-    tmpdir = System.tmp_dir!() <> "/router-clat-elixir-#{System.unique_integer([:positive])}"
+    tmpdir = System.tmp_dir!() <> "/router-clat-elixir-#{System.unique_integer([:positive, :monotonic])}"
+    File.rm_rf(tmpdir)
     File.mkdir_p!(tmpdir)
 
     %{
@@ -26,6 +27,10 @@ defmodule RouterClatElixirTest do
       status_port: 9467,
       status_path: Path.join(tmpdir, "status.json")
     }
+  end
+
+  defp malformed_query do
+    <<0x1234::16, 0x0100::16, 1::16, 0::16, 0::16, 0::16, 20::8, "abc">>
   end
 
   defp fixture(name) do
@@ -143,5 +148,20 @@ defmodule RouterClatElixirTest do
     assert fx["backend"]["name"] == "fake-backend"
     assert fx["boundaries"]["ha"] == false
     assert fx["boundaries"]["multiWan"] == false
+  end
+
+  test "malformed query returns servfail instead of crashing" do
+    opts = base_opts()
+    {:ok, store} = MappingStore.start_link(opts)
+    response = ControlPlane.handle_query(malformed_query(), store, opts)
+    assert response == malformed_query()
+  end
+
+  test "truncated answer parser returns no records instead of raising" do
+    truncated =
+      <<0x1234::16, 0x8180::16, 1::16, 1::16, 0::16, 0::16, 1::8, "a", 0::8, 1::16, 1::16,
+        0xC00C::16, 1::16, 1::16, 300::32, 4::16, 127::8>>
+
+    assert Dns.parse_response_records(truncated) == {[], [], 0}
   end
 end

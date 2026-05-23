@@ -7,78 +7,79 @@ defmodule RouterClatElixir.MappingStore do
   end
 
   def lookup_or_allocate(pid, opts, ipv6_addr, dns_name \\ nil) do
-    Agent.get_and_update(pid, fn state ->
-      now = now_secs()
+    {ipv4, persist_state} =
+      Agent.get_and_update(pid, fn state ->
+        now = now_secs()
 
-      case Map.get(state.mappings, ipv6_addr) do
-        %{"expiresAt" => expires_at} = existing when expires_at > now ->
-          updated =
-            existing
-            |> Map.put("lastDnsAnswerAt", now)
-            |> Map.put("expiresAt", now + opts.mapping_ttl)
-            |> maybe_add_name(dns_name)
+        case Map.get(state.mappings, ipv6_addr) do
+          %{"expiresAt" => expires_at} = existing when expires_at > now ->
+            {updated, persist?} = refresh_mapping(existing, now, opts.mapping_ttl, dns_name)
+            new_state = %{state | mappings: Map.put(state.mappings, ipv6_addr, updated)}
+            {{updated["ipv4"], maybe_persist_snapshot(persist?, new_state)}, new_state}
 
-          new_state = %{state | mappings: Map.put(state.mappings, ipv6_addr, updated)}
-          persist_state!(new_state, opts)
-          {updated["ipv4"], new_state}
+          _ ->
+            case next_free_v4(state) do
+              nil ->
+                {{nil, nil}, state}
 
-        _ ->
-          case next_free_v4(state) do
-            nil ->
-              {nil, state}
+              v4 ->
+                mapping = %{
+                  "version" => 1,
+                  "ipv4" => v4,
+                  "ipv6" => ipv6_addr,
+                  "names" => if(dns_name, do: [dns_name], else: []),
+                  "createdAt" => now,
+                  "lastDnsAnswerAt" => now,
+                  "lastFlowSeenAt" => nil,
+                  "expiresAt" => now + opts.mapping_ttl,
+                  "state" => "active"
+                }
 
-            v4 ->
-              mapping = %{
-                "version" => 1,
-                "ipv4" => v4,
-                "ipv6" => ipv6_addr,
-                "names" => if(dns_name, do: [dns_name], else: []),
-                "createdAt" => now,
-                "lastDnsAnswerAt" => now,
-                "lastFlowSeenAt" => nil,
-                "expiresAt" => now + opts.mapping_ttl,
-                "state" => "active"
-              }
+                new_state = %{
+                  state
+                  | mappings: Map.put(state.mappings, ipv6_addr, mapping),
+                    allocated_v4: MapSet.put(state.allocated_v4, v4)
+                }
 
-              new_state = %{
-                state
-                | mappings: Map.put(state.mappings, ipv6_addr, mapping),
-                  allocated_v4: MapSet.put(state.allocated_v4, v4)
-              }
+                {{v4, new_state}, new_state}
+            end
+        end
+      end)
 
-              persist_state!(new_state, opts)
-              {v4, new_state}
-          end
-      end
-    end)
+    maybe_persist_state(persist_state, opts)
+    ipv4
   end
 
   def run_gc(pid, opts) do
-    Agent.get_and_update(pid, fn state ->
-      now = now_secs()
+    {removed, persist_state} =
+      Agent.get_and_update(pid, fn state ->
+        now = now_secs()
 
-      {remaining, expired} =
-        Enum.split_with(state.mappings, fn {_ipv6, mapping} ->
-          mapping["expiresAt"] > now
-        end)
+        {remaining, expired} =
+          Enum.split_with(state.mappings, fn {_ipv6, mapping} ->
+            mapping["expiresAt"] > now
+          end)
 
-      removed = length(expired)
+        removed = length(expired)
 
-      if removed == 0 do
-        {0, state}
-      else
-        mappings = Map.new(remaining)
-        allocated_v4 =
-          mappings
-          |> Map.values()
-          |> Enum.map(& &1["ipv4"])
-          |> MapSet.new()
+        if removed == 0 do
+          {{0, nil}, state}
+        else
+          mappings = Map.new(remaining)
 
-        new_state = %{state | mappings: mappings, allocated_v4: allocated_v4}
-        persist_state!(new_state, opts)
-        {removed, new_state}
-      end
-    end)
+          allocated_v4 =
+            mappings
+            |> Map.values()
+            |> Enum.map(& &1["ipv4"])
+            |> MapSet.new()
+
+          new_state = %{state | mappings: mappings, allocated_v4: allocated_v4}
+          {{removed, new_state}, new_state}
+        end
+      end)
+
+    maybe_persist_state(persist_state, opts)
+    removed
   end
 
   def get_stats(pid) do
@@ -219,12 +220,24 @@ defmodule RouterClatElixir.MappingStore do
     end
   end
 
-  defp maybe_add_name(mapping, nil), do: mapping
+  defp refresh_mapping(existing, now, mapping_ttl, dns_name) do
+    updated =
+      existing
+      |> Map.put("lastDnsAnswerAt", now)
+      |> Map.put("expiresAt", now + mapping_ttl)
 
-  defp maybe_add_name(mapping, dns_name) do
-    names = mapping["names"] || []
-    if dns_name in names, do: mapping, else: Map.put(mapping, "names", names ++ [dns_name])
+    if is_nil(dns_name) or dns_name in (existing["names"] || []) do
+      {updated, false}
+    else
+      {Map.put(updated, "names", (existing["names"] || []) ++ [dns_name]), true}
+    end
   end
+
+  defp maybe_persist_snapshot(true, state), do: state
+  defp maybe_persist_snapshot(false, _state), do: nil
+
+  defp maybe_persist_state(nil, _opts), do: :ok
+  defp maybe_persist_state(state, opts), do: persist_state!(state, opts)
 
   defp next_free_v4(state) do
     Enum.find_value(state.pool_start..state.pool_end, fn int_ip ->
@@ -265,6 +278,73 @@ defmodule RouterClatElixir.MappingStore do
   defp now_secs, do: System.system_time(:millisecond) / 1000
 end
 
+defmodule RouterClatElixir.UpstreamSocketPool do
+  use GenServer
+
+  def start_link(upstreams, opts \\ []) do
+    pool_size = Keyword.get(opts, :pool_size, max(2, System.schedulers_online()))
+    GenServer.start_link(__MODULE__, {Enum.uniq(upstreams), pool_size})
+  end
+
+  def checkout(pid, upstream, timeout_ms \\ 6_000) do
+    GenServer.call(pid, {:checkout, upstream}, timeout_ms)
+  end
+
+  def checkin(pid, upstream, socket) do
+    GenServer.cast(pid, {:checkin, upstream, socket})
+  end
+
+  @impl true
+  def init({upstreams, pool_size}) do
+    available =
+      Map.new(upstreams, fn upstream ->
+        {upstream, Enum.map(1..pool_size, fn _ -> open_socket!() end)}
+      end)
+
+    {:ok, %{available: available, waiters: %{}}}
+  end
+
+  @impl true
+  def handle_call({:checkout, upstream}, from, state) do
+    case Map.get(state.available, upstream, []) do
+      [socket | rest] ->
+        {:reply, {:ok, socket}, put_in(state.available[upstream], rest)}
+
+      [] ->
+        waiters = Map.update(state.waiters, upstream, :queue.from_list([from]), &:queue.in(from, &1))
+        {:noreply, %{state | waiters: waiters}}
+    end
+  end
+
+  @impl true
+  def handle_cast({:checkin, upstream, socket}, state) do
+    queue = Map.get(state.waiters, upstream, :queue.new())
+
+    case :queue.out(queue) do
+      {{:value, from}, rest} ->
+        GenServer.reply(from, {:ok, socket})
+        {:noreply, %{state | waiters: Map.put(state.waiters, upstream, rest)}}
+
+      {:empty, _queue} ->
+        available = Map.update(state.available, upstream, [socket], &[socket | &1])
+        {:noreply, %{state | available: available}}
+    end
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    state.available
+    |> Map.values()
+    |> List.flatten()
+    |> Enum.each(&:gen_udp.close/1)
+  end
+
+  defp open_socket! do
+    {:ok, socket} = :gen_udp.open(0, [:binary, active: false])
+    socket
+  end
+end
+
 defmodule RouterClatElixir.Dns do
   import Bitwise
 
@@ -274,14 +354,25 @@ defmodule RouterClatElixir.Dns do
   def qtype_a, do: @qtype_a
   def qtype_aaaa, do: @qtype_aaaa
 
-  def extract_query_name(data), do: do_extract_query_name(data, 12, [])
+  def extract_query_name(data) do
+    case do_extract_query_name(data, 12, []) do
+      {:ok, labels} -> labels |> Enum.reverse() |> Enum.join(".")
+      :error -> nil
+    end
+  end
 
   defp do_extract_query_name(data, offset, labels) when offset < byte_size(data) do
     length = :binary.at(data, offset)
 
     cond do
       length == 0 ->
-        labels |> Enum.reverse() |> Enum.join(".")
+        {:ok, labels}
+
+      length >= 192 ->
+        :error
+
+      offset + 1 + length > byte_size(data) ->
+        :error
 
       true ->
         label = binary_part(data, offset + 1, length)
@@ -289,21 +380,34 @@ defmodule RouterClatElixir.Dns do
     end
   end
 
+  defp do_extract_query_name(_data, _offset, _labels), do: :error
+
   def extract_query_type(data) do
-    offset = skip_qname(data, 12)
-    <<_::binary-size(offset), qtype::16, _::binary>> = data
-    qtype
+    with {:ok, offset} <- skip_qname(data, 12),
+         true <- offset + 2 <= byte_size(data) do
+      <<_::binary-size(offset), qtype::16, _::binary>> = data
+      qtype
+    else
+      _ -> nil
+    end
   end
 
   def extract_query_name_bytes(data) do
-    offset = skip_qname(data, 12)
-    binary_part(data, 12, offset - 12)
+    with {:ok, offset} <- skip_qname(data, 12) do
+      binary_part(data, 12, offset - 12)
+    else
+      _ -> nil
+    end
   end
 
   def rewrite_qtype(data, new_qtype) do
-    offset = skip_qname(data, 12)
-    <<head::binary-size(offset), _old::16, tail::binary>> = data
-    <<head::binary, new_qtype::16, tail::binary>>
+    with {:ok, offset} <- skip_qname(data, 12),
+         true <- offset + 2 <= byte_size(data) do
+      <<head::binary-size(offset), _old::16, tail::binary>> = data
+      <<head::binary, new_qtype::16, tail::binary>>
+    else
+      _ -> nil
+    end
   end
 
   def parse_response_records(data) when byte_size(data) < 12, do: {[], [], 0}
@@ -311,8 +415,11 @@ defmodule RouterClatElixir.Dns do
   def parse_response_records(data) do
     <<_id::16, flags::16, qdcount::16, ancount::16, _ns::16, _ar::16, _::binary>> = data
     rcode = band(flags, 0xF)
-    offset = skip_questions(data, 12, qdcount)
-    parse_answers(data, offset, ancount, [], [], rcode)
+
+    case skip_questions(data, 12, qdcount) do
+      {:ok, offset} -> parse_answers(data, offset, ancount, [], [], rcode)
+      :error -> {[], [], rcode}
+    end
   end
 
   def build_servfail(query_data) when byte_size(query_data) < 12, do: query_data
@@ -320,39 +427,57 @@ defmodule RouterClatElixir.Dns do
   def build_servfail(query_data) do
     <<qid::16, _::binary>> = query_data
     qdcount = qdcount(query_data)
-    offset = skip_questions(query_data, 12, qdcount)
-    question = binary_part(query_data, 12, offset - 12)
-    <<qid::16, 0x8182::16, qdcount::16, 0::16, 0::16, 0::16, question::binary>>
+
+    case skip_questions(query_data, 12, qdcount) do
+      {:ok, offset} ->
+        question = binary_part(query_data, 12, offset - 12)
+        <<qid::16, 0x8182::16, qdcount::16, 0::16, 0::16, 0::16, question::binary>>
+
+      :error ->
+        query_data
+    end
   end
 
   def build_dns_response(query_data, answers) do
     <<qid::16, _::binary>> = query_data
     qdcount = qdcount(query_data)
-    offset = skip_questions(query_data, 12, qdcount)
-    question = binary_part(query_data, 12, offset - 12)
-    header = <<qid::16, 0x8180::16, qdcount::16, length(answers)::16, 0::16, 0::16>>
 
-    body =
-      Enum.reduce(answers, <<>>, fn {name_bytes, rtype, rclass, ttl, rdata}, acc ->
-        <<acc::binary, name_bytes::binary, rtype::16, rclass::16, ttl::32, byte_size(rdata)::16, rdata::binary>>
-      end)
+    case skip_questions(query_data, 12, qdcount) do
+      {:ok, offset} ->
+        question = binary_part(query_data, 12, offset - 12)
+        header = <<qid::16, 0x8180::16, qdcount::16, length(answers)::16, 0::16, 0::16>>
 
-    <<header::binary, question::binary, body::binary>>
+        body =
+          Enum.reduce(answers, <<>>, fn {name_bytes, rtype, rclass, ttl, rdata}, acc ->
+            <<acc::binary, name_bytes::binary, rtype::16, rclass::16, ttl::32, byte_size(rdata)::16, rdata::binary>>
+          end)
+
+        <<header::binary, question::binary, body::binary>>
+
+      :error ->
+        build_servfail(query_data)
+    end
   end
 
-  def forward_query(data, {host, port}, timeout_ms \\ 5000) do
-    {:ok, socket} = :gen_udp.open(0, [:binary, active: false])
-
-    try do
-      with {:ok, host_addr} <- resolve_host(host),
-           :ok <- :gen_udp.send(socket, host_addr, port, data),
-           {:ok, {_ip, _port, response}} <- :gen_udp.recv(socket, 0, timeout_ms) do
-        response
+  def forward_query(data, {host, port}, timeout_ms \\ 5000, upstream_pool \\ nil) do
+    if upstream_pool do
+      with {:ok, socket} <- RouterClatElixir.UpstreamSocketPool.checkout(upstream_pool, {host, port}, timeout_ms) do
+        try do
+          do_forward_query(socket, data, host, port, timeout_ms)
+        after
+          RouterClatElixir.UpstreamSocketPool.checkin(upstream_pool, {host, port}, socket)
+        end
       else
         _ -> nil
       end
-    after
-      :gen_udp.close(socket)
+    else
+      {:ok, socket} = :gen_udp.open(0, [:binary, active: false])
+
+      try do
+        do_forward_query(socket, data, host, port, timeout_ms)
+      after
+        :gen_udp.close(socket)
+      end
     end
   end
 
@@ -367,30 +492,39 @@ defmodule RouterClatElixir.Dns do
     do: {Enum.reverse(a_records), Enum.reverse(aaaa_records), rcode}
 
   defp parse_answers(data, offset, remaining, a_records, aaaa_records, rcode) do
-    offset = skip_name(data, offset)
+    case skip_name(data, offset) do
+      {:ok, name_offset} ->
+        if name_offset + 10 > byte_size(data) do
+          {Enum.reverse(a_records), Enum.reverse(aaaa_records), rcode}
+        else
+          <<_::binary-size(name_offset), rtype::16, _rclass::16, ttl::32, rdlength::16, _::binary>> = data
+          rdata_offset = name_offset + 10
 
-    if offset + 10 > byte_size(data) do
-      {Enum.reverse(a_records), Enum.reverse(aaaa_records), rcode}
-    else
-      <<_::binary-size(offset), rtype::16, _rclass::16, ttl::32, rdlength::16, _::binary>> = data
-      rdata_offset = offset + 10
-      rdata = binary_part(data, rdata_offset, rdlength)
-      next_offset = rdata_offset + rdlength
+          if rdata_offset + rdlength > byte_size(data) do
+            {Enum.reverse(a_records), Enum.reverse(aaaa_records), rcode}
+          else
+            rdata = binary_part(data, rdata_offset, rdlength)
+            next_offset = rdata_offset + rdlength
 
-      cond do
-        rtype == @qtype_a and rdlength == 4 ->
-          <<a, b, c, d>> = rdata
-          ip = Enum.join([a, b, c, d], ".")
-          parse_answers(data, next_offset, remaining - 1, [{ip, ttl} | a_records], aaaa_records, rcode)
+            cond do
+              rtype == @qtype_a and rdlength == 4 ->
+                <<a, b, c, d>> = rdata
+                ip = Enum.join([a, b, c, d], ".")
+                parse_answers(data, next_offset, remaining - 1, [{ip, ttl} | a_records], aaaa_records, rcode)
 
-        rtype == @qtype_aaaa and rdlength == 16 ->
-          <<a1::16, a2::16, a3::16, a4::16, a5::16, a6::16, a7::16, a8::16>> = rdata
-          ip = :inet.ntoa({a1, a2, a3, a4, a5, a6, a7, a8}) |> to_string()
-          parse_answers(data, next_offset, remaining - 1, a_records, [{ip, ttl} | aaaa_records], rcode)
+              rtype == @qtype_aaaa and rdlength == 16 ->
+                <<a1::16, a2::16, a3::16, a4::16, a5::16, a6::16, a7::16, a8::16>> = rdata
+                ip = :inet.ntoa({a1, a2, a3, a4, a5, a6, a7, a8}) |> to_string()
+                parse_answers(data, next_offset, remaining - 1, a_records, [{ip, ttl} | aaaa_records], rcode)
 
-        true ->
-          parse_answers(data, next_offset, remaining - 1, a_records, aaaa_records, rcode)
-      end
+              true ->
+                parse_answers(data, next_offset, remaining - 1, a_records, aaaa_records, rcode)
+            end
+          end
+        end
+
+      :error ->
+        {Enum.reverse(a_records), Enum.reverse(aaaa_records), rcode}
     end
   end
 
@@ -399,25 +533,58 @@ defmodule RouterClatElixir.Dns do
     qdcount
   end
 
-  defp skip_questions(_data, offset, 0), do: offset
+  defp skip_questions(_data, offset, 0), do: {:ok, offset}
 
   defp skip_questions(data, offset, count) do
-    next = skip_qname(data, offset) + 4
-    skip_questions(data, next, count - 1)
+    with {:ok, next} <- skip_qname(data, offset),
+         true <- next + 4 <= byte_size(data) do
+      skip_questions(data, next + 4, count - 1)
+    else
+      _ -> :error
+    end
   end
 
   defp skip_qname(data, offset) do
-    length = :binary.at(data, offset)
-    if length == 0, do: offset + 1, else: skip_qname(data, offset + 1 + length)
+    cond do
+      offset >= byte_size(data) ->
+        :error
+
+      true ->
+        length = :binary.at(data, offset)
+
+        cond do
+          length == 0 -> {:ok, offset + 1}
+          length >= 192 -> :error
+          offset + 1 + length > byte_size(data) -> :error
+          true -> skip_qname(data, offset + 1 + length)
+        end
+    end
   end
 
   defp skip_name(data, offset) do
-    length = :binary.at(data, offset)
-
     cond do
-      length == 0 -> offset + 1
-      length >= 192 -> offset + 2
-      true -> skip_name(data, offset + 1 + length)
+      offset >= byte_size(data) ->
+        :error
+
+      true ->
+        length = :binary.at(data, offset)
+
+        cond do
+          length == 0 -> {:ok, offset + 1}
+          length >= 192 -> if(offset + 2 <= byte_size(data), do: {:ok, offset + 2}, else: :error)
+          offset + 1 + length > byte_size(data) -> :error
+          true -> skip_name(data, offset + 1 + length)
+        end
+    end
+  end
+
+  defp do_forward_query(socket, data, host, port, timeout_ms) do
+    with {:ok, host_addr} <- resolve_host(host),
+         :ok <- :gen_udp.send(socket, host_addr, port, data),
+         {:ok, {_ip, _port, response}} <- :gen_udp.recv(socket, 0, timeout_ms) do
+      response
+    else
+      _ -> nil
     end
   end
 end
@@ -472,27 +639,40 @@ defmodule RouterClatElixir.ControlPlane do
     qtype = Dns.extract_query_type(query_data)
     qname = Dns.extract_query_name(query_data)
 
-    if qtype != Dns.qtype_a() do
-      forward_raw(query_data, opts)
-    else
-      a_response = forward_raw(query_data, opts)
-
-      if is_nil(a_response) do
+    cond do
+      is_nil(qtype) or is_nil(qname) ->
         Dns.build_servfail(query_data)
-      else
-        {a_records, _ignored, a_rcode} = Dns.parse_response_records(a_response)
-        aaaa_query = Dns.rewrite_qtype(query_data, Dns.qtype_aaaa())
-        aaaa_response = forward_raw(aaaa_query, opts)
-        {_a2, aaaa_records, _} = if aaaa_response, do: Dns.parse_response_records(aaaa_response), else: {[], [], 0}
 
-        cond do
-          a_rcode in [0, 3] and a_records == [] and aaaa_records == [] -> a_response
-          a_records != [] and aaaa_records == [] -> a_response
-          a_records != [] and aaaa_records != [] and !opts.prefer_synthesized -> a_response
-          aaaa_records != [] -> synthesize_a(query_data, qname, aaaa_records, store_pid, opts)
-          true -> a_response
+      qtype != Dns.qtype_a() ->
+        forward_raw(query_data, opts) || Dns.build_servfail(query_data)
+
+      true ->
+        aaaa_query = Dns.rewrite_qtype(query_data, Dns.qtype_aaaa())
+
+        a_task = Task.async(fn -> forward_raw(query_data, opts) end)
+
+        aaaa_task =
+          Task.async(fn ->
+            if is_nil(aaaa_query), do: nil, else: forward_raw(aaaa_query, opts)
+          end)
+
+        a_response = Task.await(a_task, 6_000)
+
+        if is_nil(a_response) do
+          Dns.build_servfail(query_data)
+        else
+          {a_records, _ignored, a_rcode} = Dns.parse_response_records(a_response)
+          aaaa_response = Task.await(aaaa_task, 6_000)
+          {_a2, aaaa_records, _} = if aaaa_response, do: Dns.parse_response_records(aaaa_response), else: {[], [], 0}
+
+          cond do
+            a_rcode in [0, 3] and a_records == [] and aaaa_records == [] -> a_response
+            a_records != [] and aaaa_records == [] -> a_response
+            a_records != [] and aaaa_records != [] and !opts.prefer_synthesized -> a_response
+            aaaa_records != [] -> synthesize_a(query_data, qname, aaaa_records, store_pid, opts)
+            true -> a_response
+          end
         end
-      end
     end
   end
 
@@ -527,7 +707,9 @@ defmodule RouterClatElixir.ControlPlane do
   defp forward_raw(data, %{forward_fun: fun}), do: fun.(data)
 
   defp forward_raw(data, opts) do
-    Enum.find_value(opts.upstreams, fn upstream -> Dns.forward_query(data, upstream) end)
+    Enum.find_value(opts.upstreams, fn upstream ->
+      Dns.forward_query(data, upstream, 5_000, Map.get(opts, :upstream_pool))
+    end)
   end
 
   defp now_secs, do: System.system_time(:millisecond) / 1000
