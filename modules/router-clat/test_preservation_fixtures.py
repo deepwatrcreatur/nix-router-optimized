@@ -9,8 +9,14 @@ import unittest
 
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from importlib.machinery import SourceFileLoader
-clat_dns = SourceFileLoader("clat_dns", os.path.join(os.path.dirname(__file__), "clat-dns.py")).load_module()
+from importlib.util import module_from_spec, spec_from_file_location
+
+_CLAT_DNS_SPEC = spec_from_file_location(
+    "clat_dns",
+    os.path.join(os.path.dirname(__file__), "clat-dns.py"),
+)
+clat_dns = module_from_spec(_CLAT_DNS_SPEC)
+_CLAT_DNS_SPEC.loader.exec_module(clat_dns)
 
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -90,7 +96,9 @@ def build_response_with_records(query, a_ips=None, aaaa_ips=None, rcode=0, ttl=3
 
 class TestPreservationFixtures(unittest.TestCase):
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.tmpdir = self._tmpdir.name
         self.artifact = os.path.join(self.tmpdir, "artifact.json")
         self.status_path = os.path.join(self.tmpdir, "status.json")
 
