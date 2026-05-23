@@ -112,8 +112,7 @@ class SpeedtestWidget extends BaseWidget {
     this.setProgress(0);
 
     try {
-      const response = await fetch('/api/speedtest/run', { method: 'POST' });
-      const data = await response.json();
+      const data = await this.fetchMutationAPI('/speedtest/run', { method: 'POST' });
 
       if (data.error) {
         this.showError(data.error);
@@ -125,7 +124,7 @@ class SpeedtestWidget extends BaseWidget {
       // Start polling for results
       this.startPolling();
     } catch (error) {
-      this.showError('Failed to start speed test');
+      this.showError(error.message || 'Failed to start speed test');
       this.isRunning = false;
       this.hideProgress();
     }

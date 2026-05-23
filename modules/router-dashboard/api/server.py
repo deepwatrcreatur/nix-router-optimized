@@ -12,6 +12,7 @@ import os
 import csv
 import re
 import shlex
+import secrets
 import socket
 import ipaddress
 import time
@@ -51,6 +52,11 @@ try:
     WOL_DEVICES = json.loads(os.environ.get('DASHBOARD_WOL_DEVICES', '[]'))
 except json.JSONDecodeError:
     WOL_DEVICES = []
+MUTATION_AUTH_TOKEN_FILE = os.environ.get('DASHBOARD_MUTATION_AUTH_TOKEN_FILE', '')
+try:
+    DASHBOARD_SERVICE_CONTROL = json.loads(os.environ.get('DASHBOARD_SERVICE_CONTROL_SERVICES', '[]'))
+except json.JSONDecodeError:
+    DASHBOARD_SERVICE_CONTROL = []
 INVENTORY_FILE = os.environ.get('DASHBOARD_INVENTORY_FILE', '')
 INVENTORY_ENABLED = os.environ.get('DASHBOARD_INVENTORY_ENABLED', '0') == '1'
 
@@ -184,9 +190,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         path = parsed.path
 
         if path == '/api/speedtest/run':
-            self.handle_speedtest_run()
+            if self.require_mutation_auth('run dashboard speed tests'):
+                self.handle_speedtest_run()
         elif path == '/api/wol/wake':
-            self.handle_wol_wake()
+            if self.require_mutation_auth('send Wake-on-LAN packets'):
+                self.handle_wol_wake()
+        elif path == '/api/services/control':
+            if self.require_mutation_auth('control dashboard-managed services'):
+                self.handle_service_control()
         else:
             self.send_error(404, 'API endpoint not found')
 
@@ -202,6 +213,37 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
     def send_error_json(self, status, message):
         """Send JSON error response"""
         self.send_json({'error': message}, status)
+
+    def get_mutation_auth_token(self):
+        """Read the shared dashboard mutation token from its runtime file"""
+        if not MUTATION_AUTH_TOKEN_FILE:
+            return None
+
+        try:
+            with open(MUTATION_AUTH_TOKEN_FILE, 'r') as handle:
+                token = handle.read().strip()
+                return token or None
+        except Exception:
+            return None
+
+    def require_mutation_auth(self, action_label='perform dashboard mutations'):
+        """Require a valid bearer token for write endpoints"""
+        configured_token = self.get_mutation_auth_token()
+        if not configured_token:
+            self.send_error_json(403, 'Dashboard mutation auth is not configured')
+            return False
+
+        auth_header = self.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            self.send_error_json(401, f'Bearer token required to {action_label}')
+            return False
+
+        provided_token = auth_header.split(' ', 1)[1].strip()
+        if not provided_token or not secrets.compare_digest(provided_token, configured_token):
+            self.send_error_json(403, 'Invalid dashboard mutation token')
+            return False
+
+        return True
 
     # === API Handlers ===
 
@@ -417,9 +459,38 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
         results = []
         for service in services_to_check:
-            results.append(self.get_service_status(systemctl, service))
+            status = self.get_service_status(systemctl, service)
+            status['control'] = self.get_service_control_metadata(status)
+            results.append(status)
 
-        self.send_json({'services': results})
+        self.send_json({
+            'services': results,
+            'controlBoundary': self.get_control_boundary()
+        })
+
+    def get_control_boundary(self):
+        """Describe the supported dashboard mutation boundary"""
+        return {
+            'authConfigured': bool(self.get_mutation_auth_token()),
+            'authType': 'bearer-token',
+            'tokenFileConfigured': bool(MUTATION_AUTH_TOKEN_FILE),
+            'mutationsRequireAuth': True,
+            'serviceControl': {
+                'enabled': bool(DASHBOARD_SERVICE_CONTROL),
+                'supportedActions': ['restart'],
+                'services': DASHBOARD_SERVICE_CONTROL
+            },
+            'otherMutationEndpoints': [
+                {
+                    'path': '/api/speedtest/run',
+                    'kind': 'speedtest'
+                },
+                {
+                    'path': '/api/wol/wake',
+                    'kind': 'wake-on-lan'
+                }
+            ]
+        }
 
     def handle_vpn_status(self):
         """Declarative VPN status from router module metadata"""
@@ -2728,6 +2799,74 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_error_json(500, f'Failed to send magic packet: {e}')
 
+    def handle_service_control(self):
+        """Restart explicitly allowed services"""
+        if not DASHBOARD_SERVICE_CONTROL:
+            self.send_error_json(403, 'Dashboard service control is not configured')
+            return
+
+        try:
+            content_length = int(self.headers.get('Content-Length', '0'))
+            raw_body = self.rfile.read(content_length) if content_length > 0 else b'{}'
+            payload = json.loads(raw_body.decode('utf-8'))
+        except json.JSONDecodeError:
+            self.send_error_json(400, 'Invalid JSON payload')
+            return
+
+        service_name = str(payload.get('service', '')).strip()
+        action = str(payload.get('action', '')).strip().lower()
+
+        if action != 'restart':
+            self.send_error_json(403, 'Only the restart action is supported by dashboard service control')
+            return
+
+        service_entry = self.get_allowed_service_control(service_name)
+        if not service_entry:
+            self.send_error_json(403, 'Requested service is not in the dashboard control allowlist')
+            return
+
+        systemctl = self.find_systemctl()
+        if not systemctl:
+            self.send_error_json(500, 'systemctl not found')
+            return
+
+        service_status = self.get_service_status(systemctl, service_entry.get('name') or service_entry.get('unit'))
+        if not service_status.get('systemdUnit'):
+            self.send_error_json(404, f'Service {service_name} is not present on this system')
+            return
+
+        command = [
+            '/run/wrappers/bin/sudo',
+            '/run/current-system/sw/bin/systemctl',
+            'restart',
+            service_entry['unit'],
+        ]
+
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env={**os.environ, 'LC_ALL': 'C'}
+            )
+        except Exception as exc:
+            self.send_error_json(500, f'Failed to execute service control: {exc}')
+            return
+
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout).strip() or 'systemctl restart failed'
+            self.send_error_json(500, message)
+            return
+
+        refreshed = self.get_service_status(systemctl, service_entry.get('name') or service_entry.get('unit'))
+        refreshed['control'] = self.get_service_control_metadata(refreshed)
+        self.send_json({
+            'status': 'ok',
+            'action': action,
+            'service': refreshed
+        })
+
     def get_technitium_token(self):
         """Get Technitium API token from file or cache"""
         global TECHNITIUM_TOKEN_CACHE
@@ -2837,6 +2976,29 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             ['/run/current-system/sw/bin/systemctl', '/usr/bin/systemctl', 'systemctl'],
             ['--version']
         )
+
+    def get_allowed_service_control(self, service_name):
+        """Return the configured control entry for a dashboard service name"""
+        for entry in DASHBOARD_SERVICE_CONTROL:
+            if entry.get('name') == service_name:
+                return entry
+        return None
+
+    def get_service_control_metadata(self, service_status):
+        """Attach bounded control metadata to one service status row"""
+        entry = self.get_allowed_service_control(service_status.get('name', ''))
+        if not entry:
+            return {
+                'allowed': False,
+                'actions': [ ],
+                'unit': service_status.get('systemdUnit') or service_status.get('unit') or ''
+            }
+
+        return {
+            'allowed': True,
+            'actions': entry.get('allowedActions') or ['restart'],
+            'unit': entry.get('unit') or service_status.get('systemdUnit') or service_status.get('unit') or ''
+        }
 
     def get_unit_properties(self, systemctl, service, properties):
         """Return selected systemd properties for a unit"""

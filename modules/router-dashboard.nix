@@ -13,6 +13,26 @@ with lib;
 let
   cfg = config.services.router-dashboard;
   technitiumRuntimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
+  normalizedServiceControlServices = map (
+    entry:
+    let
+      unit = if hasSuffix ".service" entry.unit then entry.unit else "${entry.unit}.service";
+    in
+    {
+      name = entry.name;
+      inherit unit;
+      allowedActions = [ "restart" ];
+    }
+  ) cfg.serviceControl.services;
+  monitoredServiceNames =
+    cfg.services
+    ++ optional (config.services.router-nat64.enable or false) "tayga"
+    ++ optionals (config.services.router-clat.enable or false) [ "router-clat-tayga" "router-clat-dns" ]
+    ++ optional (config.services.router-dns64.enable or false) "unbound"
+    ++ optional (config.services.router-mdns.enable or false) "avahi-daemon"
+    ++ optional (config.services.router-upnp.enable or false) "miniupnpd"
+    ++ optional (config.services.router-bgp.enable or false) "frr";
+  dashboardMutationAuthTokenFile = cfg.mutationAuth.tokenFile;
   hasRouterOption = path: hasAttrByPath path options;
   hasRouterNetworking = hasRouterOption [ "services" "router-networking" "routedInterfaces" ];
   hasRouterDhcp = hasRouterOption [ "services" "router-dhcp" "interfaces" ];
@@ -822,6 +842,46 @@ in {
       description = "Systemd services to monitor";
     };
 
+    mutationAuth.tokenFile = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "/run/agenix/router-dashboard-mutation-token";
+      description = ''
+        Runtime file containing the shared bearer token required for dashboard
+        mutation endpoints. Keep this outside the Nix store, for example via
+        agenix, because the token is read at runtime by the dashboard service.
+      '';
+    };
+
+    serviceControl.services = mkOption {
+      type = types.listOf (types.submodule {
+        options = {
+          name = mkOption {
+            type = types.str;
+            description = "Dashboard-monitored service name to expose as restart-capable.";
+          };
+          unit = mkOption {
+            type = types.str;
+            default = "";
+            description = "Systemd unit to restart. If omitted, the service name is used.";
+          };
+        };
+      });
+      default = [ ];
+      apply = map (entry: entry // { unit = if entry.unit == "" then entry.name else entry.unit; });
+      example = [
+        {
+          name = "caddy";
+          unit = "caddy.service";
+        }
+      ];
+      description = ''
+        Explicit allowlist of dashboard services that may be restarted through
+        the authenticated service-control API. The first supported action set is
+        intentionally narrow: restart only.
+      '';
+    };
+
     refreshInterval = mkOption {
       type = types.int;
       default = 5;
@@ -898,14 +958,9 @@ in {
             label = iface.label;
             role = iface.role;
           }) effectiveInterfaces);
-          DASHBOARD_SERVICES = builtins.toJSON (cfg.services ++
-            optional (config.services.router-nat64.enable or false) "tayga" ++
-            optionals (config.services.router-clat.enable or false) [ "router-clat-tayga" "router-clat-dns" ] ++
-            optional (config.services.router-dns64.enable or false) "unbound" ++
-            optional (config.services.router-mdns.enable or false) "avahi-daemon" ++
-            optional (config.services.router-upnp.enable or false) "miniupnpd" ++
-            optional (config.services.router-bgp.enable or false) "frr"
-          );
+          DASHBOARD_SERVICES = builtins.toJSON monitoredServiceNames;
+          DASHBOARD_MUTATION_AUTH_TOKEN_FILE = if dashboardMutationAuthTokenFile == null then "" else dashboardMutationAuthTokenFile;
+          DASHBOARD_SERVICE_CONTROL_SERVICES = builtins.toJSON normalizedServiceControlServices;
           DASHBOARD_VPNS = builtins.toJSON effectiveVpnServices;
           DASHBOARD_TUNNELS = builtins.toJSON effectiveTunnels;
           DASHBOARD_REMOTE_ADMIN = builtins.toJSON effectiveRemoteAdmin;
@@ -954,7 +1009,8 @@ in {
             "/run/agenix"
           ]
           ++ lib.optional (config.services.router-clat.enable or false) "/run/router-clat"
-          ++ lib.optional (config.services.router-technitium.enable or false) technitiumRuntimeApiTokenPath;
+          ++ lib.optional (config.services.router-technitium.enable or false) technitiumRuntimeApiTokenPath
+          ++ lib.optional (dashboardMutationAuthTokenFile != null) dashboardMutationAuthTokenFile;
         };
 
         path = with pkgs; [
@@ -976,7 +1032,14 @@ in {
       security.sudo.extraConfig = ''
         router-dashboard ALL=(ALL) NOPASSWD: ${pkgs.fail2ban}/bin/fail2ban-client status
         router-dashboard ALL=(ALL) NOPASSWD: ${pkgs.fail2ban}/bin/fail2ban-client status *
-      '';
+      '' + concatMapStrings (entry:
+        let
+          unit = entry.unit;
+        in
+        ''
+          router-dashboard ALL=(root) NOPASSWD: ${pkgs.systemd}/bin/systemctl restart ${unit}
+        ''
+      ) normalizedServiceControlServices;
 
       # Allow dashboard port in NixOS firewall when it is active.
       # NOTE: when router-firewall is enabled instead, add the dashboard port via:
@@ -993,5 +1056,18 @@ in {
         services.router-firewall.trustedTcpPorts = [ cfg.port ];
       }
     ))
+
+    {
+      assertions = [
+        {
+          assertion = cfg.serviceControl.services == [ ] || dashboardMutationAuthTokenFile != null;
+          message = "router-dashboard service control requires services.router-dashboard.mutationAuth.tokenFile.";
+        }
+        {
+          assertion = all (entry: builtins.elem entry.name monitoredServiceNames) normalizedServiceControlServices;
+          message = "router-dashboard service-control services must also be present in the monitored dashboard service list.";
+        }
+      ];
+    }
   ];
 }

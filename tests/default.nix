@@ -74,6 +74,10 @@ let
   routerMwanChecks = import ./router-mwan-eval.nix {
     inherit self eval;
   };
+
+  routerDashboardServiceControlChecks = import ./router-dashboard-service-control.nix {
+    inherit self eval lib pkgs;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -114,6 +118,7 @@ in
 // keaChecks
 // routerDashboardInventoryChecks
 // routerDashboardFirewallChecks
+// routerDashboardServiceControlChecks
 // routerSecurityHardeningChecks
 // routerZonesChecks
 // routerClatObservabilityChecks

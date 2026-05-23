@@ -16,6 +16,10 @@ class BaseWidget {
     this.errorMessage = '';
   }
 
+  static get mutationTokenStorageKey() {
+    return 'router-dashboard-mutation-token';
+  }
+
   generateId() {
     return 'widget-' + Math.random().toString(36).substr(2, 9);
   }
@@ -142,6 +146,52 @@ class BaseWidget {
       throw new Error(`API error: ${response.status}`);
     }
     return response.json();
+  }
+
+  getMutationToken() {
+    try {
+      return sessionStorage.getItem(BaseWidget.mutationTokenStorageKey) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  setMutationToken(token) {
+    try {
+      if (token) {
+        sessionStorage.setItem(BaseWidget.mutationTokenStorageKey, token);
+      } else {
+        sessionStorage.removeItem(BaseWidget.mutationTokenStorageKey);
+      }
+    } catch {
+      // Ignore storage failures in locked-down browsers.
+    }
+  }
+
+  async fetchMutationAPI(endpoint, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const token = this.getMutationToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const response = await fetch(`/api${endpoint}`, {
+      ...options,
+      headers
+    });
+
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || `API error: ${response.status}`);
+    }
+
+    return data;
   }
 
   /**
