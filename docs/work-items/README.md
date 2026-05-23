@@ -25,7 +25,7 @@ tracked separately from the dashboard planning docs.
 - [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `ready`
 - [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `ready`
 - [54-ipv6-multiwan-source-routing-guardrails-and-tests](./54-ipv6-multiwan-source-routing-guardrails-and-tests.md) — `ready`
-- [56-router-clat-preservation-fixtures-and-parity-tests](./56-router-clat-preservation-fixtures-and-parity-tests.md) — `ready`
+- [56-router-clat-preservation-fixtures-and-parity-tests](./56-router-clat-preservation-fixtures-and-parity-tests.md) — `in-progress`
 - [57-router-clat-elixir-control-plane-path-and-selector](./57-router-clat-elixir-control-plane-path-and-selector.md) — `ready`
 - [58-router-clat-elixir-extraction-and-release-boundary](./58-router-clat-elixir-extraction-and-release-boundary.md) — `ready`
 - [59-dashboard-service-control-auth-and-boundary](./59-dashboard-service-control-auth-and-boundary.md) — `ready`

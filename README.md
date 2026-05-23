@@ -674,6 +674,7 @@ Additional docs:
 - `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
 - `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
 - `docs/router-clat-control-plane-contract.md` for the backend-neutral CLAT control-plane contract
+- `docs/router-clat-preservation-plan.md` for preserved behavior fixtures and parity scope
 - `docs/router-bgp.md` for BGP support boundaries, examples, and operational verification
 
 ## PPPoE Example

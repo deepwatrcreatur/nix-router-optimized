@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "state": "active-idle",
+  "backend": {
+    "name": "fake-backend",
+    "healthy": true
+  },
+  "dns": {
+    "listening": true
+  },
+  "mappings": {
+    "active": 0
+  },
+  "boundaries": {
+    "ha": false,
+    "multiWan": false,
+    "note": "Single-owner fixture"
+  }
+}

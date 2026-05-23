@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "mappingCount": 1,
+  "requiredMappingKeys": [
+    "ipv4",
+    "ipv6",
+    "expiresAt",
+    "state"
+  ],
+  "requiredStates": [
+    "active"
+  ]
+}

@@ -1,6 +1,6 @@
 # 56 - Router CLAT Preservation Fixtures and Parity Tests
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -27,16 +27,16 @@ behavior for faith.
 
 ## Requirements
 
-- [ ] Add a preservation-test plan and initial fixtures covering at least:
+- [x] Add a preservation-test plan and initial fixtures covering at least:
       - DNS synthesis parity
       - persistence across restart
       - TTL / GC behavior
       - crash recovery and atomic state writes
       - reload / reconcile behavior
       - status / degraded-state reporting
-- [ ] Create black-box comparison fixtures so the current Python path and a
+- [x] Create black-box comparison fixtures so the current Python path and a
       future Elixir path can be exercised against the same cases
-- [ ] Add backend-isolation tests or a fake backend path proving the suite does
+- [x] Add backend-isolation tests or a fake backend path proving the suite does
       not silently encode Tayga as the only legal architecture
 - [ ] Add or extend NixOS VM tests for:
       - service start
@@ -47,14 +47,23 @@ behavior for faith.
 
 ## Verification
 
-- [ ] The project has a named set of preserved behaviors that can be checked
+- [x] The project has a named set of preserved behaviors that can be checked
       against both implementations
-- [ ] At least one parity path exists that can compare Python and future Elixir
+- [x] At least one parity path exists that can compare Python and future Elixir
       behavior using the same fixtures
-- [ ] The test suite covers both pure control-plane semantics and whole-system
+- [x] The test suite covers both pure control-plane semantics and whole-system
       integration behavior
 
 ## Notes
 
 This item is intentionally about behavior preservation, not about declaring the
 Elixir path preferred yet.
+
+## Outcome Notes
+
+- Added a named preservation-plan note and initial backend-neutral fixtures.
+- Added a shared Python parity harness that validates both current Python output
+  and a fake non-Tayga backend fixture against the same public shape.
+- Recorded the current whole-system boundary honestly: the repo now has eval and
+  unit-test preservation coverage, while dedicated CLAT VM coverage remains the
+  next extraction target rather than hidden implied scope.

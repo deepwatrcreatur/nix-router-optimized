@@ -1,0 +1,14 @@
+{
+  "queryName": "v6only.example.com",
+  "upstream": {
+    "aRecords": [],
+    "aaaaRecords": [
+      "2001:db8::1"
+    ]
+  },
+  "expected": {
+    "synthesizesARecord": true,
+    "allocatesMapping": true,
+    "mappingIpv6": "2001:db8::1"
+  }
+}

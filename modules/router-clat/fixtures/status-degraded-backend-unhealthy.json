@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "state": "degraded",
+  "backend": {
+    "healthy": false
+  },
+  "boundaries": {
+    "ha": false,
+    "multiWan": false
+  }
+}
