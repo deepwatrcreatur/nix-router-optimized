@@ -16,6 +16,10 @@ in
       description = ''
         List of network interfaces that should participate in mDNS reflection.
         If null, all local interfaces (except loopback and point-to-point) will be used.
+
+        This reflects multicast `.local`-style discovery traffic. It is complementary
+        to ordinary unicast DNS plus DHCP search domains; it is not a substitute for
+        single-label shortname resolution via DHCP option 15 / 119.
       '';
     };
 

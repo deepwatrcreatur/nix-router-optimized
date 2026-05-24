@@ -61,7 +61,14 @@ in
     searchDomains = mkOption {
       type = types.listOf types.str;
       default = [ ];
-      description = "Search domains written into resolv.conf when writeResolvConf is enabled.";
+      description = ''
+        Search domains written into the router host's `resolv.conf` when
+        `writeResolvConf` is enabled.
+
+        When `router-kea` is also enabled and `services.router-kea.dhcp4.searchDomains`
+        is left unset, this list becomes the default source for DHCP option 15
+        (`domain-name`) and option 119 (`domain-search`) advertisement.
+      '';
     };
 
     disableResolved = mkOption {

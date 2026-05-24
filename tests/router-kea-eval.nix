@@ -67,6 +67,17 @@ in
           }
           {
             assertion =
+              config.environment.etc."resolv.conf".text
+              == ''
+                search deepwatercreature.com
+                nameserver 127.0.0.1
+                nameserver 1.1.1.1
+                nameserver 8.8.8.8
+              '';
+            message = "router-dns-service should render the router host resolv.conf search line when searchDomains are declared.";
+          }
+          {
+            assertion =
               (findOption "ntp-servers" scopeOptions) != [ ]
               && (builtins.head (findOption "ntp-servers" scopeOptions)).data == "10.10.200.1";
             message = "router-kea should advertise DHCP option 42 NTP servers when router-ntp is enabled.";
