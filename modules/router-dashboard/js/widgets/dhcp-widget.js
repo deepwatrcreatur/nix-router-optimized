@@ -159,6 +159,7 @@ class DhcpWidget extends BaseWidget {
     if (!expiry) return '--';
     try {
       const date = new Date(expiry);
+      if (Number.isNaN(date.getTime())) return expiry;
       const now = new Date();
       const diff = date - now;
 
