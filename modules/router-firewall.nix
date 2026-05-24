@@ -679,10 +679,40 @@ in
         let
           flowIfaces =
             if cfg.flowtable.interfaces != [ ] then cfg.flowtable.interfaces else allRouterInterfaces;
+          flowIfaceArgs = concatStringsSep " " (map escapeShellArg flowIfaces);
         in
         ''
-          ${pkgs.nftables}/bin/nft 'add flowtable inet filter f { hook ingress priority 0; devices = { ${quotedSet flowIfaces} }; }' 2>/dev/null || true
-          ${pkgs.nftables}/bin/nft 'insert rule inet filter forward position 0 ip protocol { tcp, udp } flow add @f' 2>/dev/null || true
+          configured_ifaces=(${flowIfaceArgs})
+          existing_ifaces=()
+          missing_ifaces=()
+
+          for iface in "''${configured_ifaces[@]}"; do
+            if [ -e "/sys/class/net/$iface" ]; then
+              existing_ifaces+=("$iface")
+            else
+              missing_ifaces+=("$iface")
+            fi
+          done
+
+          if [ "''${#missing_ifaces[@]}" -gt 0 ]; then
+            echo "router-firewall-flowtable: skipping missing interfaces: ''${missing_ifaces[*]}" >&2
+          fi
+
+          if [ "''${#existing_ifaces[@]}" -eq 0 ]; then
+            echo "router-firewall-flowtable: no flowtable interfaces are present; skipping setup" >&2
+            exit 0
+          fi
+
+          flowtable_devices="$(printf '"%s", ' "''${existing_ifaces[@]}")"
+          flowtable_devices="''${flowtable_devices%, }"
+
+          if ! ${pkgs.nftables}/bin/nft list flowtable inet filter f >/dev/null 2>&1; then
+            ${pkgs.nftables}/bin/nft "add flowtable inet filter f { hook ingress priority 0; devices = { ''${flowtable_devices} }; }"
+          fi
+
+          if ! ${pkgs.nftables}/bin/nft list chain inet filter forward 2>/dev/null | ${pkgs.gnugrep}/bin/grep -F 'flow add @f' >/dev/null; then
+            ${pkgs.nftables}/bin/nft 'insert rule inet filter forward position 0 ip protocol { tcp, udp } flow add @f'
+          fi
         '';
     };
   };

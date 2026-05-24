@@ -82,6 +82,37 @@ in
     ])
   ];
 
+  router-firewall-flowtable-filters-missing-interfaces-eval = eval.mkNixosEvalCheck "router-firewall-flowtable-filters-missing-interfaces" [
+    self.nixosModules.router-firewall
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth-wan" ];
+        lanInterfaces = [
+          "br-lan"
+          "br-lan.20"
+        ];
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion =
+          lib.hasInfix "/sys/class/net/$iface" config.systemd.services.router-firewall-flowtable.script;
+        message = "router-firewall flowtable helper should filter interfaces against /sys/class/net.";
+      }
+      {
+        assertion =
+          lib.hasInfix "skipping missing interfaces" config.systemd.services.router-firewall-flowtable.script;
+        message = "router-firewall flowtable helper should report skipped interfaces.";
+      }
+      {
+        assertion =
+          lib.hasInfix "no flowtable interfaces are present; skipping setup" config.systemd.services.router-firewall-flowtable.script;
+        message = "router-firewall flowtable helper should exit cleanly when no configured interfaces exist.";
+      }
+    ])
+  ];
+
   router-wireguard-route-to-derived-wan-eval = eval.mkNixosEvalCheck "router-wireguard-route-to-derived-wan" [
     self.nixosModules.router-optimizations
     self.nixosModules.router-firewall
