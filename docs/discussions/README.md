@@ -16,6 +16,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [10](./10-clat-first-slice-lessons-cleanup-and-refinement.md) | CLAT First-Slice Lessons, Cleanup, and Refinement | 2026-05-20 | Closed |
 | [11](./11-phpipam-vs-repo-native-host-inventory.md) | Whether `phpIPAM` Should Organize IP-to-Host Inventory | 2026-05-19 | Closed |
 | [12](./12-phpipam-borrowing-vs-repo-native-inventory-browser.md) | Borrowing from `phpIPAM` for Router Dashboard Inventory Browsing | 2026-05-21 | Closed |
+| [13](./13-ipv6-reliance-in-an-upgraded-homelan.md) | Whether an Upgraded Homelan Should Lean More on IPv6 | 2026-05-23 | Closed |
 
 ## Methodology
 
