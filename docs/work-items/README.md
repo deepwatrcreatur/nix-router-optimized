@@ -22,6 +22,7 @@ tracked separately from the dashboard planning docs.
 
 ## Recently Completed
 
+- [76-consumer-dns-service-active-owner-boundary-and-technitium-clustering](./76-consumer-dns-service-active-owner-boundary-and-technitium-clustering.md) — `done`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `done`
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `done`
 - [40-router-clat-runtime-backend-and-lifecycle](./40-router-clat-runtime-backend-and-lifecycle.md) — `done`
