@@ -18,10 +18,12 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- No active items right now.
+- [78-coarse-ci-suites-and-local-check-boundary](./78-coarse-ci-suites-and-local-check-boundary.md) — `ready`
+- [79-nix-ci-worker-second-baseline-and-regression-check](./79-nix-ci-worker-second-baseline-and-regression-check.md) — `ready`
 
 ## Recently Completed
 
+- [77-exported-ci-check-surface-audit-and-suite-plan](./77-exported-ci-check-surface-audit-and-suite-plan.md) — `done`
 - [76-consumer-dns-service-active-owner-boundary-and-technitium-clustering](./76-consumer-dns-service-active-owner-boundary-and-technitium-clustering.md) — `done`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `done`
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `done`
