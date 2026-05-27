@@ -18,10 +18,19 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- No active items right now.
+1. [81-router-jool-experimental-backend-spike.md](./81-router-jool-experimental-backend-spike.md) — `ready`
+2. [82-nix-ci-provider-evidence-and-suite-tuning.md](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `ready`
 
 ## Recently Completed
 
+- [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `done`
+- [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
+- [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
+- [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `done`
+- [63-router-nat64-backend-abstraction-and-jool-spike](./63-router-nat64-backend-abstraction-and-jool-spike.md) — `done`
+- [79-nix-ci-worker-second-baseline-and-regression-check](./79-nix-ci-worker-second-baseline-and-regression-check.md) — `done`
+- [78-coarse-ci-suites-and-local-check-boundary](./78-coarse-ci-suites-and-local-check-boundary.md) — `done`
+- [77-exported-ci-check-surface-audit-and-suite-plan](./77-exported-ci-check-surface-audit-and-suite-plan.md) — `done`
 - [76-consumer-dns-service-active-owner-boundary-and-technitium-clustering](./76-consumer-dns-service-active-owner-boundary-and-technitium-clustering.md) — `done`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `done`
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `done`
