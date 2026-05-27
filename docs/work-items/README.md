@@ -18,10 +18,12 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-No ranked `ready` items currently.
+- [81-router-jool-experimental-backend-spike.md](./81-router-jool-experimental-backend-spike.md) — `ready`
+- [82-nix-ci-provider-evidence-and-suite-tuning.md](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `ready`
 
 ## Recently Completed
 
+- [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `done`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
 - [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `done`

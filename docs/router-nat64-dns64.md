@@ -11,6 +11,8 @@ Current repo boundary:
 
 - `router-nat64` is the repo's present **PLAT-equivalent** translation surface
 - the currently supported backend is **Tayga**
+- NAT64 and CLAT share an internal translation-backend helper, but that is an
+  implementation refactor, not a widened backend support promise
 - this is a real supported path today, but it is not yet presented as a
   backend-neutral translation layer
 
@@ -18,7 +20,8 @@ If you are evaluating future backends such as Jool, read
 [`router-translation-backends.md`](./router-translation-backends.md) before
 treating Tayga-specific artifacts or service names as the permanent public
 contract.
-
+- NAT64 and CLAT share an internal translation-backend helper, but that is an
+  implementation refactor, not a widened backend support promise
 **When you need this:**
 - You want IPv6-only LAN segments (no IPv4 assigned to clients)
 - You have working IPv6 on the WAN (native or tunnelled)

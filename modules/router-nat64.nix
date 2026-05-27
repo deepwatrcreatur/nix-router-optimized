@@ -5,6 +5,18 @@ with lib;
 let
   cfg = config.services.router-nat64;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
+  translationBackendLib = import ./router-translation-backend-lib.nix { inherit lib; };
+  translationBackend = translationBackendLib.mkTaygaAdapter {
+    interfaceName = "nat64";
+    inherit (cfg)
+      ipv4Pool
+      ipv6Prefix
+      ipv4RouterAddr
+      ipv6RouterAddr
+      ;
+    stateDirectory = "/var/lib/tayga";
+    serviceUnit = "tayga.service";
+  };
 in
 {
   options.services.router-nat64 = {
@@ -37,32 +49,14 @@ in
 
   config = mkIf cfg.enable (mkMerge [
     {
-      services.tayga = {
-        enable = true;
-        ipv4 = {
-          address = cfg.ipv4RouterAddr;
-          router.address = cfg.ipv4RouterAddr;
-          pool = {
-            address = head (splitString "/" cfg.ipv4Pool);
-            prefixLength = toInt (last (splitString "/" cfg.ipv4Pool));
-          };
-        };
-        ipv6 = {
-          router.address = cfg.ipv6RouterAddr;
-          pool = {
-            address = head (splitString "/" cfg.ipv6Prefix);
-            prefixLength = toInt (last (splitString "/" cfg.ipv6Prefix));
-          };
-        };
-      };
-
+      services.tayga = translationBackend.tayga.serviceAttrs;
     }
 
     (if hasRouterFirewall then {
       services.router-firewall.extraForwardRules = mkIf (
         config.services.router-firewall.enable or false
       ) ''
-        iifname "nat64" accept comment "Allow NAT64 translated traffic"
+        iifname "${translationBackend.firewall.forwardInputInterface}" accept comment "Allow NAT64 translated traffic"
       '';
     } else {})
   ]);

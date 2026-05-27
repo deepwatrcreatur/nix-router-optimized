@@ -40,6 +40,9 @@ Current repo stance:
 
 - Tayga remains the default and only supported NAT64 backend
 - Tayga is also the current runtime backend for the bounded `router-clat` slice
+- NAT64 and CLAT now share an internal translation-backend adapter helper so
+  backend-specific interface, lifecycle, and config details are not duplicated
+  across modules
 - future backends must preserve the repo's declared contract instead of changing
   operator-facing semantics silently
 
@@ -73,6 +76,8 @@ These are allowed to remain Tayga-specific today:
 - `services.tayga`
 - `/etc/router-clat/tayga.conf`
 - `router-clat-tayga.service`
+- the current internal adapter implementation in
+  `modules/router-translation-backend-lib.nix`
 - exact Tayga config rendering and reload behavior
 - Tayga-specific health checks
 
