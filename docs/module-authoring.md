@@ -191,7 +191,9 @@ items from the active queue in `docs/work-items/README.md`.
 
 ## Evaluation Tests
 
-Eval checks live under `tests/` and are exported by `tests/default.nix`.
+Eval checks live under `tests/`. The default exported CI surface is assembled in
+`tests/default.nix`, while the full narrow-leaf set remains available through
+the flake's `checksFineGrained` output.
 
 Use `tests/vpn-smoke.nix` for router VPN and overlay behavior. Use
 `tests/doc-examples.nix` for examples copied into docs. For a new topic, add a
@@ -229,7 +231,7 @@ Validate with targeted checks first, then run the full flake check before
 opening a PR:
 
 ```bash
-nix build .#checks.x86_64-linux.router-<name>-standalone-eval
+nix build .#checksFineGrained.x86_64-linux.router-<name>-standalone-eval
 nix flake check
 ```
 

@@ -1,6 +1,6 @@
 # 63 - Router NAT64 Backend Abstraction and Jool Spike
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -43,11 +43,11 @@ unspoken permanent ABI."
 
 ## Requirements
 
-- [ ] Update docs / README surfaces so the current state is explicit:
+- [x] Update docs / README surfaces so the current state is explicit:
       - `router-nat64` is the repo's present PLAT-equivalent path
       - `router-clat` is the customer-side translation slice
       - the current end-to-end story is Tayga-backed and not yet backend-neutral
-- [ ] Define the minimum backend contract that a NAT64 engine must satisfy for
+- [x] Define the minimum backend contract that a NAT64 engine must satisfy for
       this repo, including at least:
       - address/prefix inputs
       - MTU / fragmentation behavior and any MSS-clamping expectations
@@ -56,24 +56,24 @@ unspoken permanent ABI."
       - observability/status surfaces
       - artifact/config surfaces that are allowed to stay backend-specific vs
         those that must become abstract
-- [ ] Decide whether backend selection belongs:
+- [x] Decide whether backend selection belongs:
       - only in `router-nat64`
       - in both `router-nat64` and `router-clat`
       - or behind a shared translation-backend contract
-- [ ] Add a bounded Jool spike only if it stays explicitly experimental and does
+- [x] Add a bounded Jool spike only if it stays explicitly experimental and does
       not silently replace Tayga as the default supported path
-- [ ] Ensure any Jool path is described as a spike / evaluation path unless and
+- [x] Ensure any Jool path is described as a spike / evaluation path unless and
       until parity, packaging, and operational support are proven
 
 ## Verification
 
-- [ ] A contributor can read the repo and tell that NAT64/PLAT already exists
+- [x] A contributor can read the repo and tell that NAT64/PLAT already exists
       today via `router-nat64`
-- [ ] The repo has an explicit translation-backend boundary rather than treating
+- [x] The repo has an explicit translation-backend boundary rather than treating
       Tayga-specific files and unit names as the public contract
-- [ ] If a Jool path lands, it is selectable intentionally and surfaced as
+- [x] If a Jool path lands, it is selectable intentionally and surfaced as
       experimental rather than implied default behavior
-- [ ] If no Jool path lands yet, the repo still records the contract and the
+- [x] If no Jool path lands yet, the repo still records the contract and the
       rationale for keeping Tayga as the current supported backend
 
 ## Notes
@@ -85,3 +85,17 @@ It should not pretend that:
 - NAT64/PLAT is currently absent
 - Jool is automatically better just because it is kernel-space
 - or CLAT/NAT64 backend replacement is a one-file implementation swap
+
+## Outcome
+
+- Added [`docs/router-translation-backends.md`](../router-translation-backends.md)
+  as the durable repo-local translation backend boundary document.
+- Made README and NAT64 docs explicit that:
+  - `router-nat64` is the current PLAT-equivalent path
+  - `router-clat` is the customer-side translation slice
+  - the current supported translation story is Tayga-backed
+- Recorded the decision that future backend selection belongs behind a **shared
+  translation-backend contract**, not ad hoc selectors on unrelated module
+  surfaces.
+- Documented Jool as a future experimental spike candidate only, not as an
+  implied or silent replacement path.

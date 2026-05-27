@@ -18,10 +18,17 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- No active items right now.
+No ranked `ready` items currently.
 
 ## Recently Completed
 
+- [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
+- [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
+- [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `done`
+- [63-router-nat64-backend-abstraction-and-jool-spike](./63-router-nat64-backend-abstraction-and-jool-spike.md) — `done`
+- [79-nix-ci-worker-second-baseline-and-regression-check](./79-nix-ci-worker-second-baseline-and-regression-check.md) — `done`
+- [78-coarse-ci-suites-and-local-check-boundary](./78-coarse-ci-suites-and-local-check-boundary.md) — `done`
+- [77-exported-ci-check-surface-audit-and-suite-plan](./77-exported-ci-check-surface-audit-and-suite-plan.md) — `done`
 - [76-consumer-dns-service-active-owner-boundary-and-technitium-clustering](./76-consumer-dns-service-active-owner-boundary-and-technitium-clustering.md) — `done`
 - [42-router-clat-observability-and-runtime-validation](./42-router-clat-observability-and-runtime-validation.md) — `done`
 - [41-router-clat-dns-synthesis-and-mapping-state](./41-router-clat-dns-synthesis-and-mapping-state.md) — `done`
@@ -31,7 +38,6 @@ tracked separately from the dashboard planning docs.
 - [74-router-dhcp-single-active-boundary-and-promotion-runbook](./74-router-dhcp-single-active-boundary-and-promotion-runbook.md) — `done`
 - [73-lan-shortname-resolution-boundary-and-validation](./73-lan-shortname-resolution-boundary-and-validation.md) — `done`
 - [63-live-router-kea-ha-convergence-evidence-and-closure](./63-live-router-kea-ha-convergence-evidence-and-closure.md) — `done`
-- [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [60-router-bgp-promotion-aware-ha-ownership](./60-router-bgp-promotion-aware-ha-ownership.md) — `done`
 - [61-dashboard-light-theme-parity](./61-dashboard-light-theme-parity.md) — `done`
 - [59-dashboard-service-control-auth-and-boundary](./59-dashboard-service-control-auth-and-boundary.md) — `done`
@@ -40,8 +46,6 @@ tracked separately from the dashboard planning docs.
 - [56-router-clat-preservation-fixtures-and-parity-tests](./56-router-clat-preservation-fixtures-and-parity-tests.md) — `done`
 - [55-router-clat-control-plane-contract-and-preservation-spec](./55-router-clat-control-plane-contract-and-preservation-spec.md) — `done`
 - [54-ipv6-multiwan-source-routing-guardrails-and-tests](./54-ipv6-multiwan-source-routing-guardrails-and-tests.md) — `done`
-- [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `done`
-- [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
 - [51-dhcp-option-108-backend-parity-or-explicit-non-support](./51-dhcp-option-108-backend-parity-or-explicit-non-support.md) — `done`
 - [50-router-kea-dhcp-option-108-and-guardrails](./50-router-kea-dhcp-option-108-and-guardrails.md) — `done`
 - [49-dhcp-option-108-support-boundary-and-docs](./49-dhcp-option-108-support-boundary-and-docs.md) — `done`

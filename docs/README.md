@@ -43,6 +43,11 @@ If you're an AI agent picking up this work, start here:
 | [CURRENT-STATE.md](./CURRENT-STATE.md) | Analysis of original dashboard (historical) |
 | [DASHBOARD_SERVICE_CONTROL.md](./DASHBOARD_SERVICE_CONTROL.md) | Authenticated dashboard mutation boundary |
 | [module-authoring.md](./module-authoring.md) | How to add router-oriented NixOS modules to this flake |
+| [ipv6-multiwan-guide.md](./ipv6-multiwan-guide.md) | Decision ladder for PvD, policy routing, NPTv6, and NAT66 |
+| [router-mwan.md](./router-mwan.md) | Prioritized-uplink failover boundary for `router-mwan` |
+| [router-ci-check-surface-audit.md](./router-ci-check-surface-audit.md) | Audit of the current `checks` surface and proposed CI suite boundary |
+| [router-nix-ci-baseline.md](./router-nix-ci-baseline.md) | Before/after record for the coarse CI suite transition |
+| [router-translation-backends.md](./router-translation-backends.md) | Current NAT64/CLAT backend boundary and future Jool stance |
 
 ### Implementation Phases
 

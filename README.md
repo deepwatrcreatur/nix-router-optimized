@@ -34,7 +34,7 @@ If you are assigning or running agents against this repo, start with:
 - **Technitium Block Lists**: Declarative DNS blocklist presets with additive custom URLs
 - **Kea DHCP**: ISC Kea DHCPv4 with optional RFC2136/TSIG DDNS integration (agenix-safe secret handling)
 - **Router NTP**: Chrony-based NTP server with per-subnet access controls and firewall integration
-- **NAT64**: Tayga-based stateless NAT64 with automatic firewall forward rules
+- **NAT64**: Tayga-backed stateless NAT64 as the repo's current PLAT-equivalent path, with automatic firewall forward rules
 - **DNS64**: Unbound dns64-module wiring for AAAA synthesis from A records
 - **CLAT (Experimental First Slice)**: Contract-oriented legacy IPv4 to IPv6 translation surface with assertions, firewall hooks, and intentionally narrow non-HA scope
 - **SQM**: Script-based smart queue management (fq_codel/CAKE) for WAN shaping
@@ -47,7 +47,7 @@ If you are assigning or running agents against this repo, start with:
     current reference router pair is documented as **single-active DHCP with
     manual promotion**, not active automatic DHCP failover.
   - **WAN HA**: Integrated "Golden MAC" cloning and interface management for seamless ISP failover when using an unmanaged switch topology.
-- **Multi-WAN Failover**: Automatic health-checking and priority switching between multiple ISP uplinks.
+- **Multi-WAN Failover**: Automatic health-checking and prioritized uplink failover between multiple ISP uplinks, not generic ECMP or aggregate load balancing.
 - **WAN MAC Cloning**: Declarative MAC address spoofing for seamless ISP handover
 - **Security & Hardening**:
   - **OpenBSD-tier Kernel Tuning**: Restricted dmesg, ASLR enforcement, and TCP/IP stack hardening.
@@ -586,9 +586,10 @@ services.router-ntp = {
 ```
 
 ### router-nat64
-Stateless NAT64 via Tayga. Automatically adds an nftables forward rule for the nat64 tunnel
-interface when `router-firewall` is loaded. Use the Well-Known Prefix (`64:ff9b::/96`) or a
-custom ULA prefix.
+Stateless NAT64 via Tayga. This is the repo's current PLAT-equivalent translation
+surface. It automatically adds an nftables forward rule for the `nat64` tunnel
+interface when `router-firewall` is loaded. Use the Well-Known Prefix
+(`64:ff9b::/96`) or a custom ULA prefix.
 
 ```nix
 services.router-nat64 = {
@@ -611,6 +612,7 @@ Experimental first-slice CLAT-style surface for legacy IPv4 clients on IPv6-capa
 - can add narrow `router-firewall` allowances for the declared CLAT path
 - does **not** yet claim a full router-grade runtime translation/backend story
 - should currently be treated as a single-router, non-HA feature with a provisional name
+- currently relies on the same Tayga-backed translation family as `router-nat64`
 
 Example:
 
@@ -678,6 +680,60 @@ services.router-bgp = {
 };
 ```
 
+### router-mwan
+Prioritized uplink failover and metric switching for multiple WANs.
+
+This module is for:
+
+- primary / secondary WAN failover
+- prioritized uplinks
+- health-check driven metric changes
+
+It is **not** the repo's promise of:
+
+- aggregate throughput
+- ECMP-style balancing
+- connection-preserving failover
+- state-synchronized HA
+
+Example:
+
+```nix
+services.router-networking = {
+  enable = true;
+  wan = {
+    device = "wan0";
+    metric = 100;
+  };
+  wans.backup = {
+    device = "wan1";
+    metric = 200;
+  };
+};
+
+services.router-mwan = {
+  enable = true;
+  interfaces = [
+    {
+      interface = "wan0";
+      trackIp = "1.1.1.1";
+      primaryMetric = 100;
+      failMetric = 2000;
+    }
+    {
+      interface = "wan1";
+      trackIp = "8.8.8.8";
+      primaryMetric = 200;
+      failMetric = 2100;
+    }
+  ];
+};
+```
+
+For IPv6, treat `router-mwan` as only one part of the story. Read
+[`docs/ipv6-multiwan-guide.md`](./docs/ipv6-multiwan-guide.md) before assuming
+that IPv4 and IPv6 multi-WAN are symmetric.
+
 ## Configuration Examples
 
 See `examples/` directory for complete working configurations.
@@ -686,7 +742,10 @@ Additional docs:
 - `docs/troubleshooting.md` for common operational failures
 - `docs/IMPLEMENTATION-STATUS.md` for current module maturity
 - `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
+- `docs/ipv6-multiwan-guide.md` for the preferred/advanced/escape-hatch IPv6 multi-WAN decision ladder
+- `docs/router-mwan.md` for the prioritized-uplink failover boundary and unsupported expectations
 - `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
+- `docs/router-translation-backends.md` for the current Tayga-backed translation boundary and future backend stance
 - `docs/router-clat-control-plane-contract.md` for the backend-neutral CLAT control-plane contract
 - `docs/router-clat-preservation-plan.md` for preserved behavior fixtures and parity scope
 - `docs/router-clat-elixir-extraction-decision.md` for the current non-extraction decision and future extraction gates

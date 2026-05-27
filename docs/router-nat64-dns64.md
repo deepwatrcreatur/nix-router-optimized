@@ -7,6 +7,18 @@ companion that synthesises AAAA records from A records so clients know to use th
 NAT64 prefix. Together they enable an IPv6-only LAN without losing access to
 IPv4-only servers.
 
+Current repo boundary:
+
+- `router-nat64` is the repo's present **PLAT-equivalent** translation surface
+- the currently supported backend is **Tayga**
+- this is a real supported path today, but it is not yet presented as a
+  backend-neutral translation layer
+
+If you are evaluating future backends such as Jool, read
+[`router-translation-backends.md`](./router-translation-backends.md) before
+treating Tayga-specific artifacts or service names as the permanent public
+contract.
+
 **When you need this:**
 - You want IPv6-only LAN segments (no IPv4 assigned to clients)
 - You have working IPv6 on the WAN (native or tunnelled)
@@ -76,11 +88,11 @@ IPv6-only clients.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `enable` | `false` | Enable NAT64 via Tayga |
+| `enable` | `false` | Enable the current Tayga-backed NAT64 path |
 | `ipv6Prefix` | `64:ff9b::/96` | IPv6 prefix for NAT64 (Well-Known Prefix) |
-| `ipv4Pool` | `192.168.255.0/24` | Internal IPv4 pool for address mapping |
-| `ipv4RouterAddr` | `192.168.255.1` | Tayga tunnel interface IPv4 address |
-| `ipv6RouterAddr` | `64:ff9b::1` | Tayga tunnel interface IPv6 address |
+| `ipv4Pool` | `192.168.255.0/24` | Internal IPv4 pool for the current NAT64 backend mapping path |
+| `ipv4RouterAddr` | `192.168.255.1` | Current Tayga-backed tunnel interface IPv4 address |
+| `ipv6RouterAddr` | `64:ff9b::1` | Current Tayga-backed tunnel interface IPv6 address |
 
 ### router-dns64
 
@@ -145,3 +157,8 @@ iifname "nat64" accept comment "Allow NAT64 translated traffic"
 ```
 to the nftables forward chain. IPv4 egress from Tayga to the WAN is handled by
 the standard masquerade rule that `router-firewall` applies to all LAN-origin traffic.
+
+That rule is part of the **current Tayga-backed implementation**, not a promise
+that every future NAT64 backend will always expose the literal same interface
+name. The durable contract is that translation traffic must remain intentionally
+integrated with `router-firewall`.

@@ -8,7 +8,7 @@ let
 in
 {
   options.services.router-nat64 = {
-    enable = mkEnableOption "NAT64 translation using Tayga";
+    enable = mkEnableOption "the current Tayga-backed NAT64 translation path";
 
     ipv6Prefix = mkOption {
       type = types.str;
@@ -19,19 +19,19 @@ in
     ipv4Pool = mkOption {
       type = types.str;
       default = "192.168.255.0/24";
-      description = "The internal IPv4 pool used by Tayga for mapping IPv6 addresses.";
+      description = "The internal IPv4 pool used by the current NAT64 backend for IPv6-to-IPv4 mapping.";
     };
 
     ipv4RouterAddr = mkOption {
       type = types.str;
       default = "192.168.255.1";
-      description = "The IPv4 address of the Tayga interface itself.";
+      description = "The IPv4 address of the current Tayga-backed translation interface.";
     };
 
     ipv6RouterAddr = mkOption {
       type = types.str;
       default = "64:ff9b::1";
-      description = "The IPv6 address of the Tayga interface itself.";
+      description = "The IPv6 address of the current Tayga-backed translation interface.";
     };
   };
 

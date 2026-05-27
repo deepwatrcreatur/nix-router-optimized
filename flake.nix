@@ -49,6 +49,15 @@
         }
       );
 
+      checksFineGrained = forAllSystems (
+        system:
+        import ./tests/fine-grained.nix {
+          inherit self nixpkgs system;
+          lib = nixpkgs.lib;
+          pkgs = nixpkgsFor.${system};
+        }
+      );
+
       overlays.default = final: prev: {
         ulogd = ulogdWithJson prev;
       };
