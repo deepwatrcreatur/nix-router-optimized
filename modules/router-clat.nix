@@ -49,11 +49,20 @@ let
 
   # Parse CIDR helpers for config generation
   cidrAddress = cidr: head (splitString "/" cidr);
-  cidrPrefixLen = cidr: toInt (last (splitString "/" cidr));
 
   # First address in pool is used as the Tayga router address on that side
   ipv4RouterAddr = cidrAddress cfg.legacyIpv4Pool;
   ipv6RouterAddr = "${cidrAddress cfg.mappingPrefix6}1";
+
+  translationBackendLib = import ./router-translation-backend-lib.nix { inherit lib; };
+  translationBackend = translationBackendLib.mkTaygaAdapter {
+    interfaceName = "clat0";
+    ipv4Pool = cfg.legacyIpv4Pool;
+    ipv6Prefix = cfg.mappingPrefix6;
+    inherit ipv4RouterAddr ipv6RouterAddr;
+    stateDirectory = "/var/lib/router-clat";
+    serviceUnit = "router-clat-tayga.service";
+  };
 
   # Python control-plane daemon with its dependencies
   clatDnsPython = pkgs.python3.withPackages (_ps: []);
@@ -64,15 +73,9 @@ let
   # Build upstream resolver CLI args
   upstreamArgs = concatMapStringsSep " " (r: "--upstream ${r}") cfg.upstreamResolvers;
 
-  # Tayga config for the CLAT instance
-  taygaConf = pkgs.writeText "router-clat-tayga.conf" ''
-    tun-device clat0
-    ipv4-addr ${ipv4RouterAddr}
-    ipv6-addr ${ipv6RouterAddr}
-    prefix ${cfg.mappingPrefix6}
-    dynamic-pool ${cfg.legacyIpv4Pool}
-    data-dir /var/lib/router-clat
-  '';
+  # Current backend implementation remains Tayga, but NAT64 and CLAT now render
+  # through a shared internal adapter surface rather than duplicating strings.
+  taygaConf = pkgs.writeText "router-clat-tayga.conf" translationBackend.tayga.configText;
 in
 {
   options.services.router-clat = {
@@ -210,10 +213,10 @@ in
       '';
 
       services.router-firewall.extraForwardRules = ''
-        iifname {${concatMapStringsSep ", " (i: "\"${i}\"") cfg.listenInterfaces}} oifname "clat0" accept comment "CLAT: LAN to translation"
-        iifname "clat0" oifname "${cfg.upstreamInterface}" accept comment "CLAT: translation to WAN"
-        iifname "${cfg.upstreamInterface}" oifname "clat0" accept comment "CLAT: WAN to translation (return)"
-        iifname "clat0" oifname {${concatMapStringsSep ", " (i: "\"${i}\"") cfg.listenInterfaces}} accept comment "CLAT: translation to LAN (return)"
+        iifname {${concatMapStringsSep ", " (i: "\"${i}\"") cfg.listenInterfaces}} oifname "${translationBackend.runtime.interfaceName}" accept comment "CLAT: LAN to translation"
+        iifname "${translationBackend.runtime.interfaceName}" oifname "${cfg.upstreamInterface}" accept comment "CLAT: translation to WAN"
+        iifname "${cfg.upstreamInterface}" oifname "${translationBackend.runtime.interfaceName}" accept comment "CLAT: WAN to translation (return)"
+        iifname "${translationBackend.runtime.interfaceName}" oifname {${concatMapStringsSep ", " (i: "\"${i}\"") cfg.listenInterfaces}} accept comment "CLAT: translation to LAN (return)"
       '';
     }))
 
@@ -222,16 +225,17 @@ in
       # Tayga config artifact — inspectable at /etc/router-clat/tayga.conf
       environment.etc."router-clat/tayga.conf".source = taygaConf;
 
-      # clat0 TUN interface owned by systemd-networkd
-      systemd.network.netdevs."30-clat0" = {
+      # Current translation interface is still clat0, but its lifecycle is
+      # described through the shared backend adapter surface.
+      systemd.network.netdevs."30-${translationBackend.runtime.interfaceName}" = {
         netdevConfig = {
-          Name = "clat0";
+          Name = translationBackend.runtime.interfaceName;
           Kind = "tun";
         };
       };
 
-      systemd.network.networks."30-clat0" = {
-        matchConfig.Name = "clat0";
+      systemd.network.networks."30-${translationBackend.runtime.interfaceName}" = {
+        matchConfig.Name = translationBackend.runtime.interfaceName;
         addresses = [
           { Address = "${ipv4RouterAddr}/32"; }
           { Address = "${ipv6RouterAddr}/128"; }
@@ -276,7 +280,7 @@ in
           ++ [
             "--status-port ${toString cfg.statusPort}"
             "--status-path /run/router-clat/status.json"
-            "--reload-cmd" "'${pkgs.systemd}/bin/systemctl reload router-clat-tayga.service'"
+            "--reload-cmd" "'${pkgs.systemd}/bin/systemctl reload ${translationBackend.runtime.serviceUnit}'"
           ]);
 
           Restart = "on-failure";
