@@ -23,6 +23,7 @@ tracked separately from the dashboard planning docs.
 
 ## Recently Completed
 
+- [70-dashboard-security-drill-down-and-history-surface](./70-dashboard-security-drill-down-and-history-surface.md) — `done`
 - [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `done`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
