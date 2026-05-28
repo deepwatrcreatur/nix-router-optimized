@@ -18,11 +18,11 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. [81-router-jool-experimental-backend-spike.md](./81-router-jool-experimental-backend-spike.md) — `ready`
-2. [82-nix-ci-provider-evidence-and-suite-tuning.md](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `ready`
+1. [82-nix-ci-provider-evidence-and-suite-tuning.md](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `ready`
 
 ## Recently Completed
 
+- [81-router-jool-experimental-backend-spike](./81-router-jool-experimental-backend-spike.md) — `done`
 - [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `done`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
