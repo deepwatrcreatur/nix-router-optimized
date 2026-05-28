@@ -43,6 +43,8 @@ Current repo stance:
 - NAT64 and CLAT now share an internal translation-backend adapter helper so
   backend-specific interface, lifecycle, and config details are not duplicated
   across modules
+- `jool-experimental` now exists only as an explicit evaluation gate, not as a
+  supported runtime backend
 - future backends must preserve the repo's declared contract instead of changing
   operator-facing semantics silently
 
@@ -52,6 +54,8 @@ Current repo non-stance:
 - there is no claim yet that kernel-space alone makes Jool automatically better
 - there is no claim yet that the current translation story is backend-neutral in
   every artifact and service name
+- there is no claim yet that the repo can instantiate a supported Jool runtime
+  from current `nixpkgs` packaging evidence
 
 ## Public Surfaces Versus Implementation Details
 
@@ -201,6 +205,9 @@ Before a Jool path could be promoted beyond a spike, the repo would need:
 - explicit firewall and lifecycle integration
 - observability parity
 - docs that state the operational tradeoffs clearly
+
+See [`router-jool-experimental.md`](./router-jool-experimental.md) for the
+current bounded-evaluation result and why the spike still fails explicitly.
 
 ## What A Bounded Jool Spike Would Be Allowed To Do
 

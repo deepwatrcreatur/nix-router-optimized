@@ -48,6 +48,7 @@ If you're an AI agent picking up this work, start here:
 | [router-ci-check-surface-audit.md](./router-ci-check-surface-audit.md) | Audit of the current `checks` surface and proposed CI suite boundary |
 | [router-nix-ci-baseline.md](./router-nix-ci-baseline.md) | Before/after record for the coarse CI suite transition |
 | [router-translation-backends.md](./router-translation-backends.md) | Current NAT64/CLAT backend boundary and future Jool stance |
+| [router-jool-experimental.md](./router-jool-experimental.md) | Current Jool evaluation boundary and explicit non-support result |
 
 ### Implementation Phases
 
