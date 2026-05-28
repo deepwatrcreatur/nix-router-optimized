@@ -1,6 +1,6 @@
 # 51 - DHCP Option 108 Backend Parity or Explicit Non-Support
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -29,23 +29,23 @@ This item exists to settle that backend split deliberately.
 
 ## Requirements
 
-- [ ] Evaluate whether `router-dhcp` can support RFC 8925 option `108`
+- [x] Evaluate whether `router-dhcp` can support RFC 8925 option `108`
       declaratively through systemd-networkd's DHCP server surface
-- [ ] Evaluate whether `router-technitium` can support RFC 8925 option `108`
+- [x] Evaluate whether `router-technitium` can support RFC 8925 option `108`
       through the current synchronization/API model
-- [ ] For each backend, choose one of:
+- [x] For each backend, choose one of:
       - implement bounded support
       - expose an explicit unsupported assertion/message
       - document a manual escape hatch if that is the most honest interim stance
-- [ ] Update docs and module messaging so operators can see backend parity gaps
+- [x] Update docs and module messaging so operators can see backend parity gaps
       without source diving
 
 ## Verification
 
-- [ ] For every DHCP backend exported by the repo, option `108` has an explicit
+- [x] For every DHCP backend exported by the repo, option `108` has an explicit
       stance: supported, unsupported, or manual-only
-- [ ] No backend quietly ignores an option `108` declarative setting
-- [ ] The resulting backend split is documented in the DHCP selection guidance
+- [x] No backend quietly ignores an option `108` declarative setting
+- [x] The resulting backend split is documented in the DHCP selection guidance
 
 ## Notes
 
