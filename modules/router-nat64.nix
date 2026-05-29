@@ -6,6 +6,12 @@ let
   cfg = config.services.router-nat64;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   translationBackendLib = import ./router-translation-backend-lib.nix { inherit lib; };
+  hasJoolCli = builtins.hasAttr "jool-cli" pkgs;
+  joolUnsupportedMessage =
+    if hasJoolCli then
+      "router-nat64: translationBackend.backend = jool-experimental is only a bounded spike today. nixpkgs exposes jool-cli, but this repo does not yet have a supported Jool runtime/kernel-module lifecycle for NAT64."
+    else
+      "router-nat64: translationBackend.backend = jool-experimental is unavailable here because nixpkgs does not expose the required Jool runtime packaging.";
   translationBackend = translationBackendLib.mkTaygaAdapter {
     interfaceName = "nat64";
     inherit (cfg)
@@ -45,10 +51,35 @@ in
       default = "64:ff9b::1";
       description = "The IPv6 address of the Tayga interface itself.";
     };
+
+    translationBackend = {
+      backend = mkOption {
+        type = types.enum [ "tayga" "jool-experimental" ];
+        default = "tayga";
+        description = "Current NAT64 backend selection. Jool remains experimental and unsupported beyond bounded spike evaluation.";
+      };
+
+      allowExperimentalJool = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Require explicit acknowledgement before selecting the bounded Jool evaluation path.";
+      };
+    };
   };
 
   config = mkIf cfg.enable (mkMerge [
     {
+      assertions = [
+        {
+          assertion = cfg.translationBackend.backend != "jool-experimental" || cfg.translationBackend.allowExperimentalJool;
+          message = "router-nat64: translationBackend.backend = jool-experimental requires translationBackend.allowExperimentalJool = true so experimental backend selection cannot happen silently.";
+        }
+        {
+          assertion = cfg.translationBackend.backend != "jool-experimental";
+          message = joolUnsupportedMessage;
+        }
+      ];
+
       services.tayga = translationBackend.tayga.serviceAttrs;
     }
 

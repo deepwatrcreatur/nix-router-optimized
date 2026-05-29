@@ -43,6 +43,7 @@ If you're an AI agent picking up this work, start here:
 | [CURRENT-STATE.md](./CURRENT-STATE.md) | Analysis of original dashboard (historical) |
 | [DASHBOARD_SERVICE_CONTROL.md](./DASHBOARD_SERVICE_CONTROL.md) | Authenticated dashboard mutation boundary |
 | [module-authoring.md](./module-authoring.md) | How to add router-oriented NixOS modules to this flake |
+| [router-jool-experimental.md](./router-jool-experimental.md) | Current Jool evaluation boundary and explicit non-support result |
 
 ### Implementation Phases
 

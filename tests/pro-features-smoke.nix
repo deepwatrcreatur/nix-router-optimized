@@ -62,6 +62,52 @@ in
     ])
   ];
 
+  router-nat64-jool-opt-in-required-fails = eval.mkNixosEvalFailureCheck "router-nat64-jool-opt-in-required" [
+    self.nixosModules.router-nat64
+    {
+      services.router-nat64 = {
+        enable = true;
+        translationBackend.backend = "jool-experimental";
+      };
+    }
+  ];
+
+  router-nat64-jool-explicit-non-support-fails = eval.mkNixosEvalFailureCheck "router-nat64-jool-explicit-non-support" [
+    self.nixosModules.router-nat64
+    {
+      services.router-nat64 = {
+        enable = true;
+        translationBackend.backend = "jool-experimental";
+        translationBackend.allowExperimentalJool = true;
+      };
+    }
+  ];
+
+  router-clat-jool-opt-in-required-fails = eval.mkNixosEvalFailureCheck "router-clat-jool-opt-in-required" [
+    self.nixosModules.router-clat
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "wan0";
+        listenInterfaces = [ "lan0" ];
+        translationBackend.backend = "jool-experimental";
+      };
+    }
+  ];
+
+  router-clat-jool-explicit-non-support-fails = eval.mkNixosEvalFailureCheck "router-clat-jool-explicit-non-support" [
+    self.nixosModules.router-clat
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "wan0";
+        listenInterfaces = [ "lan0" ];
+        translationBackend.backend = "jool-experimental";
+        translationBackend.allowExperimentalJool = true;
+      };
+    }
+  ];
+
   router-sqm-eval = eval.mkNixosEvalCheck "router-sqm" [
     self.nixosModules.router-sqm
     {

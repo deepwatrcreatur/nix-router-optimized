@@ -9,6 +9,12 @@ let
   hasRouterNat64 = hasAttrByPath [ "services" "router-nat64" "enable" ] options;
   nat64Enabled = hasRouterNat64 && attrByPath [ "services" "router-nat64" "enable" ] false config;
   nat64Cfg = attrByPath [ "services" "router-nat64" ] { } config;
+  hasJoolCli = builtins.hasAttr "jool-cli" pkgs;
+  joolUnsupportedMessage =
+    if hasJoolCli then
+      "router-clat: translationBackend.backend = jool-experimental is only a bounded spike today. nixpkgs exposes jool-cli, but this repo does not yet have a supported Jool runtime/kernel-module lifecycle for CLAT."
+    else
+      "router-clat: translationBackend.backend = jool-experimental is unavailable here because nixpkgs does not expose the required Jool runtime packaging.";
 
   # Powers of 2 lookup (0..32) — avoids needing builtins.pow which doesn't exist.
   pow2 = builtins.genList (n: builtins.foldl' (acc: _: acc * 2) 1 (builtins.genList (x: x) n)) 33;
@@ -158,6 +164,20 @@ in
         description = "Require an explicit opt-in before selecting the experimental Elixir preview path.";
       };
     };
+
+    translationBackend = {
+      backend = mkOption {
+        type = types.enum [ "tayga" "jool-experimental" ];
+        default = "tayga";
+        description = "Current CLAT translation backend selection. Jool remains experimental and unsupported beyond bounded spike evaluation.";
+      };
+
+      allowExperimentalJool = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Require explicit acknowledgement before selecting the bounded Jool evaluation path.";
+      };
+    };
   };
 
   config = mkIf cfg.enable (mkMerge [
@@ -186,6 +206,18 @@ in
         {
           assertion = cfg.controlPlane.backend != "elixir-preview" || cfg.controlPlane.allowExperimentalElixir;
           message = "router-clat: controlPlane.backend = elixir-preview requires controlPlane.allowExperimentalElixir = true so preview selection cannot happen silently.";
+        }
+        {
+          assertion = cfg.translationBackend.backend != "jool-experimental" || cfg.translationBackend.allowExperimentalJool;
+          message = "router-clat: translationBackend.backend = jool-experimental requires translationBackend.allowExperimentalJool = true so experimental backend selection cannot happen silently.";
+        }
+        {
+          assertion = cfg.translationBackend.backend != "jool-experimental";
+          message = joolUnsupportedMessage;
+        }
+        {
+          assertion = !nat64Enabled || cfg.translationBackend.backend == (nat64Cfg.translationBackend.backend or "tayga");
+          message = "router-clat: when router-nat64 and router-clat are both enabled, they must agree on translationBackend.backend.";
         }
       ];
 
