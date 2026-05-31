@@ -1,6 +1,6 @@
 # Router Nix CI Baseline
 
-Last updated: 2026-05-26
+Last updated: 2026-05-31
 
 ## Objective
 
@@ -19,24 +19,28 @@ This record combines:
   [`router-ci-check-surface-audit.md`](./router-ci-check-surface-audit.md)
 - the post-change flake state after item `78`
 - local `nix eval` and `nix build` evidence gathered on 2026-05-26
+- provider-side GitHub/NixCI evidence gathered on 2026-05-31 for public commit
+  `f767a731984110699731a027377728cee12af4b1`
 
-This environment did **not** include direct `nix-ci.com` UI or billing access.
-That means the record can prove the exported-job reduction and some local build
-shape facts, but it cannot by itself prove exact worker-second savings on the
-CI provider.
+This record still does **not** include NixCI billing or internal worker-second
+totals. It does now include public GitHub check-run evidence and the linked
+`nix-ci.com` run URLs, which is enough to prove the current provider-visible job
+shape and some per-job timing facts.
 
 ## Before / After Summary
 
-| Signal | Before item `78` | After item `78` | What is proven |
+| Signal | Before item `78` | Current public/provider state | What is proven |
 |---|---:|---:|---|
-| Exported top-level checks on `x86_64-linux` | `174` | `6` | Proven |
-| Exported top-level checks on `aarch64-linux` | `174` | `6` | Proven |
-| Fine-grained local leaf surface | `174` exported leaves | `174` leaves under `checksFineGrained` | Proven |
-| Default CI-visible shape | one leaf per check | six suites | Proven |
+| Exported top-level checks on `x86_64-linux` | `174` | `6` | Proven locally |
+| Exported top-level checks on `aarch64-linux` | `174` | `6` | Proven locally |
+| Fine-grained local leaf surface | `174` exported leaves | `178` visible `checks.x86_64-linux.*` jobs on the latest public run | Proven |
+| Default CI-visible shape | one leaf per check | still fine-grained on the public provider | Proven |
+| Public suite jobs named `ci-*` | n/a | `0` on the latest public run | Proven |
 | Direct `nix-ci.com` worker-second data | not captured | not captured | Not proven |
 
-The visible exported-job reduction is `174 -> 6`, which is a `96.6%` drop in
-top-level check count.
+The local exported-job reduction is still `174 -> 6`, which is a `96.6%` drop
+in top-level check count. The public provider, however, is not currently
+surfacing that six-suite boundary.
 
 ## Pre-Change Baseline
 
@@ -62,9 +66,9 @@ Representative visible job shape before item `78`:
 That shape maximized direct failure attribution, but it also maximized status
 surface area and repeated the “one exported job per narrow leaf” pattern.
 
-## Post-Change Baseline
+## Post-Change Local Baseline
 
-After item `78`, the default exported CI surface is:
+After item `78`, the default exported flake `checks` surface is:
 
 - `ci-module-imports`
 - `ci-docs-and-examples`
@@ -82,11 +86,57 @@ Confirmed local `nix eval` results on 2026-05-26:
 - `checks.x86_64-linux` exports `6` leaves
 - `checksFineGrained.x86_64-linux` exports `174` leaves
 
-Representative visible job shape after item `78`:
+Representative local exported job shape after item `78`:
 
-- one CI-visible suite job such as `checks.x86_64-linux.ci-runtime-unit-tests`
+- one exported suite job such as `checks.x86_64-linux.ci-runtime-unit-tests`
 - one local targeted debug leaf such as
   `checksFineGrained.x86_64-linux.router-nptv6-eval`
+
+## Provider-Side Evidence
+
+Public evidence was gathered on 2026-05-31 for GitHub commit:
+
+- `f767a731984110699731a027377728cee12af4b1`
+- commit URL:
+  `https://github.com/deepwatrcreatur/nix-router-optimized/commit/f767a731984110699731a027377728cee12af4b1`
+
+Observed through the GitHub Checks API for that commit:
+
+- total public check runs: `182`
+- visible `build checks.x86_64-linux.*` runs: `178`
+- visible `build packages.x86_64-linux.*` runs: `2`
+- non-build utility runs: `2`
+  - `configure`
+  - `show x86_64-linux`
+- visible `ci-*` suite jobs: `0`
+- visible `aarch64-linux` jobs: `0`
+
+Representative public check names:
+
+- `build checks.x86_64-linux.router-zones-sanitization-eval`
+- `build checks.x86_64-linux.router-bgp-eval`
+- `build checks.x86_64-linux.module-router-zones-import-eval`
+- `build packages.x86_64-linux.router-diag`
+
+Representative linked `nix-ci.com` run URL from the GitHub Checks API:
+
+- `https://nix-ci.com/gh:deepwatrcreatur:nix-router-optimized/main/f767a731984110699731a027377728cee12af4b1/6616e1a5-f3ba-4681-8905-83ca7394e6fb`
+
+Representative duration sample from the first visible page of `x86_64-linux`
+leaf runs (`30` jobs sampled from the GitHub Checks API page-1 response):
+
+- minimum observed duration: `2s`
+- maximum observed duration: `31s`
+- average observed duration: about `6.5s`
+
+Interpretation:
+
+- the current public NixCI/GitHub surface is still narrow-leaf and
+  implementation-detailed
+- the six-suite split is real in the flake exports, but it is **not** the
+  current public CI boundary
+- the earlier claim that operators now see six suite jobs by default is no
+  longer accurate for the public provider evidence gathered on 2026-05-31
 
 ## Local Build Evidence
 
@@ -102,16 +152,17 @@ The following post-change local builds were executed on 2026-05-26:
 
 What this proves:
 
-- the coarse exported suite path works end-to-end
+- the coarse exported suite path works end-to-end locally
 - the preserved fine-grained local path works end-to-end
 - at least one exported suite now aggregates several previously separate leaves
   into a single visible top-level job
+- the public provider is currently not exposing those suites as the visible job
+  surface
 
 What this does **not** prove:
 
 - that all suite builds are faster than all former leaf builds
-- that `nix-ci.com` billed worker-seconds definitely fell by the same ratio as
-  the visible job count
+- that `nix-ci.com` billed worker-seconds definitely fell at all
 - that repeated eval/build/setup cost was eliminated across every family
 
 ## Representative CI Shape Comparison
@@ -129,9 +180,9 @@ Examples:
 This made failures immediately attributable, but produced a very wide CI/status
 surface.
 
-### After
+### Local flake after item `78`
 
-Operators and CI UIs see a small suite list by default, while developers can
+The flake export now has a small suite list by default, while developers can
 still drop to a narrow leaf locally through `checksFineGrained`.
 
 Example:
@@ -139,46 +190,59 @@ Example:
 - `ci-runtime-unit-tests` is one exported job
 - it wraps the four runtime/unit-test leaves behind that suite
 
-This clearly reduces UI and status clutter. It also shifts some initial failure
-triage from “already narrow” to “identify the failing leaf inside the suite,”
-which is the main debugging tradeoff of the new shape.
+This would clearly reduce UI and status clutter if the provider exposed the same
+surface.
+
+### Current public provider state
+
+The latest observed public run still shows one visible job per narrow leaf plus
+package builds.
+
+So, for public GitHub/NixCI users, the practical shape is still much closer to
+the **before** state than to the intended six-suite state.
 
 ## Failure Attribution And Debugging Ergonomics
 
 ### Improvement
 
-- CI dashboards are materially less noisy
-- the exported surface now communicates intentional families instead of an
+- local contributor ergonomics improved because the flake now has a clear
+  default suite surface and a separate narrow debug surface
+- the exported flake shape now communicates intentional families instead of an
   implementation-detail leaf list
 
 ### Regression Risk
 
-- a failing suite is coarser than a failing leaf
-- default CI no longer tells the operator the exact narrow check name before
-  drilling in
+- because the public provider still shows narrow leaves, maintainers now have a
+  doc/reality mismatch instead of the expected coarse-suite tradeoff
+- future maintainers may incorrectly assume NixCI cost or noise improved when
+  the public run shape shows that it did not
 
 ### Mitigation
 
 - the exact old leaf surface still exists under `checksFineGrained`
 - contributor docs now point targeted debugging at
   `nix build .#checksFineGrained.<system>.<leaf>`
+- this baseline now records the provider mismatch explicitly
 
 Current judgment:
 
 - debugging did not regress too far, because the narrow leaf surface was
   preserved rather than deleted
+- public CI ergonomics did **not** receive the documented six-suite win, because
+  the provider is still exposing the narrow leaves
 
 ## Economic Interpretation
 
-The strongest supported conclusion today is:
+The strongest supported conclusions today are:
 
-- the main proven gain is reduced UI/status clutter and a clearer exported CI
-  boundary
+- the flake itself really was reshaped to a six-suite default `checks` surface
+- the public provider is still showing narrow `checks.x86_64-linux.*` leaves
+  rather than those six suites
 
-The weaker, only partially evidenced conclusion is:
+The weaker, still only partially evidenced conclusions are:
 
-- some suites may reduce per-job overhead by aggregating multiple narrow leaves
-  behind one visible exported job
+- some local suite builds may reduce per-job overhead
+- the suite split may still be useful for local contributor workflow
 
 The still unproven conclusion is:
 
@@ -186,24 +250,24 @@ The still unproven conclusion is:
 
 So the most defensible label for the current result is:
 
-- **mixed, with a clearly real cosmetic/ergonomic win and a plausible but not
-  yet provider-measured economic win**
+- **mixed, with a real local export-boundary cleanup but no demonstrated public
+  NixCI surface reduction**
 
 ## Next-Step Recommendation
 
-If maintainers want to prove the economic effect more rigorously, capture from
-`nix-ci.com` for a comparable pre/post commit pair:
+The next question is no longer “should the six suites be split more finely?”
+The next question is:
 
-- visible job count
-- total worker-seconds
-- wall-clock duration
-- cache-hit behavior
-- and failure-debugging screenshots or notes for one representative failed run
+- why is the public provider still exposing `178` narrow `checks.x86_64-linux`
+  leaves when the flake exports only six top-level `checks` attrs locally?
 
-If future operators find the suite boundary too coarse, the first place to
-split more finely is likely:
+The first follow-up points to check are:
 
-- `ci-router-positive-evals`
-- or `ci-module-imports`
+- whether the provider is evaluating a different output boundary than
+  `checks.<system>`
+- whether the public provider is expanding suite contents into separate visible
+  check runs by design
+- whether the provider is reading a stale or alternative ref/configuration path
 
-There is no current evidence that the six-suite split is too coarse to keep.
+Until that is understood, there is no evidence that further suite tuning inside
+the repo would change the public `nix-ci.com` surface.

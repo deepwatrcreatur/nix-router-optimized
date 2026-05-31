@@ -22,6 +22,7 @@ No ranked `ready` items currently.
 
 ## Recently Completed
 
+- [80-nix-ci-provider-evidence-and-public-boundary-correction](./80-nix-ci-provider-evidence-and-public-boundary-correction.md) — `done`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
 - [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `done`
