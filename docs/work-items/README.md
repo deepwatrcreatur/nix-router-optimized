@@ -18,10 +18,11 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-1. [82-nix-ci-provider-evidence-and-suite-tuning.md](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `ready`
+No ranked `ready` items currently.
 
 ## Recently Completed
 
+- [82-nix-ci-provider-evidence-and-suite-tuning](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `done`
 - [81-router-jool-experimental-backend-spike](./81-router-jool-experimental-backend-spike.md) — `done`
 - [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `done`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`

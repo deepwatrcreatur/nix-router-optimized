@@ -1,6 +1,6 @@
 # 82. Nix CI Provider Evidence and Suite Tuning
 
-**Status:** ready
+**Status:** done
 **Priority:** medium
 **Depends on:** 78-coarse-ci-suites-and-local-check-boundary.md, 79-nix-ci-baseline-and-local-debugging-guidance.md
 
@@ -42,3 +42,23 @@ Out of scope:
 - provider-side evidence is documented
 - the suite split is either confirmed or adjusted
 - docs explain the final public CI boundary and why it exists
+
+## Outcome
+
+- Added [`docs/router-nix-ci-baseline.md`](../router-nix-ci-baseline.md) as the
+  durable provider-side record for the published mainline.
+- Confirmed that published `github/main` at
+  `f767a731984110699731a027377728cee12af4b1` still exposes the fine-grained
+  public CI surface:
+  - `178` `build checks.x86_64-linux.*` jobs
+  - `2` package jobs
+  - provider utility jobs (`configure`, `show x86_64-linux`)
+  - `0` public `ci-*` suite jobs
+- Confirmed that published `main` does not currently contain the coarse-suite
+  implementation:
+  - `tests/suites.nix` absent
+  - `tests/fine-grained.nix` absent
+  - `checksFineGrained` not exported from `flake.nix`
+- Concluded that the current public CI boundary should be documented as
+  fine-grained until the coarse-suite implementation is actually landed on the
+  published branch.
