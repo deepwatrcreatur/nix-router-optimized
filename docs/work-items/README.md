@@ -18,14 +18,12 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-No ranked `ready` items currently.
+- [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `ready`
+- [81-router-jool-experimental-backend-spike](./81-router-jool-experimental-backend-spike.md) — `ready`
+- [82-nix-ci-provider-evidence-and-suite-tuning](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `ready`
 
 ## Recently Completed
 
-- [70-dashboard-security-drill-down-and-history-surface](./70-dashboard-security-drill-down-and-history-surface.md) — `done`
-- [82-nix-ci-provider-evidence-and-suite-tuning](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `done`
-- [81-router-jool-experimental-backend-spike](./81-router-jool-experimental-backend-spike.md) — `done`
-- [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `done`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
 - [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `done`
@@ -42,7 +40,6 @@ No ranked `ready` items currently.
 - [74-router-dhcp-single-active-boundary-and-promotion-runbook](./74-router-dhcp-single-active-boundary-and-promotion-runbook.md) — `done`
 - [73-lan-shortname-resolution-boundary-and-validation](./73-lan-shortname-resolution-boundary-and-validation.md) — `done`
 - [63-live-router-kea-ha-convergence-evidence-and-closure](./63-live-router-kea-ha-convergence-evidence-and-closure.md) — `done`
-- [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [60-router-bgp-promotion-aware-ha-ownership](./60-router-bgp-promotion-aware-ha-ownership.md) — `done`
 - [61-dashboard-light-theme-parity](./61-dashboard-light-theme-parity.md) — `done`
 - [59-dashboard-service-control-auth-and-boundary](./59-dashboard-service-control-auth-and-boundary.md) — `done`
@@ -51,8 +48,6 @@ No ranked `ready` items currently.
 - [56-router-clat-preservation-fixtures-and-parity-tests](./56-router-clat-preservation-fixtures-and-parity-tests.md) — `done`
 - [55-router-clat-control-plane-contract-and-preservation-spec](./55-router-clat-control-plane-contract-and-preservation-spec.md) — `done`
 - [54-ipv6-multiwan-source-routing-guardrails-and-tests](./54-ipv6-multiwan-source-routing-guardrails-and-tests.md) — `done`
-- [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `done`
-- [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
 - [51-dhcp-option-108-backend-parity-or-explicit-non-support](./51-dhcp-option-108-backend-parity-or-explicit-non-support.md) — `done`
 - [50-router-kea-dhcp-option-108-and-guardrails](./50-router-kea-dhcp-option-108-and-guardrails.md) — `done`
 - [49-dhcp-option-108-support-boundary-and-docs](./49-dhcp-option-108-support-boundary-and-docs.md) — `done`

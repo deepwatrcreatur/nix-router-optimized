@@ -1,42 +1,57 @@
-# 81. Router Jool Experimental Backend Spike
+# 81 - Router Jool Experimental Backend Spike
 
-**Status:** done
-**Priority:** medium
-**Depends on:** 80-router-translation-backend-shared-adapter-surface.md
+## Status: `ready`
 
-## Why this exists
+## Objective
 
-The repo now documents that Jool is a plausible future backend candidate, but
-it is not yet a supported path. Before any backend-expansion claims are made, we
-need a bounded experiment behind the shared adapter surface from item 80.
+Add a bounded, explicitly experimental Jool-backed NAT64 evaluation path that
+uses the shared translation-backend surface without replacing Tayga as the
+default supported backend.
 
-## Required outcome
+Suggested branch: `feat/router-jool-spike`
 
-Build a strictly experimental Jool backend spike that:
+## Rationale
 
-- stays behind an explicit experimental selector or adapter gate
-- does not replace Tayga as the default
-- does not widen support claims
-- records where parity is real versus missing
+The docs now make the repo stance explicit:
 
-## Scope
+- `router-nat64` already exists today
+- Tayga is the supported backend
+- Jool is only a future evaluation candidate
 
-In scope:
+Once item `80` lands, the repo will have the internal structure needed to test
+that claim honestly instead of arguing from intuition.
 
-- Jool packaging/integration spike
-- explicit adapter path for evaluation only
-- comparison of lifecycle/firewall/observability fit against Tayga
-- docs that clearly label the path as experimental
+This item exists to answer a bounded question:
 
-Out of scope:
+- can Jool be expressed through the repo’s shared translation-backend contract
+  without silently changing the operator-facing semantics?
 
-- defaulting to Jool
-- claiming backend parity before evidence exists
-- deleting Tayga-specific coverage
+It does **not** exist to declare Jool production-ready.
 
-## Acceptance criteria
+## Requirements
 
-- experimental Jool path exists behind an explicit non-default gate
-- Tayga remains the supported default
-- documentation clearly states the spike boundary
-- missing parity areas are recorded instead of implied away
+- [ ] Add an explicitly experimental Jool-backed evaluation path behind a clear
+      non-default selector or spike surface
+- [ ] Keep Tayga as the default supported backend
+- [ ] Reuse the shared translation-backend adapter surface from item `80`
+- [ ] Document any packaging, lifecycle, firewall, MTU, or observability gaps
+      that prevent parity today
+- [ ] Add bounded eval/docs/test coverage proving the Jool path is intentionally
+      experimental rather than an accidental new default
+- [ ] Make the README/docs language honest about what is and is not supported
+
+## Verification
+
+- [ ] A contributor can enable the Jool spike intentionally
+- [ ] The Tayga path remains the default and still evaluates
+- [ ] The repo records concrete parity gaps if Jool still falls short
+- [ ] No docs imply that Jool is now the production recommendation unless the
+      work actually proves that
+
+## Notes
+
+This item is about **evaluation and evidence**, not productizing Jool.
+
+If the spike reveals that the shared contract is still incomplete, the right
+outcome is to document the gap rather than force a misleading “supported”
+surface.

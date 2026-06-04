@@ -1,66 +1,64 @@
-# 80. Router Translation Backend Shared Adapter Surface
+# 80 - Router Translation Backend Shared Adapter Surface
 
-**Status:** done
-**Priority:** high
-**Depends on:** 63-router-nat64-backend-abstraction-and-jool-spike.md
+## Status: `ready`
 
-## Why this exists
+## Objective
 
-`router-nat64` and `router-clat` both currently depend on Tayga, but they still
-spell that dependence in slightly different local ways:
+Turn the translation-backend boundary documented in
+[`router-translation-backends.md`](../router-translation-backends.md) into a
+real repo-internal adapter surface that `router-nat64` and `router-clat` can
+share, while keeping Tayga as the only supported backend.
 
-- interface names are hardcoded separately
-- firewall/runtime assumptions are duplicated
-- Tayga config rendering is duplicated
-- future backend work would have to unwind module-local assumptions before it
-  could even be evaluated honestly
+Suggested branch: `feat/router-translation-backend-surface`
 
-We already documented the public versus Tayga-specific boundary in
-[`docs/router-translation-backends.md`](../router-translation-backends.md).
-This item turns that documentation into a real shared internal adapter surface
-without widening support claims.
+## Rationale
 
-## Required outcome
+Item `63` made the NAT64 / CLAT backend contract explicit, but the actual module
+surface is still Tayga-shaped:
 
-Create one shared internal translation-backend adapter layer that:
+- `router-nat64` directly wires `services.tayga`
+- current firewall/runtime assumptions still name the `nat64` interface
+- `router-clat` and `router-nat64` do not yet share a typed internal adapter
 
-- is used by both `router-nat64` and `router-clat`
-- preserves the current Tayga-backed runtime behavior
-- keeps Tayga as the only supported backend
-- makes interface/firewall/runtime lifecycle assumptions explicit in one place
-- separates stable module intent from backend-specific implementation details
+That is acceptable for a single supported backend, but it leaves two concrete
+gaps:
 
-## Scope
+- there is no shared place to express “translation backend semantics” in code
+- a future Jool experiment would otherwise have to punch through Tayga-specific
+  assumptions ad hoc
 
-In scope:
+This item exists to make the shared backend surface real **without** pretending
+that a second backend is already supported.
 
-- introduce an internal helper / adapter surface for the current Tayga backend
-- route `router-nat64` through that adapter
-- route `router-clat` through that adapter
-- preserve current interface names and behavior unless a testable reason
-  requires adjustment
-- update docs so contributors understand that this is internal backend shaping,
-  not “Jool support landed”
+## Requirements
 
-Out of scope:
+- [ ] Introduce a repo-internal translation-backend adapter surface that can be
+      used by both `router-nat64` and `router-clat`
+- [ ] Keep Tayga as the only supported backend after this PR
+- [ ] Make firewall/runtime assumptions explicit through the adapter surface
+      instead of scattering Tayga-specific strings through consumer modules
+- [ ] Separate:
+      - public module options that remain stable
+      - backend-specific rendered/runtime details that stay internal
+- [ ] Preserve current supported behavior for the Tayga-backed path
+- [ ] Update docs so contributors know this is an internal adapter boundary, not
+      a promise of multi-backend support today
 
-- adding a public user-facing backend selector
-- claiming backend parity
-- changing the default backend away from Tayga
-- landing Jool itself
+## Verification
 
-## Acceptance criteria
-
-- `router-nat64` and `router-clat` share one internal translation backend
-  surface
-- current tests still pass for the Tayga-backed path
-- the public module boundary stays narrow and honest
-- docs explicitly say the repo still supports only Tayga at this stage
-- follow-on Jool work can target the shared internal adapter instead of
-  punching through per-module assumptions
+- [ ] `router-nat64` still evaluates and behaves as the current supported Tayga
+      path
+- [ ] `router-clat` still evaluates against the same public contract
+- [ ] The shared adapter surface is visible in code and understandable without
+      reading Tayga-specific implementation first
+- [ ] No new backend is implied as supported by default
 
 ## Notes
 
-This is the implementation counterpart to the repo's backend-boundary docs.
-It should make future backend experimentation smaller, but it must not turn
-“internal adapter” into “promised multi-backend support.”
+This item is about **creating the internal adapter boundary**.
+
+It should not widen support claims beyond:
+
+- Tayga is still the current supported backend
+- the repo is now structurally prepared for an explicit experimental second
+  backend later
