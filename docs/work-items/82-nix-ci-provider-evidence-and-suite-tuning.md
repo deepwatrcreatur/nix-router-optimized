@@ -1,64 +1,60 @@
-# 82. Nix CI Provider Evidence and Suite Tuning
+# 82 - Nix CI Provider Evidence And Suite Tuning
 
-**Status:** done
-**Priority:** medium
-**Depends on:** 78-coarse-ci-suites-and-local-check-boundary.md, 79-nix-ci-baseline-and-local-debugging-guidance.md
+## Status: `ready`
 
-## Why this exists
+## Objective
 
-The repo now has a cleaner coarse CI boundary and a fine-grained local check
-surface, but we still do not have enough real provider-side evidence about how
-`nix-ci.com` behaves with the current suite split.
+Capture real provider-side evidence for the coarse CI suite transition and tune
+the suite split only if the current `6`-suite boundary proves too coarse or too
+cosmetic on `nix-ci.com`.
 
-We should not assume the present exported suite layout is optimal until we have
-that evidence.
+Suggested branch: `docs/router-nix-ci-provider-evidence`
 
-## Required outcome
+## Rationale
 
-Collect real provider-side CI evidence and decide whether the current suite
-split is:
+Item `79` closed the local before/after baseline honestly:
 
-- appropriate as-is
-- too granular
-- too coarse
-- or missing useful separation for failure diagnosis / cache reuse
+- visible exported job count clearly dropped
+- local narrow-leaf debugging still works
+- exact provider-side worker-second savings were **not** proven
 
-## Scope
+That means the repo now has a coherent local story, but still lacks the last
+piece of evidence:
 
-In scope:
+- whether the six exported suites materially improved provider behavior, or
+  mainly cleaned up UI/status clutter
 
-- gather evidence from actual provider runs
-- capture wall-clock behavior and failure-isolation behavior
-- tune the suite grouping if needed
-- update docs with the evidence and any resulting boundary changes
+This item exists so the repo does not confuse “better shaped CI” with “proven
+cheaper CI.”
 
-Out of scope:
+## Requirements
 
-- re-expanding the public CI surface back into many fine-grained leaves
-- local-only opinions without provider evidence
+- [ ] Capture a real provider-side before/after comparison from `nix-ci.com` or
+      the repo’s equivalent CI surface
+- [ ] Record at least:
+      - visible job count
+      - wall-clock timing
+      - any available worker-second / billed-cost signal
+      - one example of failure-debugging ergonomics under the suite model
+- [ ] Decide whether the current `6`-suite shape is still the right default
+- [ ] If the current split is too coarse, recommend a narrower suite breakdown
+      based on actual evidence rather than taste
+- [ ] Update [`docs/router-nix-ci-baseline.md`](../router-nix-ci-baseline.md)
+      with the provider-side evidence and conclusion
 
-## Acceptance criteria
+## Verification
 
-- provider-side evidence is documented
-- the suite split is either confirmed or adjusted
-- docs explain the final public CI boundary and why it exists
+- [ ] Future maintainers can tell whether the suite transition was:
+      - mostly cosmetic
+      - economically real
+      - or mixed
+- [ ] Any proposed suite split change is grounded in observed provider behavior
+      instead of guesswork
 
-## Outcome
+## Notes
 
-- Added [`docs/router-nix-ci-baseline.md`](../router-nix-ci-baseline.md) as the
-  durable provider-side record for the published mainline.
-- Confirmed that published `github/main` at
-  `f767a731984110699731a027377728cee12af4b1` still exposes the fine-grained
-  public CI surface:
-  - `178` `build checks.x86_64-linux.*` jobs
-  - `2` package jobs
-  - provider utility jobs (`configure`, `show x86_64-linux`)
-  - `0` public `ci-*` suite jobs
-- Confirmed that published `main` does not currently contain the coarse-suite
-  implementation:
-  - `tests/suites.nix` absent
-  - `tests/fine-grained.nix` absent
-  - `checksFineGrained` not exported from `flake.nix`
-- Concluded that the current public CI boundary should be documented as
-  fine-grained until the coarse-suite implementation is actually landed on the
-  published branch.
+This item is about **provider evidence and suite tuning after the boundary
+change**.
+
+It should not reopen the basic decision to keep fine-grained local leaves unless
+the provider evidence shows the current split is actively harmful.
