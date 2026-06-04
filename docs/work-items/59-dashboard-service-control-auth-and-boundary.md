@@ -1,6 +1,6 @@
 # 59 - Dashboard Service Control Auth and Boundary
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -30,26 +30,26 @@ ad hoc POST endpoints become the real authority.
 
 ## Requirements
 
-- [ ] Define the first bounded service-control scope, including:
+- [x] Define the first bounded service-control scope, including:
       - which actions are allowed (`start` / `stop` / `restart` or narrower)
       - which services are eligible
       - which services remain read-only
-- [ ] Add an authentication and authorization model appropriate for the local
+- [x] Add an authentication and authorization model appropriate for the local
       router dashboard surface rather than leaving write endpoints unauthenticated
-- [ ] Make the mutation boundary explicit in both code and docs so operators can
+- [x] Make the mutation boundary explicit in both code and docs so operators can
       tell which dashboard surfaces are read-only vs write-capable
-- [ ] Add backend/API guardrails so unsupported services or actions fail clearly
+- [x] Add backend/API guardrails so unsupported services or actions fail clearly
       instead of silently widening privileges
-- [ ] Keep the feature intentionally small; do not turn the dashboard into a
+- [x] Keep the feature intentionally small; do not turn the dashboard into a
       generic command runner
 
 ## Verification
 
-- [ ] A user cannot trigger service actions without the intended auth path
-- [ ] An authenticated operator can perform the supported service action set on
+- [x] A user cannot trigger service actions without the intended auth path
+- [x] An authenticated operator can perform the supported service action set on
       the supported service list
-- [ ] Unsupported actions and services fail explicitly
-- [ ] Docs clearly describe the mutation boundary and support stance
+- [x] Unsupported actions and services fail explicitly
+- [x] Docs clearly describe the mutation boundary and support stance
 
 ## Notes
 

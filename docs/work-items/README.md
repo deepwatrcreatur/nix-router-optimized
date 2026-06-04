@@ -22,6 +22,7 @@ No ranked `ready` items currently.
 
 ## Recently Completed
 
+- [70-dashboard-security-drill-down-and-history-surface](./70-dashboard-security-drill-down-and-history-surface.md) — `done`
 - [82-nix-ci-provider-evidence-and-suite-tuning](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `done`
 - [81-router-jool-experimental-backend-spike](./81-router-jool-experimental-backend-spike.md) — `done`
 - [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `done`
