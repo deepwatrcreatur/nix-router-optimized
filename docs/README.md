@@ -1,110 +1,85 @@
-# Router Dashboard Documentation
+# Repository Documentation
 
-This directory contains planning, research, and implementation status documents for the NixOS router dashboard.
+This directory contains operator guides, support-boundary notes, implementation
+status docs, archived discussions, and agent-facing work items for
+`nix-router-optimized`.
 
-## Quick Start for Agents
+Start with the smallest document that matches your question instead of guessing
+from module names alone.
 
-If you're an AI agent picking up this work, start here:
+## Start Here By Topic
 
-### Current State
-- **Enhanced dashboard**: Modular widget-based dashboard with Chart.js graphs and GridStack layout persistence
-- **Location**: `modules/router-dashboard/` (HTML, CSS, JS, API)
-- **Module**: `modules/router-dashboard.nix`
-- **Gateway config**: `../unified-nix-configuration/hosts/nixos/gateway/`
+### IPv6 and translation
 
-### What's Implemented
-1. Real-time traffic graphs (Chart.js) ✅
-2. CPU/Memory/Disk gauges ✅
-3. Interface cards with sparklines ✅
-4. Connection tracking display ✅
-5. Services status table ✅
-6. Quick links widget ✅
-7. Speed test widget ✅
-8. Wake-on-LAN widget ✅
-9. Live firewall logging (SSE) ✅
-10. Drag-and-drop layout persistence ✅
-11. VPN status tab ✅
-12. Tunnels status tab (zrok/ngrok/Cloudflare metadata) ✅
-13. Remote Admin status tab (Guacamole/MeshCentral/SSH metadata) ✅
+- [`router-ipv6-approach-guide.md`](./router-ipv6-approach-guide.md) — first stop
+  for choosing among native IPv6, multi-prefix/PvD, NPTv6, NAT64/DNS64, CLAT,
+  and NDP proxy approaches
+- [`ipv6-multiwan-guide.md`](./ipv6-multiwan-guide.md) — decision ladder for
+  IPv6 multi-uplink design
+- [`IPV6-PVD.md`](./IPV6-PVD.md) — Provisioning Domains / native multi-prefix
+  signaling
+- [`router-nat64-dns64.md`](./router-nat64-dns64.md) — current NAT64 + DNS64
+  usage and caveats
+- [`DECLARATIVE_CLAT.md`](./DECLARATIVE_CLAT.md) — current experimental CLAT
+  boundary
+- [`router-ndp-proxy.md`](./router-ndp-proxy.md) — current static NDP proxy
+  guidance and the repo's `ndppd` stance
+- [`router-translation-backends.md`](./router-translation-backends.md) —
+  backend-boundary note for Tayga now and possible future Jool work
 
-### Remaining Gaps
-- Phase 3 service control is still deferred
-- Phase 4 nftables hit counters/flowtable detail remain partial
-- Historical metrics via Prometheus are not integrated yet
+### HA and ownership boundaries
 
-### Key Documents
+- [`router-ha-ownership.md`](./router-ha-ownership.md) — active-owner and shared
+  capability boundary
+- [`router-dhcp-single-active.md`](./router-dhcp-single-active.md) — why the
+  current reference DHCP posture is single-active with manual promotion
+- [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md) — evidence
+  gate for any future Kea HA re-entry
 
-| Document | Purpose |
-|----------|---------|
-| [IMPLEMENTATION-STATUS.md](./IMPLEMENTATION-STATUS.md) | **Start here** - Current implementation status |
-| [DASHBOARD-ENHANCEMENT-PLAN.md](./DASHBOARD-ENHANCEMENT-PLAN.md) | Master plan with phases and priorities |
-| [OPNSENSE-RESEARCH.md](./OPNSENSE-RESEARCH.md) | OPNsense dashboard analysis |
-| [DASHBOARD-ARCHITECTURE.md](./DASHBOARD-ARCHITECTURE.md) | Technical implementation details |
-| [CURRENT-STATE.md](./CURRENT-STATE.md) | Analysis of original dashboard (historical) |
-| [DASHBOARD_SERVICE_CONTROL.md](./DASHBOARD_SERVICE_CONTROL.md) | Authenticated dashboard mutation boundary |
-| [module-authoring.md](./module-authoring.md) | How to add router-oriented NixOS modules to this flake |
-| [router-jool-experimental.md](./router-jool-experimental.md) | Current Jool evaluation boundary and explicit non-support result |
+### Service/module selection
 
-### Implementation Phases
+- [`DHCP_SELECTION.md`](./DHCP_SELECTION.md) — DHCP backend choice guide
+- [`router-mwan.md`](./router-mwan.md) — multi-WAN failover boundary
+- [`router-bgp.md`](./router-bgp.md) — current BGP support boundary
+- [`router-zones.md`](./router-zones.md) — zone/isolation model
+- [`router-security-hardened.md`](./router-security-hardened.md) — hardening
+  surface
 
-1. **Phase 1** (Priority): Traffic graphs, CPU/Memory gauges
-2. **Phase 2**: Gateway monitoring, connection tracking
-3. **Phase 3**: Services panel, DNS integration
-4. **Phase 4**: Firewall stats, security widgets
-5. **Phase 5**: Live logging, speed test, WoL
+### Contributor and maintainer docs
 
-### Tech Stack
-- **Charts**: Chart.js
-- **Layout**: GridStack (drag-and-drop)
-- **Backend**: Python HTTP server
-- **Data**: /proc, /sys, systemctl, conntrack, nftables
+- [`module-authoring.md`](./module-authoring.md) — how to add new modules to the
+  flake
+- [`router-ci-check-surface-audit.md`](./router-ci-check-surface-audit.md) —
+  check-surface / CI boundary
+- [`router-nix-ci-baseline.md`](./router-nix-ci-baseline.md) — Nix CI baseline
+  notes
+- [`troubleshooting.md`](./troubleshooting.md) — operator troubleshooting notes
 
-### Implementation Structure
+### Dashboard docs
 
-```
-modules/
-  router-dashboard.nix           # NixOS module (enhanced)
-  router-dashboard/
-    index.html                   # Main dashboard HTML
-    css/dashboard.css            # Dark theme styles
-    js/main.js                   # Dashboard initialization
-    js/widgets/
-      base-widget.js             # Widget base class
-      traffic-widget.js          # Traffic graph (Chart.js)
-      system-widget.js           # CPU/Memory gauges
-      interface-widget.js        # Interface cards + sparklines
-      connections-widget.js      # Connection tracking
-      services-widget.js         # Systemd services table
-      links-widget.js            # Quick links
-    api/server.py                # Python HTTP + REST API
-```
+- [`IMPLEMENTATION-STATUS.md`](./IMPLEMENTATION-STATUS.md) — dashboard/status
+  implementation snapshot
+- [`DASHBOARD-ENHANCEMENT-PLAN.md`](./DASHBOARD-ENHANCEMENT-PLAN.md) — dashboard
+  plan
+- [`DASHBOARD-ARCHITECTURE.md`](./DASHBOARD-ARCHITECTURE.md) — dashboard
+  architecture details
+- [`DASHBOARD_SERVICE_CONTROL.md`](./DASHBOARD_SERVICE_CONTROL.md) — dashboard
+  mutation boundary
+- [`CURRENT-STATE.md`](./CURRENT-STATE.md) — older dashboard-state analysis
+- [`OPNSENSE-RESEARCH.md`](./OPNSENSE-RESEARCH.md) — dashboard/product research
 
-### Testing
+### History and execution
 
-The gateway host is at `gateway.deepwatercreature.com` or `10.10.10.1`.
-Dashboard currently accessible at `http://gateway:8888`.
+- [`discussions/`](./discussions/) — archived design/support-boundary
+  discussions
+- [`work-items/`](./work-items/) — active and recent execution queue
+- [`releases/`](./releases/) — release notes
+- [`incidents/`](./incidents/) — incident records
 
-### Related Files in Gateway Config
+## Organization Notes
 
-```
-unified-nix-configuration/hosts/nixos/gateway/
-  router-dashboard.nix          # Current dashboard config
-  scripts/network-status.sh     # Current API script
-  scripts/router-api-server.py  # Current Python server
-  dashboards/network-monitor.json  # Grafana dashboard
-```
-
-## Design Principles
-
-1. **NixOS Philosophy**: Config is declarative, dashboard is read-only by default
-2. **Minimal Dependencies**: Chart.js, GridStack, vanilla JS
-3. **Security**: LAN-only by default, no auth assumed on trusted network
-4. **Performance**: Lightweight, works on low-power router hardware
-5. **Modularity**: Independent widgets that can be enabled/disabled
-
-## References
-
-- [OPNsense Dashboard Docs](https://docs.opnsense.org/manual/dashboard.html)
-- [OPNsense Widget Development](https://docs.opnsense.org/development/frontend/dashboard.html)
-- [Chart.js Documentation](https://www.chartjs.org/docs/)
-- [GridStack Documentation](https://gridstackjs.com/docs/)
+- Repo-local support-boundary docs are preferred over chat history.
+- The root [`README.md`](../README.md) gives a feature overview; this directory
+  is where the more honest usage and boundary docs live.
+- If a topic has both a feature doc and a discussion round, treat the feature doc
+  as the current operator guide and the discussion as design history.

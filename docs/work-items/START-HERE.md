@@ -27,13 +27,20 @@ The authoritative work queue is the ordered list in [`README.md`](./README.md).
    treat it as stale and proceed.
 5. Mark the item `in-progress` in your branch as part of the same PR.
 
-## Invariants
+## Repo-Level Guardrails
 
-- Prefer one focused backend first; do not offer multiple DDNS engines unless a
-  real need appears.
-- Keep the module thin and let an existing DDNS client handle provider logic.
-- Do not conflate public DDNS with local/internal DNS ownership.
-- Keep provider-specific assumptions explicit.
+Do not treat old queue examples as permanent repo-wide invariants.
+This queue now spans routing, HA, firewall, DNS, DHCP, dashboard, and adjacent
+router features.
+
+Preserve these general guardrails unless the selected work item says otherwise:
+
+- keep changes scoped to the selected work item rather than opportunistically
+  broadening the product surface
+- prefer explicit support boundaries over implied capability
+- preserve existing single-active-owner / promotion-aware behavior where the
+  task touches HA-sensitive services
+- add or update docs when the user-facing support boundary changes
 
 ## PR Workflow
 

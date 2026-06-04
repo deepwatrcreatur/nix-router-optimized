@@ -7,6 +7,11 @@ Start here if you are assigning another agent:
 This folder is the working queue for router-flake follow-up that should be
 tracked separately from the dashboard planning docs.
 
+The authority split is:
+
+- [`START-HERE.md`](./START-HERE.md) for onboarding and claiming rules
+- this file for the active ranked queue
+
 ## How To Use
 
 - Treat each file in this folder as one PR-sized work stream.
@@ -18,9 +23,9 @@ tracked separately from the dashboard planning docs.
 
 ## Current Ranked Queue
 
-- [80-router-translation-backend-shared-adapter-surface](./80-router-translation-backend-shared-adapter-surface.md) — `ready`
-- [81-router-jool-experimental-backend-spike](./81-router-jool-experimental-backend-spike.md) — `ready`
-- [82-nix-ci-provider-evidence-and-suite-tuning](./82-nix-ci-provider-evidence-and-suite-tuning.md) — `ready`
+- [83-router-ndppd-support-boundary-and-first-slice-contract](./83-router-ndppd-support-boundary-and-first-slice-contract.md) — `ready`
+- [84-router-ndppd-module-and-ha-ownership-assertions](./84-router-ndppd-module-and-ha-ownership-assertions.md) — `ready`
+- [85-router-ndppd-validation-examples-and-doc-linkage](./85-router-ndppd-validation-examples-and-doc-linkage.md) — `ready`
 
 ## Recently Completed
 
