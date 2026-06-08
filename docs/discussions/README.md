@@ -19,6 +19,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [13](./13-ipv6-reliance-in-an-upgraded-homelan.md) | Whether an Upgraded Homelan Should Lean More on IPv6 | 2026-05-23 | Closed |
 | [14](./14-lock-kernel-modules-for-router-vms.md) | Whether Router VMs Should Lock Kernel Module Loading | 2026-05-24 | Closed |
 | [15](./15-ndp-proxy-tool-inclusion-boundary.md) | Whether to Add `ndppd`, `ndpresponder`, `ndproxy`, and `ndp-proxy-go` as Flake Options | 2026-05-29 | Closed |
+| [16](./16-openbsd-ansible-router-comparison-and-borrowing-boundary.md) | What Can `nix-router-optimized` Borrow from `francis-io/OpenBSD-Ansible-Router`? | 2026-06-08 | Closed |
 
 ## Methodology
 
