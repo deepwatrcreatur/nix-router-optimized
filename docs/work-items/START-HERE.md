@@ -22,10 +22,38 @@ The authoritative work queue is the ordered list in [`README.md`](./README.md).
 0. Refresh remote state first if multiple agents may be active (`git fetch origin`).
 1. Start with the ordered list in [`README.md`](./README.md).
 2. Find the first item whose header says `Status: ready`.
-3. Before taking it, check whether the suggested branch/worktree already exists.
-4. If a branch/worktree exists but there is no sign of active ownership,
-   treat it as stale and proceed.
-5. Mark the item `in-progress` in your branch as part of the same PR.
+3. Claim by **work-item path/title**, not only by number, because numbering can
+   move when new higher-priority items are inserted.
+4. Before taking it, check whether the suggested branch/worktree already exists.
+5. If a branch/worktree exists but there is no sign of active ownership,
+   treat it as stale and proceed carefully rather than assuming the queue is
+   wrong.
+6. Mark the item `in-progress` in your branch as part of the same PR.
+
+## Worktree Guardrails
+
+Treat the bare repo and the linked worktrees as different layers:
+
+- the bare repo is the canonical Git object store
+- `/home/deepwatrcreatur/flakes-worktrees/nix-router-optimized/main` is the
+  shared materialized checkout for reading, queue inspection, and branch
+  creation
+- feature work belongs in separate linked worktrees, not in the shared `main`
+  checkout
+
+Preserve these rules:
+
+1. The shared `main` worktree must stay on branch `main`.
+   Do not leave it parked on a feature/docs branch after opening a PR.
+2. If you need to implement a work item, create or reuse a dedicated linked
+   worktree for that branch.
+3. If you discover the shared `main` worktree is not on branch `main`, stop and
+   repair that before assuming the queue or branch names are wrong.
+4. If a stale linked worktree exists, either:
+   - reuse it deliberately if it clearly matches the intended branch
+   - or prune/remove it before creating fresh work
+5. Do not assume work-item numbers are stable forever; confirm by filename and
+   title before concluding another agent is on “the same task.”
 
 ## Repo-Level Guardrails
 

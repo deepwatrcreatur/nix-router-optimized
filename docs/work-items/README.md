@@ -16,10 +16,26 @@ The authority split is:
 
 - Treat each file in this folder as one PR-sized work stream.
 - Prefer one agent per file/branch.
+- Claim work by filename/title, not just number, because new queue insertions can
+  renumber later items.
 - Mark the file as `in-progress` in its header once an agent starts it.
 - When work is fully merged, either delete the file or keep it briefly as
   `done` if it records useful outcome notes for follow-up agents.
 - `done` items must not remain in the active ranking.
+
+## Worktree Hygiene
+
+- Keep the shared
+  `/home/deepwatrcreatur/flakes-worktrees/nix-router-optimized/main` checkout on
+  branch `main`.
+- Do feature work in dedicated linked worktrees rather than repurposing the
+  shared `main` checkout.
+- If a suggested branch/worktree already exists, verify whether it is genuinely
+  active before reusing or replacing it.
+- If stale worktrees accumulate, prune or retire them deliberately instead of
+  letting them become implicit ownership signals.
+- If queue numbers and existing branch names disagree, trust the current file
+  path/title first and reconcile numbering second.
 
 ## Current Ranked Queue
 

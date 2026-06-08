@@ -12,6 +12,10 @@ If you are assigning or running agents against this repo, start with:
 `START-HERE.md` is the onboarding flow.
 `docs/work-items/README.md` is the authoritative ranked queue.
 
+Operational note for agents: keep the shared `flakes-worktrees/.../main`
+checkout on branch `main`; create separate linked worktrees for feature/PR
+branches.
+
 ## Features
 
 - **FastTrack/FastPath**: Connection tracking bypass for established connections
