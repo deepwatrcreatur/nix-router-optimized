@@ -1,6 +1,6 @@
-# 81 - Router NDPPD Module and HA Ownership Assertions
+# 84 - Router NDPPD Module and HA Ownership Assertions
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -31,37 +31,37 @@ It is:
 
 ## Requirements
 
-- [ ] Add a bounded module, preferably `modules/router-ndp-proxy.nix`
-- [ ] Export it from `flake.nix` as an explicit named module without silently
+- [x] Add a bounded module, preferably `modules/router-ndp-proxy.nix`
+- [x] Export it from `flake.nix` as an explicit named module without silently
       widening `nixosModules.default`
-- [ ] Use a normalized consumer-facing option surface rather than raw
+- [x] Use a normalized consumer-facing option surface rather than raw
       `ndppd.conf` passthrough, covering at minimum:
       - enable flag
       - upstream interface
       - downstream interface or interfaces
       - any small set of first-slice prefix/behavior options justified by the
         contract item
-- [ ] Generate deterministic `ndppd` configuration and a managed systemd service
+- [x] Generate deterministic `ndppd` configuration and a managed systemd service
       from that option surface
-- [ ] Add an HA ownership assertion comparable in spirit to the existing
+- [x] Add an HA ownership assertion comparable in spirit to the existing
       `router-bgp` rule so the module does **not** silently support ambiguous
       `router-ha` combinations
-- [ ] Ensure the service behavior and module messaging make the intended support
+- [x] Ensure the service behavior and module messaging make the intended support
       stance visible:
       - advanced/opt-in
       - single-active-owner only when HA is present
       - no implication of multi-active support
-- [ ] Keep the implementation intentionally narrow rather than turning the first
+- [x] Keep the implementation intentionally narrow rather than turning the first
       PR into a generic backend abstraction layer
 
 ## Verification
 
-- [ ] A consumer can enable one declarative `ndppd`-based module without writing
+- [x] A consumer can enable one declarative `ndppd`-based module without writing
       raw service glue by hand
-- [ ] Ambiguous `router-ha` combinations fail clearly at eval time instead of
+- [x] Ambiguous `router-ha` combinations fail clearly at eval time instead of
       appearing supported
-- [ ] The generated config/service surface is deterministic and inspectable
-- [ ] The implementation does not claim support for deferred/out-of-scope tools
+- [x] The generated config/service surface is deterministic and inspectable
+- [x] The implementation does not claim support for deferred/out-of-scope tools
 
 ## Notes
 

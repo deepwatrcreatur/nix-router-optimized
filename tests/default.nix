@@ -79,6 +79,10 @@ let
     inherit self lib eval;
   };
 
+  routerNdppdChecks = import ./router-ndppd.nix {
+    inherit self lib eval;
+  };
+
   routerDashboardServiceControlChecks = import ./router-dashboard-service-control.nix {
     inherit self eval lib pkgs;
   };
@@ -109,6 +113,10 @@ in
           assertion = builtins.elem "router-ddns" exportedModuleNames;
           message = "nixosModules.router-ddns must stay exported.";
         }
+        {
+          assertion = builtins.elem "router-ndp-proxy" exportedModuleNames;
+          message = "nixosModules.router-ndp-proxy must stay exported.";
+        }
       ];
     }
   ];
@@ -129,6 +137,7 @@ in
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
 // routerHaBoundaryChecks
+// routerNdppdChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (
