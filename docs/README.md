@@ -48,6 +48,8 @@ from module names alone.
 - [`router-zones.md`](./router-zones.md) — zone/isolation model
 - [`router-security-hardened.md`](./router-security-hardened.md) — hardening
   surface
+- [`router-security-validation.md`](./router-security-validation.md) —
+  post-change router-local, LAN-side, and WAN-side security validation runbook
 
 ### Contributor and maintainer docs
 

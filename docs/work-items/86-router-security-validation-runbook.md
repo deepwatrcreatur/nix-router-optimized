@@ -1,6 +1,6 @@
 # 86 - Router Security Validation Runbook
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -44,40 +44,40 @@ unsafe or confusing state.
 
 ## Requirements
 
-- [ ] Add `docs/router-security-validation.md`
-- [ ] Cover at least three validation viewpoints:
+- [x] Add `docs/router-security-validation.md`
+- [x] Cover at least three validation viewpoints:
       - router-local
       - LAN-side
       - WAN-side
-- [ ] Include concrete commands appropriate to the local stack, such as:
+- [x] Include concrete commands appropriate to the local stack, such as:
       - `nft list ruleset`
       - `ss -tulpen` or equivalent listener inspection
       - `systemctl` checks for key services
       - `ip route` / `ip rule`
       - LAN-side `nmap` examples
       - WAN-side scan guidance
-- [ ] Distinguish:
+- [x] Distinguish:
       - expected-open surfaces when specific optional features are enabled
       - and findings that should not appear unless intentionally configured
-- [ ] Include a validation cadence, such as:
+- [x] Include a validation cadence, such as:
       - after first deployment
       - after firewall / DNS / DHCP / HA / WAN changes
       - after upstream modem or topology changes
       - and periodically for assurance
-- [ ] Keep scan artifacts and real public IP values out of git
-- [ ] Link the runbook from the most relevant existing docs
+- [x] Keep scan artifacts and real public IP values out of git
+- [x] Link the runbook from the most relevant existing docs
 
 ## Verification
 
-- [ ] An operator can use the repo docs to determine whether a suspected outage
+- [x] An operator can use the repo docs to determine whether a suspected outage
       is more likely:
       - DHCP
       - DNS
       - firewall / routing
       - or unexpected WAN exposure
-- [ ] The repo has one clear security-validation reference instead of scattered
+- [x] The repo has one clear security-validation reference instead of scattered
       implied steps
-- [ ] The resulting doc is careful not to overclaim a single expected-open-port
+- [x] The resulting doc is careful not to overclaim a single expected-open-port
       picture for all possible feature combinations
 
 ## Notes
