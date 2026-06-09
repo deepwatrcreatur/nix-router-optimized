@@ -262,6 +262,20 @@ in
       '';
     };
 
+    extraOutputRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = "Extra nftables output-chain rules appended before the final accept.";
+    };
+
+    extraOutputEarlyRules = mkOption {
+      type = types.lines;
+      default = "";
+      description = ''
+        Extra nftables output-chain rules inserted at the very beginning.
+      '';
+    };
+
     extraFilterTableRules = mkOption {
       type = types.lines;
       default = "";
@@ -620,6 +634,8 @@ in
 
         chain output {
           type filter hook output priority 0; policy accept;
+          ${cfg.extraOutputEarlyRules}
+          ${cfg.extraOutputRules}
           ${cnt}accept
         }
       }

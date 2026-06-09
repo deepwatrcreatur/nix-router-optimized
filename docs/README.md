@@ -43,7 +43,7 @@ from module names alone.
 - [`router-bgp.md`](./router-bgp.md) — current BGP support boundary
 - [`router-zones.md`](./router-zones.md) — zone/isolation model
 - [`router-security-hardened.md`](./router-security-hardened.md) — hardening
-  surface
+  surface, including Geo-IP, WAN egress bogon blocking, and MAC controls
 - [`router-security-validation.md`](./router-security-validation.md) —
   post-change router-local, LAN-side, and WAN-side security validation runbook
 - [`router-apply-safety.md`](./router-apply-safety.md) — manual pre-change,

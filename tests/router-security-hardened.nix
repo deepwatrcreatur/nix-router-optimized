@@ -145,6 +145,63 @@
     })
   ];
 
+  router-security-hardened-egress-bogon-eval = eval.mkNixosEvalCheck "router-security-hardened-egress-bogon" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-security-hardened
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+      };
+
+      services.router-security-hardened = {
+        enable = true;
+        egressBogonBlocking.enable = true;
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = lib.hasInfix ''set wan_egress_bogon_ipv4'' config.networking.nftables.ruleset;
+          message = "router-security-hardened should declare the WAN egress bogon set when enabled.";
+        }
+        {
+          assertion = lib.hasInfix ''elements = { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10'' config.networking.nftables.ruleset;
+          message = "router-security-hardened should populate the default WAN egress bogon IPv4 ranges.";
+        }
+        {
+          assertion = lib.hasInfix ''jump egress_bogon_block'' config.networking.nftables.ruleset;
+          message = "router-security-hardened should insert the WAN egress bogon jump into nftables evaluation.";
+        }
+        {
+          assertion = lib.hasInfix ''oifname {"eth0"} ip daddr @wan_egress_bogon_ipv4 drop comment "router-security-hardened WAN egress bogon block"'' config.networking.nftables.ruleset;
+          message = "router-security-hardened should scope WAN egress bogon blocking to WAN-bound traffic.";
+        }
+      ];
+    })
+  ];
+
+  router-security-hardened-egress-bogon-disabled-eval = eval.mkNixosEvalCheck "router-security-hardened-egress-bogon-disabled" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-security-hardened
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+      };
+
+      services.router-security-hardened.enable = true;
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = !(lib.hasInfix ''wan_egress_bogon_ipv4'' config.networking.nftables.ruleset);
+          message = "router-security-hardened should not render WAN egress bogon rules when disabled.";
+        }
+      ];
+    })
+  ];
+
   router-security-hardened-geoip-empty-fails = eval.mkNixosEvalFailureCheck "router-security-hardened-geoip-empty" [
     self.nixosModules.router-firewall
     self.nixosModules.router-security-hardened
@@ -175,6 +232,25 @@
         macSecurity = {
           enable = true;
           whitelists = { };
+        };
+      };
+    }
+  ];
+
+  router-security-hardened-egress-bogon-empty-fails = eval.mkNixosEvalFailureCheck "router-security-hardened-egress-bogon-empty" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-security-hardened
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+      };
+
+      services.router-security-hardened = {
+        enable = true;
+        egressBogonBlocking = {
+          enable = true;
+          ipv4Cidrs = [ ];
         };
       };
     }

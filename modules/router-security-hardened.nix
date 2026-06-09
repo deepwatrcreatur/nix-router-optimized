@@ -14,6 +14,23 @@ let
   firewallEnabled = hasRouterFirewall && (config.services.router-firewall.enable or false);
   sanitizeName = name: builtins.replaceStrings [ "." ":" "@" "/" "-" ] [ "_" "_" "_" "_" "_" ] name;
   maybeSet = ifaces: "{${concatStringsSep ", " (map (iface: "\"${iface}\"") ifaces)}}";
+  defaultEgressBogonIpv4Cidrs = [
+    "0.0.0.0/8"
+    "10.0.0.0/8"
+    "100.64.0.0/10"
+    "127.0.0.0/8"
+    "169.254.0.0/16"
+    "172.16.0.0/12"
+    "192.0.0.0/24"
+    "192.0.2.0/24"
+    "192.88.99.0/24"
+    "192.168.0.0/16"
+    "198.18.0.0/15"
+    "198.51.100.0/24"
+    "203.0.113.0/24"
+    "224.0.0.0/4"
+    "240.0.0.0/4"
+  ];
 
   derivedWanInterfaces =
     let
@@ -83,6 +100,19 @@ in
         ];
         default = "alert";
         description = "Whether to only log/alert on unknown MACs or strictly enforce/drop traffic.";
+      };
+    };
+
+    egressBogonBlocking = {
+      enable = mkEnableOption "WAN egress blocking for bogon and special-purpose IPv4 destinations";
+      ipv4Cidrs = mkOption {
+        type = types.listOf types.str;
+        default = defaultEgressBogonIpv4Cidrs;
+        description = ''
+          IPv4 CIDRs blocked when traffic exits a WAN interface, covering both
+          forwarded traffic and router-originated traffic. This first slice is
+          intentionally IPv4-only.
+        '';
       };
     };
   };
@@ -277,6 +307,42 @@ in
 
         services.router-firewall.extraForwardEarlyRules = mkBefore ''
           jump mac_security
+        '';
+      }
+    else
+      { })
+
+    (if hasRouterFirewall then
+      mkIf (firewallEnabled && cfg.egressBogonBlocking.enable) {
+        assertions = [
+          {
+            assertion = wanInterfaces != [ ];
+            message = "router-security-hardened: egressBogonBlocking requires at least one WAN interface from router-firewall or router-optimizations.";
+          }
+          {
+            assertion = cfg.egressBogonBlocking.ipv4Cidrs != [ ];
+            message = "router-security-hardened: set egressBogonBlocking.ipv4Cidrs to a non-empty list when enabling WAN egress bogon blocking.";
+          }
+        ];
+
+        services.router-firewall.extraFilterTableRules = mkAfter ''
+          set wan_egress_bogon_ipv4 {
+            type ipv4_addr
+            flags interval
+            elements = { ${concatStringsSep ", " cfg.egressBogonBlocking.ipv4Cidrs} }
+          }
+
+          chain egress_bogon_block {
+            oifname ${maybeSet wanInterfaces} ip daddr @wan_egress_bogon_ipv4 drop comment "router-security-hardened WAN egress bogon block"
+          }
+        '';
+
+        services.router-firewall.extraForwardEarlyRules = mkBefore ''
+          jump egress_bogon_block
+        '';
+
+        services.router-firewall.extraOutputEarlyRules = mkBefore ''
+          jump egress_bogon_block
         '';
       }
     else

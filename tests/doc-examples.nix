@@ -648,6 +648,7 @@ in
           enable = true;
           blockedCountries = [ "ru" "cn" ];
         };
+        egressBogonBlocking.enable = true;
         macSecurity = {
           enable = true;
           policy = "enforce";
@@ -673,6 +674,10 @@ in
     {
       assertion = lib.hasInfix "iifname {\"eth0\"} ip saddr @blocked_countries drop" config.networking.nftables.ruleset;
       message = "router-security-hardened example should render WAN-restricted geoip drop rule.";
+    }
+    {
+      assertion = lib.hasInfix "oifname {\"eth0\"} ip daddr @wan_egress_bogon_ipv4 drop" config.networking.nftables.ruleset;
+      message = "router-security-hardened example should render WAN-restricted egress bogon drop rule.";
     }
     {
       assertion = lib.hasInfix "iifname \"eth1\" ether saddr != @allowed_macs_eth1 log prefix \"MAC-REJECT: \" drop" config.networking.nftables.ruleset;
