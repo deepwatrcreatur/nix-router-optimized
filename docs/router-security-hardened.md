@@ -1,6 +1,6 @@
 # Router Security Hardening
 
-The `router-security-hardened` module provides advanced security features for NixOS routers, focusing on kernel hardening, Geo-IP blocking, and MAC address security.
+The `router-security-hardened` module provides advanced security features for NixOS routers, focusing on kernel hardening, Geo-IP blocking, WAN egress bogon blocking, and MAC address security.
 
 ## Features
 
@@ -17,6 +17,13 @@ Tightens kernel parameters to reduce attack surface:
 Declarative blocking of entire countries using `nftables` sets and the IPDeny data source.
 - Automatic boot-time and daily updates of IP sets.
 - Early drop in the `input` chain before any services are reached.
+
+### WAN Egress Bogon Blocking
+Declarative blocking of traffic headed out a WAN interface toward bogon and
+special-purpose IPv4 destinations.
+- Covers both forwarded LAN-to-WAN traffic and router-originated traffic.
+- Scoped to WAN egress only rather than generic local traffic.
+- Uses an explicit first-slice IPv4 range set instead of dynamic feeds.
 
 ### MAC Security
 Interface-specific MAC address whitelisting.
@@ -41,6 +48,8 @@ services.router-security-hardened = {
     blockedCountries = [ "ru" "cn" "ir" ];
   };
 
+  egressBogonBlocking.enable = true;
+
   macSecurity = {
     enable = true;
     policy = "enforce";
@@ -61,14 +70,19 @@ services.router-security-hardened = {
 | `kernelHardening.allowPing` | bool | `true` | Allow ICMP echo. |
 | `geoIpBlocking.enable` | bool | `false` | Enable Geo-IP blocking. |
 | `geoIpBlocking.blockedCountries` | list of str | `[]` | ISO country codes to block. |
+| `egressBogonBlocking.enable` | bool | `false` | Enable WAN egress blocking to bogon/special-purpose IPv4 ranges. |
+| `egressBogonBlocking.ipv4Cidrs` | list of str | explicit RFC6890-style set | IPv4 CIDRs blocked when traffic exits a WAN interface. |
 | `macSecurity.enable` | bool | `false` | Enable MAC address security. |
 | `macSecurity.policy` | enum | `"alert"` | `"alert"` or `"enforce"`. |
 | `macSecurity.whitelists` | attrs of list of str | `{}` | Per-interface MAC whitelists. |
 
 ## Integration Notes
 
-- Requires `services.router-firewall.enable = true` for Geo-IP and MAC security.
+- Requires `services.router-firewall.enable = true` for Geo-IP, WAN egress bogon blocking, and MAC security.
 - Geo-IP blocking depends on `https://www.ipdeny.com` for IP zone files.
+- WAN egress bogon blocking is IPv4-only in this first slice and is enforced in
+  both the `forward` and `output` chains through `router-firewall` extension
+  hooks.
 - MAC security enforces whitelists on the `forward` chain (traffic passing through the router).
 - After enabling or changing this module, use
   [`router-security-validation.md`](./router-security-validation.md) to confirm

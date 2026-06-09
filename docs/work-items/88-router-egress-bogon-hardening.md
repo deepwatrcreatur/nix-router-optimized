@@ -1,6 +1,6 @@
 # 88 - Router Egress Bogon Hardening
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -35,26 +35,26 @@ This is attractive because it is:
 
 ## Requirements
 
-- [ ] Decide whether this belongs in:
+- [x] Decide whether this belongs in:
       - `router-security-hardened`
       - `router-firewall`
       - or a narrowly shared boundary between them
-- [ ] Add an option shape for the behavior rather than silently hardcoding it
-- [ ] Define the initial IPv4 bogon/special-purpose range set explicitly
-- [ ] Cover both:
+- [x] Add an option shape for the behavior rather than silently hardcoding it
+- [x] Define the initial IPv4 bogon/special-purpose range set explicitly
+- [x] Cover both:
       - forwarded LAN-to-WAN traffic
       - and router-originated WAN egress
-- [ ] Ensure the resulting rules are scoped to WAN egress rather than generic
+- [x] Ensure the resulting rules are scoped to WAN egress rather than generic
       local traffic
-- [ ] Add focused eval or generated-ruleset coverage
-- [ ] Update docs if the option becomes operator-visible
+- [x] Add focused eval or generated-ruleset coverage
+- [x] Update docs if the option becomes operator-visible
 
 ## Verification
 
-- [ ] Generated nftables rules include the bogon set and the intended egress drop
+- [x] Generated nftables rules include the bogon set and the intended egress drop
       rules only when the option is enabled
-- [ ] The change does not regress existing firewall composition points
-- [ ] A reviewer can tell the difference between this feature and existing
+- [x] The change does not regress existing firewall composition points
+- [x] A reviewer can tell the difference between this feature and existing
       inbound Geo-IP or rp_filter-style hardening
 
 ## Notes
