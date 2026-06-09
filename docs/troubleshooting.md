@@ -2,6 +2,10 @@
 
 Common failure modes when using `nix-router-optimized`.
 
+For a structured post-change validation pass, start with
+[`router-security-validation.md`](./router-security-validation.md) before
+drilling into one symptom at a time.
+
 ## Public service works from cellular but not from LAN
 
 Symptom:

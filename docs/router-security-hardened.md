@@ -70,3 +70,6 @@ services.router-security-hardened = {
 - Requires `services.router-firewall.enable = true` for Geo-IP and MAC security.
 - Geo-IP blocking depends on `https://www.ipdeny.com` for IP zone files.
 - MAC security enforces whitelists on the `forward` chain (traffic passing through the router).
+- After enabling or changing this module, use
+  [`router-security-validation.md`](./router-security-validation.md) to confirm
+  the live router still matches the intended LAN and WAN exposure boundary.
