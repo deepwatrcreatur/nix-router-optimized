@@ -1,6 +1,6 @@
-# 80 - Router NDPPD Support Boundary and First-Slice Contract
+# 83 - Router NDPPD Support Boundary and First-Slice Contract
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -33,41 +33,41 @@ the first implementation slice before module code appears.
 
 ## Requirements
 
-- [ ] Add a dedicated design/support doc for the first slice, such as
+- [x] Add a dedicated design/support doc for the first slice, such as
       `docs/router-ndp-proxy.md`, that states:
       - the intended user/problem shape
       - that the near-term backend is `ndppd`
       - that the feature is advanced/opt-in rather than a general default
-- [ ] Document when operators should prefer the static
+- [x] Document when operators should prefer the static
       `systemd-networkd` `IPv6ProxyNDP` / `IPv6ProxyNDPAddress` path instead of
       an NDP daemon
-- [ ] Define the first supported topology concretely enough to guide later
+- [x] Define the first supported topology concretely enough to guide later
       implementation, including at minimum:
       - one upstream interface
       - one or more downstream interfaces
       - Linux/NixOS router host
       - no claim of multi-active HA behavior
-- [ ] Make the exclusions explicit in docs:
+- [x] Make the exclusions explicit in docs:
       - `ndpresponder` is deferred pending packaging/support review
       - `ndproxy` is not a coherent supported target here
       - `ndp-proxy-go` is outside the repo's platform boundary
-- [ ] Describe the HA ownership rule the later module must obey:
+- [x] Describe the HA ownership rule the later module must obey:
       - single-active owner only
       - no silent dual-active proxy replies
       - assertion-driven refusal for ambiguous `router-ha` combinations
-- [ ] Leave the design specific enough that a later module PR does not have to
+- [x] Leave the design specific enough that a later module PR does not have to
       invent the support boundary from scratch
 
 ## Verification
 
-- [ ] A contributor can read one repo-local doc and tell:
+- [x] A contributor can read one repo-local doc and tell:
       - whether NDP proxying is in scope at all
       - which backend is the actual near-term candidate
       - when the static networkd path is sufficient
       - and why the other named tools are not being exposed now
-- [ ] The first-slice topology and HA ownership rule are concrete enough to drive
+- [x] The first-slice topology and HA ownership rule are concrete enough to drive
       assertions and service behavior later
-- [ ] The docs do not imply that all NDP proxy tools are equivalent or currently
+- [x] The docs do not imply that all NDP proxy tools are equivalent or currently
       supported
 
 ## Notes
