@@ -70,3 +70,6 @@ services.router-security-hardened = {
 - Requires `services.router-firewall.enable = true` for Geo-IP and MAC security.
 - Geo-IP blocking depends on `https://www.ipdeny.com` for IP zone files.
 - MAC security enforces whitelists on the `forward` chain (traffic passing through the router).
+- For risky live changes in this area, use
+  [`router-apply-safety.md`](./router-apply-safety.md) before and after the
+  switch rather than assuming `nixos-rebuild switch` is its own acceptance gate.

@@ -44,6 +44,8 @@ from module names alone.
 - [`router-zones.md`](./router-zones.md) — zone/isolation model
 - [`router-security-hardened.md`](./router-security-hardened.md) — hardening
   surface
+- [`router-apply-safety.md`](./router-apply-safety.md) — manual pre-change,
+  post-change, and rollback procedure for risky router updates
 
 ### Contributor and maintainer docs
 

@@ -1,6 +1,6 @@
 # 87 - Router Apply-Safety and Rollback Runbook
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -33,39 +33,39 @@ It is to make the manual safety procedure explicit and repeatable.
 
 ## Requirements
 
-- [ ] Add a repo-local doc for risky update procedure, likely
+- [x] Add a repo-local doc for risky update procedure, likely
       `docs/router-apply-safety.md`
-- [ ] Define what counts as a risky change, including at least:
+- [x] Define what counts as a risky change, including at least:
       - firewall changes
       - DNS service changes
       - DHCP service changes
       - WAN / HA / routing changes
-- [ ] Document the minimum pre-change preparation, including:
+- [x] Document the minimum pre-change preparation, including:
       - identify the previous generation
       - ensure console / Proxmox / out-of-band recovery path is known
       - identify another LAN vantage point when available
-- [ ] Document post-switch checks from another host where possible, including:
+- [x] Document post-switch checks from another host where possible, including:
       - SSH reachability
       - DNS resolution through the router
       - WAN connectivity
       - and a way to tell whether DHCP or DNS is the likely failed layer
-- [ ] Document the rollback path explicitly:
+- [x] Document the rollback path explicitly:
       - `nixos-rebuild switch --rollback` when still reachable
       - reboot into previous generation when not reachable but console exists
-- [ ] Make it clear that an agent behind the broken router cannot recover
+- [x] Make it clear that an agent behind the broken router cannot recover
       reliably unless rollback or out-of-band access was prepared beforehand
-- [ ] Cross-link the new procedure from the HA / DHCP / hardening docs where
+- [x] Cross-link the new procedure from the HA / DHCP / hardening docs where
       operators are most likely to need it
 
 ## Verification
 
-- [ ] An operator can answer:
+- [x] An operator can answer:
       - what to do before a risky router update
       - what to check immediately after it
       - and how to roll back if DNS or DHCP appears broken
-- [ ] The repo no longer leaves rollback procedure as oral tradition or incident
+- [x] The repo no longer leaves rollback procedure as oral tradition or incident
       memory
-- [ ] The doc is explicit about the difference between:
+- [x] The doc is explicit about the difference between:
       - generation rollback
       - post-change health verification
       - and fully automated rollback
