@@ -39,6 +39,7 @@ let
   wanTcpPorts = unique (concatLists (mapAttrsToList (_name: instance: instance.wanTcpPorts) cfg.instances));
   extraForwardRules = concatStringsSep "\n" (filter (rule: rule != "") (mapAttrsToList (_name: instance: mkWanRule instance) cfg.instances));
   routeToWanInstances = filterAttrs (_name: instance: instance.routeToWan) cfg.instances;
+  inlineAuthUserPassInstances = attrNames (filterAttrs (_name: instance: builtins.isAttrs instance.authUserPass) cfg.instances);
 in
 {
   options.services.router-openvpn = {
@@ -129,6 +130,10 @@ in
   };
 
   config = mkIf (cfg.instances != { }) {
+    warnings = optionals (inlineAuthUserPassInstances != [ ]) [
+      "router-openvpn: inline authUserPass attrsets embed credentials in Nix values. Prefer auth-user-pass /run/... inside instance config for ${concatStringsSep ", " inlineAuthUserPassInstances}."
+    ];
+
     assertions = [
       {
         assertion = routeToWanInstances == { } || !firewallEnabled || wanInterfaces != [ ];
