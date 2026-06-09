@@ -49,6 +49,7 @@ branches.
 - **mDNS Reflector**: Avahi mDNS reflector for cross-VLAN service discovery
 - **UPnP/NAT-PMP**: miniupnpd with nftables jump-rule integration
 - **BGP**: Advanced / experimental FRR bgpd wrapper for declarative internal peering
+- **NDP Proxy**: Advanced / opt-in `ndppd`-backed routed-prefix neighbor-proxy module with bounded HA ownership rules
 - **High Availability (HA)**: 
   - **VRRP (Keepalived)**: Virtual IP (VIP) sharing between master and backup router nodes.
   - **Kea DHCP HA**: Advanced Kea HA primitives for opt-in topologies. The
@@ -95,8 +96,9 @@ Important honesty boundary:
 
 - NAT64/DNS64 is a real supported path today
 - `router-clat` is an experimental first slice
-- `ndppd` is the likely future NDP daemon path, but it is **not** yet a shipped
-  first-class module surface in this repo
+- `services.router-ndp-proxy` is the current advanced / opt-in NDP daemon path
+- `ndpresponder`, `ndproxy`, and `ndp-proxy-go` remain outside the current
+  module boundary
 
 ## Quick Start
 

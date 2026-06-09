@@ -1,6 +1,6 @@
-# 82 - Router NDPPD Validation, Examples, and Doc Linkage
+# 85 - Router NDPPD Validation, Examples, and Doc Linkage
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -28,27 +28,27 @@ example surface so contributors and consumers can tell:
 
 ## Requirements
 
-- [ ] Add focused validation for the new module, including at minimum:
+- [x] Add focused validation for the new module, including at minimum:
       - successful eval for a bounded standalone configuration
       - assertion/failure coverage for unsupported or ambiguous HA combinations
       - any minimal config-render checks needed to prove deterministic output
-- [ ] Add at least one example configuration for the supported first slice
-- [ ] Add or update docs so the README/module docs point readers to:
+- [x] Add at least one example configuration for the supported first slice
+- [x] Add or update docs so the README/module docs point readers to:
       - the dedicated NDP proxy doc
       - the example configuration
       - and the support-boundary stance
-- [ ] Ensure the docs explain how an operator can verify the resulting service
+- [x] Ensure the docs explain how an operator can verify the resulting service
       and configuration rather than assuming the feature is self-evident
-- [ ] Keep the validation focused on the declared first slice instead of trying
+- [x] Keep the validation focused on the declared first slice instead of trying
       to simulate every possible IPv6 topology
 
 ## Verification
 
-- [ ] A contributor can find one example and one dedicated doc without reading
+- [x] A contributor can find one example and one dedicated doc without reading
       module source
-- [ ] CI/local eval coverage proves that supported and refused shapes behave as
+- [x] CI/local eval coverage proves that supported and refused shapes behave as
       the docs claim
-- [ ] The README and dedicated docs do not overstate maturity or backend scope
+- [x] The README and dedicated docs do not overstate maturity or backend scope
 
 ## Notes
 

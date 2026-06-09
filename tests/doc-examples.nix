@@ -287,6 +287,43 @@ in
     }
   ]);
 
+  examples-router-ndp-proxy-eval = mkDocExampleCheck "examples-router-ndp-proxy" [
+    self.nixosModules.router-ndp-proxy
+    {
+      services.router-ndp-proxy = {
+        enable = true;
+        upstreamInterface = "eth0";
+        downstreamInterfaces = [ "br-lan" ];
+        prefixes = [
+          {
+            prefix = "2001:db8:100::/64";
+            method = "interface";
+            downstreamInterface = "br-lan";
+          }
+          {
+            prefix = "2001:db8:101::/64";
+            method = "auto";
+          }
+        ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.systemd.services.router-ndp-proxy.serviceConfig.ExecStart == "${pkgs.ndppd}/bin/ndppd";
+      message = "router-ndp-proxy example should enable the packaged ndppd service.";
+    }
+    {
+      assertion =
+        lib.hasInfix "proxy eth0" config.environment.etc."ndppd.conf".text
+        && lib.hasInfix "iface br-lan" config.environment.etc."ndppd.conf".text;
+      message = "router-ndp-proxy example should render the documented upstream and downstream interface mapping.";
+    }
+    {
+      assertion = builtins.elem "multi-user.target" config.systemd.services.router-ndp-proxy.wantedBy;
+      message = "router-ndp-proxy example should auto-start in standalone mode.";
+    }
+  ]);
+
   readme-common-wan-policy-eval = mkDocExampleCheck "readme-common-wan-policy" [
     self.nixosModules.router-firewall
     {

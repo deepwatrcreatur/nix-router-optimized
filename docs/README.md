@@ -22,8 +22,8 @@ from module names alone.
   usage and caveats
 - [`DECLARATIVE_CLAT.md`](./DECLARATIVE_CLAT.md) — current experimental CLAT
   boundary
-- [`router-ndp-proxy.md`](./router-ndp-proxy.md) — current static NDP proxy
-  guidance and the repo's `ndppd` stance
+- [`router-ndp-proxy.md`](./router-ndp-proxy.md) — NDP proxy support boundary,
+  module usage, static-path guidance, and verification steps
 - [`router-translation-backends.md`](./router-translation-backends.md) —
   backend-boundary note for Tayga now and possible future Jool work
 
