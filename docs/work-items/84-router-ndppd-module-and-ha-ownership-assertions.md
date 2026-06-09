@@ -1,6 +1,6 @@
 # 84 - Router NDPPD Module and HA Ownership Assertions
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 

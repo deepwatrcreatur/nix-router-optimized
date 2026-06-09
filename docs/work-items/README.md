@@ -39,17 +39,17 @@ The authority split is:
 
 ## Current Ranked Queue
 
-- [83-router-ndppd-support-boundary-and-first-slice-contract](./83-router-ndppd-support-boundary-and-first-slice-contract.md) — `ready`
-- [84-router-ndppd-module-and-ha-ownership-assertions](./84-router-ndppd-module-and-ha-ownership-assertions.md) — `in-progress`
-- [85-router-ndppd-validation-examples-and-doc-linkage](./85-router-ndppd-validation-examples-and-doc-linkage.md) — `in-progress`
-- [86-router-security-validation-runbook](./86-router-security-validation-runbook.md) — `in-progress`
-- [87-router-apply-safety-and-rollback-runbook](./87-router-apply-safety-and-rollback-runbook.md) — `in-progress`
 - [88-router-egress-bogon-hardening](./88-router-egress-bogon-hardening.md) — `ready`
 - [89-router-runtime-credential-discipline-audit](./89-router-runtime-credential-discipline-audit.md) — `ready`
 - [90-router-degraded-mode-status-fallback-boundary](./90-router-degraded-mode-status-fallback-boundary.md) — `ready`
 
 ## Recently Completed
 
+- [87-router-apply-safety-and-rollback-runbook](./87-router-apply-safety-and-rollback-runbook.md) — `done`
+- [86-router-security-validation-runbook](./86-router-security-validation-runbook.md) — `done`
+- [85-router-ndppd-validation-examples-and-doc-linkage](./85-router-ndppd-validation-examples-and-doc-linkage.md) — `done`
+- [84-router-ndppd-module-and-ha-ownership-assertions](./84-router-ndppd-module-and-ha-ownership-assertions.md) — `done`
+- [83-router-ndppd-support-boundary-and-first-slice-contract](./83-router-ndppd-support-boundary-and-first-slice-contract.md) — `done`
 - [62-router-kea-ha-transport-convergence-and-incident-closure](./62-router-kea-ha-transport-convergence-and-incident-closure.md) — `done`
 - [52-router-mwan-positioning-and-doc-boundary](./52-router-mwan-positioning-and-doc-boundary.md) — `done`
 - [53-ipv6-multiwan-decision-guide-and-examples](./53-ipv6-multiwan-decision-guide-and-examples.md) — `done`
