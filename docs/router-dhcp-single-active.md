@@ -122,3 +122,7 @@ Incident `2026-04-23` is resolved on this boundary:
 - the current support story is honest
 - the remaining work is support-boundary and promotion-runbook clarity, not
   pretending the pair already has active DHCP HA
+
+When deploying a promotion-related change on this pair, pair that workflow with
+[`router-apply-safety.md`](./router-apply-safety.md) so rollback and
+post-switch validation are prepared before the change goes live.

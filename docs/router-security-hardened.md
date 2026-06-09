@@ -73,3 +73,6 @@ services.router-security-hardened = {
 - After enabling or changing this module, use
   [`router-security-validation.md`](./router-security-validation.md) to confirm
   the live router still matches the intended LAN and WAN exposure boundary.
+- For risky live changes in this area, use
+  [`router-apply-safety.md`](./router-apply-safety.md) before and after the
+  switch rather than assuming `nixos-rebuild switch` is its own acceptance gate.

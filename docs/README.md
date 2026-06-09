@@ -23,11 +23,7 @@ from module names alone.
 - [`DECLARATIVE_CLAT.md`](./DECLARATIVE_CLAT.md) — current experimental CLAT
   boundary
 - [`router-ndp-proxy.md`](./router-ndp-proxy.md) — NDP proxy support boundary,
-<<<<<<< HEAD
-  static-path guidance, and the repo's `ndppd` first-slice stance
-=======
   module usage, static-path guidance, and verification steps
->>>>>>> test/router-ndppd-validation
 - [`router-translation-backends.md`](./router-translation-backends.md) —
   backend-boundary note for Tayga now and possible future Jool work
 
@@ -50,6 +46,8 @@ from module names alone.
   surface
 - [`router-security-validation.md`](./router-security-validation.md) —
   post-change router-local, LAN-side, and WAN-side security validation runbook
+- [`router-apply-safety.md`](./router-apply-safety.md) — manual pre-change,
+  post-change, and rollback procedure for risky router updates
 
 ### Contributor and maintainer docs
 

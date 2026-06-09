@@ -75,3 +75,7 @@ What should not be assumed:
 - **Supported upstream:** router NTP service itself
 - **Not currently supported upstream:** a typed `router-ha` adapter for NTP
 - **Expected policy owner:** consumer config
+
+For risky ownership, WAN, or failover changes, use
+[`router-apply-safety.md`](./router-apply-safety.md) as the manual acceptance
+and rollback procedure.
