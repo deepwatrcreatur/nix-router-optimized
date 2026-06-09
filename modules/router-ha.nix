@@ -6,10 +6,15 @@ let
   cfg = config.services.router-ha;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   hasRouterBgp = hasAttrByPath [ "services" "router-bgp" "enable" ] options;
+  hasRouterNdpProxy = hasAttrByPath [ "services" "router-ndp-proxy" "enable" ] options;
   bgpSingleActiveOwner =
     hasRouterBgp
     && (config.services.router-bgp.enable or false)
     && (config.services.router-bgp.ha.singleActiveOwner or false);
+  ndpProxySingleActiveOwner =
+    hasRouterNdpProxy
+    && (config.services.router-ndp-proxy.enable or false)
+    && (config.services.router-ndp-proxy.ha.singleActiveOwner or false);
   bgpAsn = if bgpSingleActiveOwner then config.services.router-bgp.asn else 0;
   bgpNeighborIps = if bgpSingleActiveOwner then attrNames (config.services.router-bgp.neighbors or { }) else [ ];
 
@@ -117,7 +122,7 @@ in
               auth_type PASS
               auth_pass ${cfg.vrrpPassword}
             }
-            ${optionalString (cfg.wan.enable || bgpSingleActiveOwner) ''
+            ${optionalString (cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner) ''
               notify_master "${pkgs.writeShellScript "keepalived-master" ''
                 ${optionalString cfg.wan.enable ''
                   echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
@@ -130,6 +135,9 @@ in
                 ${optionalString bgpSingleActiveOwner ''
                   ${bgpPromoteScript}
                 ''}
+                ${optionalString ndpProxySingleActiveOwner ''
+                  ${pkgs.systemd}/bin/systemctl start router-ndp-proxy.service
+                ''}
               ''}"
               notify_backup "${pkgs.writeShellScript "keepalived-backup" ''
                 ${optionalString cfg.wan.enable ''
@@ -139,6 +147,9 @@ in
                 ${optionalString bgpSingleActiveOwner ''
                   ${bgpDemoteScript}
                 ''}
+                ${optionalString ndpProxySingleActiveOwner ''
+                  ${pkgs.systemd}/bin/systemctl stop router-ndp-proxy.service
+                ''}
               ''}"
               notify_fault "${pkgs.writeShellScript "keepalived-fault" ''
                 ${optionalString cfg.wan.enable ''
@@ -147,6 +158,9 @@ in
                 ''}
                 ${optionalString bgpSingleActiveOwner ''
                   ${bgpDemoteScript}
+                ''}
+                ${optionalString ndpProxySingleActiveOwner ''
+                  ${pkgs.systemd}/bin/systemctl stop router-ndp-proxy.service
                 ''}
               ''}"
             ''}

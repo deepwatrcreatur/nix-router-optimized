@@ -136,6 +136,7 @@
         router-ha = import ./modules/router-ha.nix;
         router-mwan = import ./modules/router-mwan.nix;
         router-nptv6 = import ./modules/router-nptv6.nix;
+        router-ndp-proxy = import ./modules/router-ndp-proxy.nix;
         router-clat = import ./modules/router-clat.nix;
         router-security-hardened = import ./modules/router-security-hardened.nix;
         router-zones = import ./modules/router-zones.nix;
