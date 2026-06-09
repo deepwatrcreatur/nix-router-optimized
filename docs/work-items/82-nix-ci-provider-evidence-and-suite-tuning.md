@@ -1,6 +1,6 @@
 # 82 - Nix CI Provider Evidence And Suite Tuning
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
