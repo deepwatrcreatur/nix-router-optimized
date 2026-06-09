@@ -5,6 +5,7 @@ with lib;
 let
   cfg = config.services.router-nat64;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
+  routerFirewallEnabled = hasRouterFirewall && attrByPath [ "services" "router-firewall" "enable" ] false config;
   translationBackendLib = import ./router-translation-backend-lib.nix { inherit lib; };
   translationBackend = translationBackendLib.mkTaygaAdapter {
     interfaceName = "nat64";
@@ -52,12 +53,14 @@ in
       services.tayga = translationBackend.tayga.serviceAttrs;
     }
 
-    (if hasRouterFirewall then {
-      services.router-firewall.extraForwardRules = mkIf (
-        config.services.router-firewall.enable or false
-      ) ''
+    (optionalAttrs hasRouterFirewall (mkIf routerFirewallEnabled {
+      services.router-firewall.extraInputRules = ''
         iifname "${translationBackend.firewall.forwardInputInterface}" accept comment "Allow NAT64 translated traffic"
       '';
-    } else {})
+
+      services.router-firewall.extraForwardRules = ''
+        iifname "${translationBackend.firewall.forwardInputInterface}" accept comment "NAT64: translation to WAN/LAN"
+      '';
+    }))
   ]);
 }

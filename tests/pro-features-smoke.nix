@@ -40,7 +40,11 @@ in
       }
       {
         assertion = lib.hasInfix ''iifname "nat64" accept'' config.services.router-firewall.extraForwardRules;
-        message = "router-nat64 should add firewall forward rules.";
+        message = "router-nat64 should add firewall forward rules via adapter.";
+      }
+      {
+        assertion = lib.hasInfix ''iifname "nat64" accept'' config.services.router-firewall.extraInputRules;
+        message = "router-nat64 should add firewall input rules via adapter.";
       }
     ])
   ];
