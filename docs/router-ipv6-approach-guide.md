@@ -166,10 +166,10 @@ Current repo stance:
 
 - start with the static `systemd-networkd` `IPv6ProxyNDP=` /
   `IPv6ProxyNDPAddress=` path when static proxy entries are enough
-- a first-class dynamic daemon-backed module does **not** exist yet
-- if one lands, `ndppd` is the only honest near-term candidate
-- do not assume `ndppd` support exists today just because the repo has discussed
-  it
+- `services.router-ndp-proxy` is the current advanced / opt-in dynamic path
+- `ndppd` is the only backend in scope
+- prefer the dedicated NDP proxy doc for the exact support boundary, HA rule,
+  and verification steps
 
 Relevant docs:
 

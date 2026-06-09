@@ -41,7 +41,7 @@ The authority split is:
 
 - [83-router-ndppd-support-boundary-and-first-slice-contract](./83-router-ndppd-support-boundary-and-first-slice-contract.md) — `ready`
 - [84-router-ndppd-module-and-ha-ownership-assertions](./84-router-ndppd-module-and-ha-ownership-assertions.md) — `in-progress`
-- [85-router-ndppd-validation-examples-and-doc-linkage](./85-router-ndppd-validation-examples-and-doc-linkage.md) — `ready`
+- [85-router-ndppd-validation-examples-and-doc-linkage](./85-router-ndppd-validation-examples-and-doc-linkage.md) — `in-progress`
 - [86-router-security-validation-runbook](./86-router-security-validation-runbook.md) — `ready`
 - [87-router-apply-safety-and-rollback-runbook](./87-router-apply-safety-and-rollback-runbook.md) — `ready`
 - [88-router-egress-bogon-hardening](./88-router-egress-bogon-hardening.md) — `ready`

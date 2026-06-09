@@ -10,10 +10,10 @@ The short version is:
   sufficient
 - if you only need a few fixed proxy entries, prefer
   `systemd-networkd`'s built-in `IPv6ProxyNDP=` / `IPv6ProxyNDPAddress=` path
-- if the repo adds a first-class dynamic path later, `ndppd` is the only honest
-  near-term backend candidate
-- any future daemon-backed module is advanced / opt-in and must preserve a
-  single-active-owner HA boundary
+- `services.router-ndp-proxy` is now the repo's advanced / opt-in first-class
+  dynamic path
+- the only backend in scope is `ndppd`
+- HA is supported only through an explicit single-active-owner boundary
 
 This boundary comes from the archived repo discussion:
 
@@ -50,18 +50,15 @@ The current repo stance is intentionally narrow.
 - native routed IPv6 via `router-networking`
 - static `systemd-networkd` proxy entries when your topology only needs a small
   fixed set of proxied addresses
+- the bounded `services.router-ndp-proxy` module for the declared first slice
 
-### Not yet a shipped first-class module
+### Current module boundary
 
-- a repo-owned dynamic NDP proxy module such as `services.router-ndp-proxy`
-
-### If a module lands later
-
-- it should present one normalized consumer-facing surface
-- it should remain advanced / opt-in rather than a default router feature
-- `ndppd` is the only honest near-term backend candidate
-- it should not broaden into a generic multi-backend NDP toolbox in the first
-  PR
+- one consumer-facing module: `services.router-ndp-proxy`
+- one backend: `ndppd`
+- advanced / opt-in positioning rather than default router behavior
+- `ndpresponder` remains a deferred later candidate
+- `ndproxy` and `ndp-proxy-go` are outside the current flake boundary
 
 ## When Static `systemd-networkd` Proxy Entries Are Enough
 
@@ -80,44 +77,42 @@ because NDP proxying sounds like the "advanced" IPv6 answer.
 
 ## First Supported Dynamic Topology
 
-If the repo adds a daemon-backed first slice, the supported topology should stay
-concrete and narrow:
+The currently supported first slice stays concrete and narrow:
 
 - one Linux/NixOS router host
-- one upstream interface that receives the neighbor traffic
+- one upstream interface that receives neighbor traffic
 - one or more downstream interfaces that serve the addresses behind the router
 - a routed-prefix, VPS, cloud, or equivalent provider topology where upstream
   neighbor replies are required for downstream-served IPv6 addresses
 
-This first slice should **not** imply support for:
+This slice does **not** imply support for:
 
 - arbitrary L2 bridging designs
-- automatic topology discovery
+- generic multi-backend NDP abstraction
 - generic multi-upstream behavior
-- or multi-active HA behavior
+- multi-active HA behavior
 
-The goal is to support one honest Linux router shape before expanding the
-surface.
+## First-Slice Module Surface
 
-## First-Slice Module Contract
+The current module exposes a bounded typed surface:
 
-If the repo adds a first-class dynamic module, the first slice should look like
-this:
+- `services.router-ndp-proxy.enable`
+- `services.router-ndp-proxy.upstreamInterface`
+- `services.router-ndp-proxy.downstreamInterfaces`
+- `services.router-ndp-proxy.prefixes`
+- small behavior controls:
+  - `routeTtlMs`
+  - `proxyTimeoutMs`
+  - `cacheTtlMs`
+  - `routerAdvertisements`
+- HA ownership gate:
+  - `ha.singleActiveOwner`
 
-- one normalized option surface rather than raw daemon-shaped namespaces
-- one backend: `ndppd`
-- a small typed input model centered on:
-  - enable / disable
-  - one upstream interface
-  - one or more downstream interfaces
-  - any bounded prefix or proxy-entry shape needed for deterministic config
-- deterministic generated config and a managed systemd service
-
-What the first slice should avoid:
+The module intentionally avoids:
 
 - raw `ndppd.conf` passthrough as the primary contract
-- a backend selector for multiple tools on day one
-- a promise that every NDP-related daemon is interchangeable
+- exposing `ndpresponder`, `ndproxy`, or `ndp-proxy-go`
+- broad dashboard or observability scope in the first PR
 
 ## Explicit Exclusions
 
@@ -152,21 +147,58 @@ Why:
 - it belongs to a FreeBSD-centered architecture story
 - and that does not map cleanly onto this repo's Linux/NixOS router surface
 
+## Example Configuration
+
+See [`../examples/router-ndp-proxy.nix`](../examples/router-ndp-proxy.nix) for
+the smallest supported standalone shape.
+
+Minimal example:
+
+```nix
+{
+  imports = [
+    inputs.router-optimized.nixosModules.router-ndp-proxy
+  ];
+
+  services.router-ndp-proxy = {
+    enable = true;
+    upstreamInterface = "eth0";
+    downstreamInterfaces = [ "br-lan" ];
+
+    prefixes = [
+      {
+        prefix = "2001:db8:100::/64";
+        method = "interface";
+        downstreamInterface = "br-lan";
+      }
+      {
+        prefix = "2001:db8:101::/64";
+        method = "auto";
+      }
+    ];
+  };
+}
+```
+
+This example is intentionally standalone and non-HA.
+If you add HA, the module requires the explicit ownership flag described below.
+
 ## HA Ownership Rule
 
 NDP proxying is not exempt from the repo's HA honesty rules.
 
-If a future daemon-backed module lands, it must preserve a strict ownership
-boundary:
+When `services.router-ha.enable = true`, the module requires:
 
-- single-active owner only when HA is present
-- no silent dual-active proxy replies for the same proxied addresses
-- assertion-driven refusal for ambiguous `router-ha` combinations
+- `services.router-ndp-proxy.ha.singleActiveOwner = true`
+
+That means:
+
+- the service does **not** auto-start on both nodes
+- keepalived starts ndppd on the active node
+- keepalived stops ndppd on backup or fault transitions
+- ambiguous HA topologies fail at eval time instead of appearing supported
 
 The docs must not imply that VRRP alone makes daemon-backed NDP proxying safe.
-The later module should follow the same spirit already used in adjacent
-HA-sensitive areas: if ownership is ambiguous, the repo should fail at eval time
-instead of pretending the topology is supported.
 
 ## How This Relates To NAT64 And CLAT
 
@@ -183,6 +215,45 @@ If your problem is "IPv6-only clients need to reach IPv4 websites," read
 If your problem is "legacy IPv4 behavior still needs to work on an IPv6 uplink,"
 read [`DECLARATIVE_CLAT.md`](./DECLARATIVE_CLAT.md).
 
+## Operator Verification
+
+After deployment, verify the running service rather than assuming config
+generation means the topology works.
+
+Recommended checks:
+
+1. Confirm the service state:
+
+```bash
+systemctl status router-ndp-proxy
+```
+
+2. Inspect the rendered config:
+
+```bash
+cat /etc/ndppd.conf
+```
+
+3. Review recent daemon logs:
+
+```bash
+journalctl -u router-ndp-proxy -b
+```
+
+4. If HA is enabled, inspect keepalived state and ownership transitions:
+
+```bash
+systemctl status keepalived
+journalctl -u keepalived -b
+```
+
+5. Validate the intended route/interface shape:
+
+```bash
+ip -6 route
+ip -6 neigh
+```
+
 ## Practical Recommendation
 
 Use this order:
@@ -190,8 +261,8 @@ Use this order:
 1. native routing + ordinary RA if possible
 2. static `systemd-networkd` NDP proxy entries if the proxied addresses are
    fixed and few
-3. wait for or help implement the bounded `ndppd` path only if you truly need
-   dynamic NDP proxying inside the repo's flake boundary
+3. use `services.router-ndp-proxy` only if you truly need dynamic NDP proxying
+   inside the repo's flake boundary
 
-Do not treat the archived discussion as proof that a dynamic NDP proxy module
-already exists.
+Do not treat the current module as proof that all NDP tools or all HA shapes
+are supported.
