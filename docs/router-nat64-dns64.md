@@ -154,14 +154,17 @@ ping6 64:ff9b::5db8:d822   # 64:ff9b:: + 93.184.216.34
 
 ## Firewall Notes
 
-When `router-firewall` is loaded, `router-nat64` automatically adds:
-```
-iifname "nat64" accept comment "Allow NAT64 translated traffic"
-```
-to the nftables forward chain. IPv4 egress from Tayga to the WAN is handled by
-the standard masquerade rule that `router-firewall` applies to all LAN-origin traffic.
+When `router-firewall` is loaded, `router-nat64` automatically adds input and
+forward allowances for NAT64 translation traffic through the shared
+translation-backend adapter surface:
 
-That rule is part of the **current Tayga-backed implementation**, not a promise
-that every future NAT64 backend will always expose the literal same interface
-name. The durable contract is that translation traffic must remain intentionally
-integrated with `router-firewall`.
+- **Input chain**: accept traffic arriving on the translation interface
+- **Forward chain**: accept traffic to and from the translation interface
+
+IPv4 egress from the translation backend to the WAN is handled by the standard
+masquerade rule that `router-firewall` applies to all LAN-origin traffic.
+
+These rules are injected via the shared adapter, not hardcoded interface names.
+The durable contract is that translation traffic must remain intentionally
+integrated with `router-firewall`, not that a specific interface string appears
+forever.
