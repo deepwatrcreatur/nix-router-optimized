@@ -39,3 +39,18 @@ Example:
 The router-firewall integration is optional. If `router-firewall` is imported,
 the module can expose WAN ports and add trusted/forwarding rules; otherwise it
 only manages the OpenVPN instances themselves.
+
+## Credential Boundary
+
+Keep OpenVPN secrets in runtime-readable files referenced from the raw OpenVPN
+configuration, for example:
+
+- `auth-user-pass /run/agenix/openvpn-auth-user-pass`
+- `ca /run/agenix/openvpn-ca.crt`
+- `cert /run/agenix/openvpn-client.crt`
+- `key /run/agenix/openvpn-client.key`
+
+Avoid embedding usernames or passwords directly in Nix values. In particular,
+the passthrough `authUserPass` surface comes from upstream `services.openvpn`
+and is not the preferred router-facing path for secret material because it can
+encourage store-visible credentials instead of runtime files.

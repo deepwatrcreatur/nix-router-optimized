@@ -362,6 +362,14 @@ in
         assertion = lib.hasInfix "/run/agenix/bgp-proxmox-password" config.systemd.services.frr.preStart;
         message = "router-bgp should consume BGP neighbor secrets from runtime files in frr preStart.";
       }
+      {
+        assertion = !(lib.hasInfix ''python - "$secret_value"'' config.systemd.services.frr.preStart);
+        message = "router-bgp should not pass BGP secret values through a helper process argv.";
+      }
+      {
+        assertion = lib.hasInfix "/run/frr/router-bgp-secret." config.systemd.services.frr.preStart;
+        message = "router-bgp should materialize a short-lived runtime secret file before substitution.";
+      }
     ])
   ];
 

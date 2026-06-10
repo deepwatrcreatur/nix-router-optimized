@@ -247,15 +247,20 @@ let
       chmod 0640 /run/frr/frr.conf
       chown frr:frr /run/frr/frr.conf
       ${concatStringsSep "\n" (map (secret: ''
-        secret_value="$(${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg secret.passwordFile})"
-        ${pkgs.python3Minimal}/bin/python - "$secret_value" ${escapeShellArg secret.placeholder} /run/frr/frr.conf <<'PY'
+        secret_tmp="$(${pkgs.coreutils}/bin/mktemp /run/frr/router-bgp-secret.XXXXXX)"
+        chmod 0600 "$secret_tmp"
+        chown frr:frr "$secret_tmp"
+        ${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg secret.passwordFile} > "$secret_tmp"
+        ${pkgs.python3Minimal}/bin/python - ${escapeShellArg secret.placeholder} /run/frr/frr.conf "$secret_tmp" <<'PY'
 import pathlib
 import sys
 
-value, placeholder, path = sys.argv[1:]
+placeholder, path, secret_path = sys.argv[1:]
 target = pathlib.Path(path)
+value = pathlib.Path(secret_path).read_text()
 target.write_text(target.read_text().replace(placeholder, value))
 PY
+        rm -f "$secret_tmp"
       '') neighborSecrets)}
       rm -f /etc/frr/frr.conf
       ln -s /run/frr/frr.conf /etc/frr/frr.conf

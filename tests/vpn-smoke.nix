@@ -141,6 +141,26 @@ in
     ])
   ];
 
+  router-openvpn-inline-auth-user-pass-warning-eval = eval.mkNixosEvalCheck "router-openvpn-inline-auth-user-pass-warning" [
+    self.nixosModules.router-openvpn
+    {
+      services.router-openvpn.instances.remote = {
+        interfaceName = "tun-remote";
+        config = "dev tun-remote";
+        authUserPass = {
+          username = "user";
+          password = "secret";
+        };
+      };
+    }
+    ({ config, ... }: assertModule [
+      {
+        assertion = builtins.any (msg: lib.hasInfix "inline authUserPass attrsets embed credentials in Nix values" msg) config.warnings;
+        message = "router-openvpn should warn when inline authUserPass credentials are embedded in Nix values.";
+      }
+    ])
+  ];
+
   router-tailscale-with-firewall-eval = eval.mkNixosEvalCheck "router-tailscale-with-firewall" [
     self.nixosModules.router-firewall
     self.nixosModules.router-tailscale

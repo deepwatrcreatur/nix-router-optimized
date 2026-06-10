@@ -44,6 +44,8 @@ from module names alone.
 - [`router-zones.md`](./router-zones.md) — zone/isolation model
 - [`router-security-hardened.md`](./router-security-hardened.md) — hardening
   surface, including Geo-IP, WAN egress bogon blocking, and MAC controls
+- [`router-runtime-credential-discipline.md`](./router-runtime-credential-discipline.md) —
+  credential-passing audit and runtime-file boundary
 - [`router-security-validation.md`](./router-security-validation.md) —
   post-change router-local, LAN-side, and WAN-side security validation runbook
 - [`router-apply-safety.md`](./router-apply-safety.md) — manual pre-change,

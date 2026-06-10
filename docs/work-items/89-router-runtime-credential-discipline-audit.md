@@ -1,6 +1,6 @@
 # 89 - Router Runtime Credential Discipline Audit
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -30,31 +30,31 @@ across modules rather than relying on case-by-case memory.
 
 ## Requirements
 
-- [ ] Inventory credential-passing patterns across relevant modules, including at
+- [x] Inventory credential-passing patterns across relevant modules, including at
       least:
       - tunnel modules
       - VPN modules
       - DDNS / DNS-adjacent modules
       - monitoring or agent-like services
-- [ ] Identify any cases where credentials are exposed through:
+- [x] Identify any cases where credentials are exposed through:
       - process arguments
       - plain environment variables
       - or store-embedded config that should instead use runtime files or
         equivalent safer loading paths
-- [ ] Keep the audit grounded in existing repo patterns rather than inventing a
+- [x] Keep the audit grounded in existing repo patterns rather than inventing a
       brand-new secret system
-- [ ] If concrete fixes are small and local, land them; otherwise document the
+- [x] If concrete fixes are small and local, land them; otherwise document the
       remaining cases clearly for follow-on work
-- [ ] Update docs where the intended runtime-file boundary is under-specified
+- [x] Update docs where the intended runtime-file boundary is under-specified
 
 ## Verification
 
-- [ ] A reviewer can read one outcome artifact and understand which modules are:
+- [x] A reviewer can read one outcome artifact and understand which modules are:
       - already aligned
       - need tightening
       - or intentionally use a different safe pattern
-- [ ] The repo's credential-handling story is more consistent after the audit
-- [ ] No fix silently embeds secrets in the Nix store
+- [x] The repo's credential-handling story is more consistent after the audit
+- [x] No fix silently embeds secrets in the Nix store
 
 ## Notes
 
