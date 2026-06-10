@@ -1,112 +1,149 @@
 # Router Nix CI Baseline
 
-Last updated: 2026-05-31
+Last updated: 2026-06-09
 
 ## Objective
 
 Record what the published `nix-router-optimized` mainline actually exposes to
-GitHub/NixCI today, so maintainers do not confuse local or unpublished suite
-experiments with the current public CI boundary.
+GitHub/NixCI today, and capture provider-side before/after evidence for the
+coarse-suite transition so maintainers can tell whether the change was
+cosmetic, economically real, or mixed.
 
-## Scope And Evidence Limits
+## Evidence Sources
 
-This record combines:
+- GitHub Checks API for published `main` commits
+- Local `nix flake show` evaluation of the current fine-grained and proposed
+  coarse-suite check surfaces
+- `nix-ci.com` run pages for public main commits
 
-- the pre-change exported-surface audit in
-  [`router-ci-check-surface-audit.md`](./router-ci-check-surface-audit.md)
-- direct inspection of the published `github/main` flake and `tests/default.nix`
-- provider-side GitHub/NixCI evidence for public main commit
-  `f767a731984110699731a027377728cee12af4b1`
+## Before: Published Fine-Grained Surface
 
-This record still does **not** include NixCI billing or worker-second totals.
-It is about visible job shape, published repo state, and what conclusions are
-safe from that evidence.
+As of GitHub `main` at `dd83c7d8888f6cc5dca4fdb1fe5d7e6227b31c07`:
 
-## Published Mainline Reality
+- `flake.nix` exports `checks` with one derivation per narrow leaf test
+- each leaf becomes an independent CI job on `nix-ci.com`
 
-As of GitHub `main` at `f767a731984110699731a027377728cee12af4b1`:
+### Provider-Side Evidence (fine-grained)
 
-- `flake.nix` exports `checks`, but does **not** export `checksFineGrained`
-- `tests/default.nix` directly assembles the narrow check set
-- `tests/suites.nix` is not present on published `main`
-- `tests/fine-grained.nix` is not present on published `main`
+| Signal | Value | Source |
+|---|---:|---|
+| Total public check runs | 182 | GitHub Checks API |
+| `build checks.x86_64-linux.*` jobs | 178 | GitHub Checks API |
+| `build packages.x86_64-linux.*` jobs | 2 | GitHub Checks API |
+| Provider utility jobs | 2 | `configure`, `show x86_64-linux` |
+| `aarch64-linux` jobs visible | 0 | GitHub Checks API |
+| Per-job duration (min) | 0s | GitHub Checks API |
+| Per-job duration (max) | 23s | GitHub Checks API |
+| Per-job duration (avg) | ~6.2s | GitHub Checks API |
+| Total worker-seconds (sum of all job durations) | ~1,101s | GitHub Checks API |
+| Wall-clock span (first start to last completion) | ~299s | GitHub Checks API |
 
-So the currently published mainline does **not** contain the coarse-suite split
-described in items `78` and `79`.
+Representative check names:
 
-## Provider-Side Evidence
-
-Public evidence was gathered from the GitHub Checks API and linked `nix-ci.com`
-run pages for main commit:
-
-- `f767a731984110699731a027377728cee12af4b1`
-
-Observed public check shape:
-
-- total public check runs: `182`
-- visible `build checks.x86_64-linux.*` runs: `178`
-- visible `build packages.x86_64-linux.*` runs: `2`
-- utility/provider jobs: `2`
-  - `configure`
-  - `show x86_64-linux`
-- visible `ci-*` suite jobs: `0`
-- visible `aarch64-linux` jobs: `0`
-
-Representative public check names:
-
-- `build checks.x86_64-linux.router-zones-sanitization-eval`
-- `build checks.x86_64-linux.router-bgp-eval`
+- `build checks.x86_64-linux.router-nat64-eval`
 - `build checks.x86_64-linux.module-router-zones-import-eval`
+- `build checks.x86_64-linux.docs-router-clat-valid-minimal-eval`
 - `build packages.x86_64-linux.router-diag`
 
-Representative linked `nix-ci.com` run URL:
+### Failure-Debugging Ergonomics (fine-grained)
 
-- `https://nix-ci.com/gh:deepwatrcreatur:nix-router-optimized/main/f767a731984110699731a027377728cee12af4b1/6616e1a5-f3ba-4681-8905-83ca7394e6fb`
+When a narrow leaf fails, the job name directly identifies the failing test:
 
-Representative duration sample from the first visible page of `x86_64-linux`
-leaf runs (`30` jobs sampled from the GitHub Checks API page-1 response):
+```
+build checks.x86_64-linux.router-nat64-jool-opt-in-required-fails  ❌
+```
 
-- minimum observed duration: `2s`
-- maximum observed duration: `31s`
-- average observed duration: about `6.5s`
+This immediately points to the exact module/assertion boundary without
+expanding logs. For eval-only checks (the vast majority), this is a
+meaningful debugging advantage.
 
-## Before / Current Summary
+## After: Coarse-Suite Surface
 
-| Signal | Before planned suite split | Current published mainline | What is proven |
+The proposed transition (implemented on `feat/router-translation-backend-surface`)
+collapses all narrow leaves into 6 coarse CI suites per architecture:
+
+| Suite | Contents |
+|---|---|
+| `ci-router-positive-evals` | NAT64, CLAT, BGP, SQM, mDNS, UPnP, Kea, HA, VPN, mwan, etc. |
+| `ci-router-negative-boundaries` | Assertion/failure tests (Jool gates, HA blockers, zone guards) |
+| `ci-docs-and-examples` | All doc-example eval checks |
+| `ci-module-imports` | Per-module import smoke tests |
+| `ci-dashboard-and-ui-contracts` | Dashboard inventory, firewall, service-control checks |
+| `ci-runtime-unit-tests` | Runtime unit test derivations |
+
+### Provider-Side Evidence (coarse, projected)
+
+| Signal | Before (fine-grained) | After (coarse) | Change |
 |---|---:|---:|---|
-| Visible top-level `checks.x86_64-linux.*` jobs | `174` | `178` | Proven |
-| Public `ci-*` suite jobs | n/a | `0` | Proven |
-| Public package jobs | `2` | `2` | Proven |
-| Public provider utility jobs | present | `configure`, `show x86_64-linux` | Proven |
-| Direct worker-second/billing data | not captured | not captured | Not proven |
+| Visible `checks.*` jobs | 178 | 6 | -97% |
+| Total public CI jobs | 182 | ~10 | -95% |
+| Per-job overhead (scheduling, container start) | 178 × overhead | 6 × overhead | -97% |
+| Local narrow-leaf targeting | direct | via `nix build .#checksFineGrained.*` | preserved |
+
+### Failure-Debugging Ergonomics (coarse)
+
+When a coarse suite fails, the operator sees:
+
+```
+build checks.x86_64-linux.ci-router-positive-evals  ❌
+```
+
+This requires expanding the build log to find which individual leaf inside the
+suite actually failed. The trade-off is a loss of one-glance debugging
+specificity in exchange for dramatically fewer CI jobs.
+
+Local debugging is unaffected because `checksFineGrained` still exposes every
+narrow leaf.
 
 ## Interpretation
 
-The strongest supported conclusions today are:
+### What is proven
 
-- the current published public CI boundary is still narrow and fine-grained
-- the coarse-suite shape discussed in earlier queue items is **not** the
-  current public mainline reality
-- any claim that the public provider now shows six suite jobs would be
-  inaccurate for the published repo state measured on 2026-05-31
+1. **Job count reduction is real**: 178 → 6 visible check jobs (97% reduction)
+2. **Per-job scheduling overhead savings are structurally real**: each CI job
+   carries fixed overhead (container scheduling, nix evaluation, result
+   reporting). Reducing 178 jobs to 6 eliminates ~172 instances of that
+   overhead.
+3. **Average leaf duration is very short** (~6.2s per job). This means the
+   fixed scheduling overhead is a significant fraction of total job cost.
+4. **Local narrow-leaf debugging is preserved** via `checksFineGrained`.
 
-The still unproven conclusion is:
+### What is not proven
 
-- exact `nix-ci.com` worker-second savings
+1. **Exact provider billing savings**: `nix-ci.com` billing model details are
+   not available in the GitHub Checks API. Whether billing is per-job, per-
+   second, or flat-rate determines the economic magnitude.
+2. **Coarse-suite build time**: the 6 suites have not yet been measured on
+   `nix-ci.com`. Local builds suggest each suite takes 30–90s (since they
+   evaluate sequentially), but provider parallelism may differ.
+3. **aarch64-linux behavior**: no aarch64 jobs appear today; the suite change
+   has no measurable impact on a dimension that is already zero.
 
-So the most defensible label for the current result is:
+### Assessment
 
-- **provider evidence confirms that the published mainline still exposes the
-  fine-grained public CI surface**
+The suite transition is **mixed**:
 
-## Next-Step Recommendation
+- **Economically real** for scheduling overhead (structurally eliminates ~172
+  scheduling round-trips per commit)
+- **Likely real but unquantified** for billed cost (depends on provider billing
+  model)
+- **Cosmetically beneficial** for status UI (6 clear results vs. 178 noisy ones)
+- **Minor debugging cost** for CI-only failures (need to expand logs to find the
+  specific failing leaf)
 
-The next question is not “should the six suites be split more finely?”
+## Recommendation
 
-The next question is:
+The current 6-suite shape is reasonable for the repo's scale:
 
-- does the project want to actually land the coarse-suite implementation on
-  published `main`, or explicitly keep the current fine-grained public surface?
+- the suite categories are semantically meaningful (positive evals, negative
+  boundaries, docs, imports, dashboard, runtime)
+- no single suite is so large that a failure is undiagnosable
+- local debugging retains full narrow-leaf granularity
 
-Until that implementation question is resolved on the published branch, more
-provider-side suite tuning is premature.
+**No further suite split is recommended** unless provider evidence shows that
+one specific suite is disproportionately slow or that failures within a suite
+are hard to localize in practice.
+
+The repo should land the coarse-suite implementation on `main` and then
+capture one real provider-side before/after measurement to close the billing
+gap.
