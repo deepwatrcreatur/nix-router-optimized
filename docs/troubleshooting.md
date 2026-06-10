@@ -6,6 +6,11 @@ For a structured post-change validation pass, start with
 [`router-security-validation.md`](./router-security-validation.md) before
 drilling into one symptom at a time.
 
+For degraded-mode status when the dashboard is unavailable or misleading, use
+[`router-degraded-status-boundary.md`](./router-degraded-status-boundary.md)
+and prefer `router-diag show interfaces|firewall|vpn|health` before inventing a
+second status UI path.
+
 ## Public service works from cellular but not from LAN
 
 Symptom:
