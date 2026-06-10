@@ -59,7 +59,8 @@ in
       '';
 
       services.router-firewall.extraForwardRules = ''
-        iifname "${translationBackend.firewall.forwardInputInterface}" accept comment "NAT64: translation to WAN/LAN"
+        oifname "${translationBackend.firewall.forwardInputInterface}" accept comment "NAT64: forward to translation"
+        iifname "${translationBackend.firewall.forwardInputInterface}" accept comment "NAT64: forward from translation"
       '';
     }))
   ]);
