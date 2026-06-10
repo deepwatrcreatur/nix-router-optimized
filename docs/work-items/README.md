@@ -39,12 +39,13 @@ The authority split is:
 
 ## Current Ranked Queue
 
-- [88-router-egress-bogon-hardening](./88-router-egress-bogon-hardening.md) — `in-progress`
-- [89-router-runtime-credential-discipline-audit](./89-router-runtime-credential-discipline-audit.md) — `in-progress`
-- [90-router-degraded-mode-status-fallback-boundary](./90-router-degraded-mode-status-fallback-boundary.md) — `ready`
+- None currently queued.
 
 ## Recently Completed
 
+- [90-router-degraded-mode-status-fallback-boundary](./90-router-degraded-mode-status-fallback-boundary.md) — `done`
+- [89-router-runtime-credential-discipline-audit](./89-router-runtime-credential-discipline-audit.md) — `done`
+- [88-router-egress-bogon-hardening](./88-router-egress-bogon-hardening.md) — `done`
 - [87-router-apply-safety-and-rollback-runbook](./87-router-apply-safety-and-rollback-runbook.md) — `done`
 - [86-router-security-validation-runbook](./86-router-security-validation-runbook.md) — `done`
 - [85-router-ndppd-validation-examples-and-doc-linkage](./85-router-ndppd-validation-examples-and-doc-linkage.md) — `done`

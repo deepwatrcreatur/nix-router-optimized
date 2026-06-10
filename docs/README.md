@@ -50,6 +50,8 @@ from module names alone.
   post-change router-local, LAN-side, and WAN-side security validation runbook
 - [`router-apply-safety.md`](./router-apply-safety.md) — manual pre-change,
   post-change, and rollback procedure for risky router updates
+- [`router-degraded-status-boundary.md`](./router-degraded-status-boundary.md) —
+  decision note on why `router-diag` is the current degraded-mode fallback
 
 ### Contributor and maintainer docs
 

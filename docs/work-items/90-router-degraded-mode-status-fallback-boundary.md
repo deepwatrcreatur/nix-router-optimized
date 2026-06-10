@@ -1,6 +1,6 @@
 # 90 - Router Degraded-Mode Status Fallback Boundary
 
-## Status: `ready`
+## Status: `done`
 
 ## Objective
 
@@ -28,27 +28,42 @@ resolving explicitly so future agents do not oscillate between:
 
 ## Requirements
 
-- [ ] Evaluate the existing degraded-mode coverage from:
+- [x] Evaluate the existing degraded-mode coverage from:
       - `router-diag`
       - the dashboard
       - and current service status/reporting paths
-- [ ] Decide whether a new fallback surface is:
+- [x] Decide whether a new fallback surface is:
       - unnecessary
       - justified as a very narrow addition
       - or better expressed as improved `router-diag` guidance instead
-- [ ] If a fallback is justified, define strict boundaries for:
+- [x] If a fallback is justified, define strict boundaries for:
       - transport / binding
       - attack surface
       - content scope
       - and interaction with the main dashboard
-- [ ] Record the decision clearly so this question does not stay implicit
+- [x] Record the decision clearly so this question does not stay implicit
 
 ## Verification
 
-- [ ] The repo has an explicit answer to whether degraded-mode status needs a new
+- [x] The repo has an explicit answer to whether degraded-mode status needs a new
       surface
-- [ ] Any approved fallback remains clearly distinct from the main dashboard
-- [ ] If the answer is "no new surface", the decision is still documented
+- [x] Any approved fallback remains clearly distinct from the main dashboard
+- [x] If the answer is "no new surface", the decision is still documented
+
+## Outcome
+
+Decision: no new fallback web/status surface for now.
+
+The maintained degraded-mode boundary is:
+
+- `router-dashboard` for the richer local HTTP surface
+- `router-diag` for low-dependency read-only fallback status
+- runbooks plus direct `systemctl`/`journalctl`/local `curl` checks when either
+  richer surface is degraded
+
+The question stays closed unless there is concrete evidence that `router-diag`
+cannot cover a recurring degraded-mode status need without introducing another
+dashboard-like listener.
 
 ## Notes
 
