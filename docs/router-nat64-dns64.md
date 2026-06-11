@@ -154,7 +154,7 @@ ping6 64:ff9b::5db8:d822   # 64:ff9b:: + 93.184.216.34
 
 ## Firewall Notes
 
-When `router-firewall` is loaded, `router-nat64` automatically adds input and
+When `router-firewall` is loaded and enabled, `router-nat64` automatically adds input and
 forward allowances for NAT64 translation traffic through the shared
 translation-backend adapter surface:
 

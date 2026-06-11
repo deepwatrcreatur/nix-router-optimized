@@ -39,12 +39,12 @@ in
         message = "router-nat64 should enable tayga.";
       }
       {
-        assertion = lib.hasInfix ''oifname "nat64" accept'' config.services.router-firewall.extraForwardRules;
-        message = "router-nat64 should add forward-to-translation rule via adapter.";
+        assertion = lib.hasInfix ''iifname {"lan0"} oifname "nat64" accept'' config.services.router-firewall.extraForwardRules;
+        message = "router-nat64 should add scoped forward-to-translation rule via adapter.";
       }
       {
-        assertion = lib.hasInfix ''iifname "nat64" accept'' config.services.router-firewall.extraForwardRules;
-        message = "router-nat64 should add forward-from-translation rule via adapter.";
+        assertion = lib.hasInfix ''iifname "nat64" oifname {"wan0"} accept'' config.services.router-firewall.extraForwardRules;
+        message = "router-nat64 should add scoped forward-from-translation rule via adapter.";
       }
       {
         assertion = lib.hasInfix ''iifname "nat64" accept'' config.services.router-firewall.extraInputRules;

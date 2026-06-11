@@ -84,15 +84,32 @@ in
       services.tayga = translationBackend.tayga.serviceAttrs;
     }
 
-    (optionalAttrs hasRouterFirewall (mkIf routerFirewallEnabled {
-      services.router-firewall.extraInputRules = ''
-        iifname "${translationBackend.firewall.forwardInputInterface}" accept comment "Allow NAT64 translated traffic"
-      '';
+    (optionalAttrs hasRouterFirewall (mkIf routerFirewallEnabled (
+      let
+        fwCfg = config.services.router-firewall;
+        optimizationInterfaces = config.services.router-optimizations.interfaces or { };
+        interfaceByRole = role:
+          mapAttrsToList (_name: iface: iface.device) (
+            filterAttrs (_name: iface: iface.role == role) optimizationInterfaces
+          );
+        wanInterfaces = if fwCfg.wanInterfaces != [ ] then fwCfg.wanInterfaces else interfaceByRole "wan";
+        lanInterfaces = if fwCfg.lanInterfaces != [ ] then fwCfg.lanInterfaces else interfaceByRole "lan";
+        managementInterfaces = if fwCfg.managementInterfaces != [ ] then fwCfg.managementInterfaces else interfaceByRole "management";
+        trustedInterfaces = unique (fwCfg.extraTrustedInterfaces ++ lanInterfaces ++ managementInterfaces);
+        quotedSet = ifaces: concatStringsSep ", " (map (iface: "\"${iface}\"") ifaces);
+        maybeSet = ifaces: if ifaces == [ ] then "" else "{${quotedSet ifaces}}";
+        natIface = translationBackend.firewall.forwardInputInterface;
+      in
+      {
+        services.router-firewall.extraInputRules = ''
+          iifname "${natIface}" accept comment "Allow NAT64 translated traffic"
+        '';
 
-      services.router-firewall.extraForwardRules = ''
-        oifname "${translationBackend.firewall.forwardInputInterface}" accept comment "NAT64: forward to translation"
-        iifname "${translationBackend.firewall.forwardInputInterface}" accept comment "NAT64: forward from translation"
-      '';
-    }))
+        services.router-firewall.extraForwardRules = ''
+          ${optionalString (trustedInterfaces != [ ]) ''iifname ${maybeSet trustedInterfaces} oifname "${natIface}" accept comment "NAT64: forward to translation"''}
+          ${optionalString (wanInterfaces != [ ]) ''iifname "${natIface}" oifname ${maybeSet wanInterfaces} accept comment "NAT64: forward from translation"''}
+        '';
+      }
+    )))
   ]);
 }
