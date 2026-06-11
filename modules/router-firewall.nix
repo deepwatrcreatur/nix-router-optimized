@@ -559,10 +559,6 @@ in
           ip protocol icmp ${cnt}accept
           ${optionalString cfg.enableIpv6 "ip6 nexthdr icmpv6 ${cnt}accept"}
 
-          ${optionalString (config.services.router-nat64.enable or false) ''
-            iifname "nat64" ${cnt}accept comment "Allow Tayga NAT64 traffic"
-          ''}
-
           ${optionalString (wanInterfaces != [ ]) "iifname ${maybeSet wanInterfaces} jump WAN_LOCAL"}
           ${optionalString (lanInterfaces != [ ]) "iifname ${maybeSet lanInterfaces} jump LAN_LOCAL"}
           ${optionalString (
@@ -602,11 +598,6 @@ in
           ${optionalString (
             managementInterfaces != [ ]
           ) "iifname ${maybeSet managementInterfaces} jump MGMT_IN"}
-
-          ${optionalString (config.services.router-nat64.enable or false) ''
-            iifname ${maybeSet trustedInterfaces} oifname "nat64" ${cnt}accept comment "Forward to NAT64"
-            iifname "nat64" oifname ${maybeSet wanInterfaces} ${cnt}accept comment "NAT64 to WAN"
-          ''}
 
           ${optionalString (allOverlayInterfaces != [ ] && allRouterInterfaces != [ ]) (
             concatMapStrings (iface: ''
