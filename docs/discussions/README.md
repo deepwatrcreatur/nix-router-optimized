@@ -20,6 +20,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [14](./14-lock-kernel-modules-for-router-vms.md) | Whether Router VMs Should Lock Kernel Module Loading | 2026-05-24 | Closed |
 | [15](./15-ndp-proxy-tool-inclusion-boundary.md) | Whether to Add `ndppd`, `ndpresponder`, `ndproxy`, and `ndp-proxy-go` as Flake Options | 2026-05-29 | Closed |
 | [16](./16-openbsd-ansible-router-comparison-and-borrowing-boundary.md) | What Can `nix-router-optimized` Borrow from `francis-io/OpenBSD-Ansible-Router`? | 2026-06-08 | Closed |
+| [17](./17-bgp-router-id-guidance-for-ipv6-native-ha.md) | How Should `nix-router-optimized` Recommend BGP Router IDs for IPv6-Native HA Deployments? | 2026-06-13 | Closed |
 
 ## Methodology
 

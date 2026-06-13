@@ -280,7 +280,12 @@ in
       type = types.nullOr types.str;
       default = null;
       example = "10.10.10.1";
-      description = "BGP Router ID (usually the primary LAN IP).";
+      description = ''
+        BGP Router ID.
+
+        In HA-capable or IPv6-native deployments, prefer a stable unique per-node
+        IPv4-style identifier rather than a shared VIP or a dynamic LAN address.
+      '';
     };
 
     neighbors = mkOption {

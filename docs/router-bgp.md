@@ -147,11 +147,29 @@ for a fuller example showing:
 |---|---|
 | `services.router-bgp.enable` | Enable the wrapper and FRR `bgpd`. |
 | `services.router-bgp.asn` | Local autonomous system number. |
-| `services.router-bgp.routerId` | Optional router ID, typically a stable IPv4 address. |
+| `services.router-bgp.routerId` | Optional router ID, ideally a stable unique per-node IPv4-style identifier. |
 | `services.router-bgp.neighbors` | Per-neighbor map of remote ASN, description, runtime auth file, AFI activation, and bounded policies. |
 | `services.router-bgp.networks` | Legacy IPv4 prefixes to advertise when `addressFamilies.ipv4Unicast.networks` is empty. |
 | `services.router-bgp.addressFamilies.ipv4Unicast` | Explicit IPv4 unicast enablement and advertised networks. |
 | `services.router-bgp.addressFamilies.ipv6Unicast` | Explicit IPv6 unicast enablement and advertised networks. |
+
+## Router ID Guidance
+
+Treat the BGP router ID as **stable node identity**, not as shared service
+identity.
+
+- For small flake consumers, the best default recommendation is a simple,
+  explicit, per-node IPv4-style value such as `10.255.0.1` or `10.255.0.2`.
+- In IPv6-native deployments, the router ID is still a 32-bit BGP identifier, so
+  using a dedicated private IPv4-style value is fine.
+- In HA pairs, each node should keep its **own** fixed router ID.
+- Do **not** derive the router ID from a shared VIP.
+- Do **not** rely on a dynamic LAN address if you want stable peering identity.
+
+This repo does **not** currently impose a provider-style structured numbering
+scheme for router IDs. If a consumer wants function / region / instance
+encoding, they can choose it themselves, but the flake should not require it as
+the default convention.
 
 ## Configuration Model
 
@@ -160,6 +178,8 @@ The wrapper now uses three layers:
 1. **Base router identity**
    - local ASN
    - optional router ID
+   - explicit per-node router ID strongly recommended for HA-capable or
+     IPv6-native deployments
 
 2. **Per-neighbor transport and activation**
    - remote ASN
@@ -223,7 +243,7 @@ ip route
 - local and remote ASN values
 - neighbor IP reachability
 - TCP `179` filtering on both sides
-- stable router ID selection
+- stable per-node router ID selection
 - whether the remote peer expects authentication or policy not yet modeled here
 
 ## HA Boundary
@@ -264,6 +284,8 @@ This ensures only one node presents active BGP peering identity at any time.
 - The promotion/demotion window is bounded by vtysh execution time, not
   by a full FRR restart
 - Both nodes must have identical FRR config (same ASN, neighbors, policies)
+- Each node must keep its own fixed `routerId`; do not reuse the shared
+  `virtualIp` as the BGP router ID
 - Split-brain is possible if VRRP itself partitions — this is a VRRP
   limitation, not a BGP ownership limitation
 
