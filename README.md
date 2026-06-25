@@ -433,6 +433,35 @@ services.router-wireguard = {
 imported, the module still configures WireGuard itself but skips the router
 firewall wiring.
 
+### router-network-security
+Optional router-oriented packet security sensors:
+- exposes bounded consumer options for Suricata, Snort 3, and Zeek
+- derives capture interfaces from router-firewall/router-optimizations when possible
+- derives local protected networks from routed IPv4 CIDRs when possible
+- uses the upstream NixOS Suricata module and repo-native wrappers for Snort and Zeek
+
+Example:
+
+```nix
+services.router-network-security = {
+  enable = true;
+  interfaces = [ "wan0" "lan0" ];
+
+  suricata.enable = true;
+
+  snort = {
+    enable = true;
+    profile = "security";
+  };
+
+  zeek.enable = true;
+};
+```
+
+This is intentionally a first-slice wrapper rather than a full IDS/IPS
+management plane. Suricata currently has the strongest nixpkgs-native
+integration; Snort and Zeek are thin systemd-based wrappers.
+
 ### router-technitium
 Opt-in Technitium DNS service bundle:
 - enables `services.technitium-dns-server`

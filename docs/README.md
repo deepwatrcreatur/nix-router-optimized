@@ -44,6 +44,8 @@ from module names alone.
 - [`router-zones.md`](./router-zones.md) — zone/isolation model
 - [`router-security-hardened.md`](./router-security-hardened.md) — hardening
   surface, including Geo-IP, WAN egress bogon blocking, and MAC controls
+- [`router-network-security.md`](./router-network-security.md) — bounded
+  Suricata/Snort/Zeek sensor wrapper options for flake consumers
 - [`router-runtime-credential-discipline.md`](./router-runtime-credential-discipline.md) —
   credential-passing audit and runtime-file boundary
 - [`router-security-validation.md`](./router-security-validation.md) —
