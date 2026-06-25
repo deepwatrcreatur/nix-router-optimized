@@ -86,6 +86,10 @@ let
   routerDashboardServiceControlChecks = import ./router-dashboard-service-control.nix {
     inherit self eval lib pkgs;
   };
+
+  routerNetworkSecurityChecks = import ./router-network-security.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -117,6 +121,10 @@ in
           assertion = builtins.elem "router-ndp-proxy" exportedModuleNames;
           message = "nixosModules.router-ndp-proxy must stay exported.";
         }
+        {
+          assertion = builtins.elem "router-network-security" exportedModuleNames;
+          message = "nixosModules.router-network-security must stay exported.";
+        }
       ];
     }
   ];
@@ -131,6 +139,7 @@ in
 // routerDashboardInventoryChecks
 // routerDashboardFirewallChecks
 // routerDashboardServiceControlChecks
+// routerNetworkSecurityChecks
 // routerSecurityHardeningChecks
 // routerZonesChecks
 // routerClatObservabilityChecks

@@ -8,6 +8,13 @@
   outputs =
     { self, nixpkgs }:
     let
+      routerNetworkSecurityModule = {
+        imports = [
+          (nixpkgs + "/nixos/modules/services/networking/suricata/default.nix")
+          ./modules/router-network-security.nix
+        ];
+      };
+
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -92,6 +99,7 @@
             self.nixosModules.router-nptv6
             self.nixosModules.router-clat
             self.nixosModules.router-security-hardened
+            self.nixosModules.router-network-security
             self.nixosModules.router-zones
           ];
         };
@@ -139,6 +147,7 @@
         router-ndp-proxy = import ./modules/router-ndp-proxy.nix;
         router-clat = import ./modules/router-clat.nix;
         router-security-hardened = import ./modules/router-security-hardened.nix;
+        router-network-security = routerNetworkSecurityModule;
         router-zones = import ./modules/router-zones.nix;
       };
 
