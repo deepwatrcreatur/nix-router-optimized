@@ -4,6 +4,7 @@ import importlib.util
 import json
 import pathlib
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
@@ -259,6 +260,31 @@ class InventoryRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(neighbors[1]["state"], "STALE")
         self.assertEqual(neighbors[2]["hardwareAddress"], "22:33:44:55:66:77")
+
+    def test_get_kea_dhcp_leases_prefers_snapshot_file(self):
+        handler = self.make_handler()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            lease_file = pathlib.Path(tempdir) / "kea-dhcp4.leases"
+            lease_file.write_text(
+                "\n".join(
+                    [
+                        "address,hwaddr,client_id,valid_lifetime,expire,subnet_id,fqdn_fwd,fqdn_rev,hostname,state,user_context,pool_id",
+                        "10.10.210.10,11:22:33:44:55:66,,3600,4102444800,1,0,0,printer,0,,0",
+                        "10.10.210.11,aa:bb:cc:dd:ee:ff,,3600,1,1,0,0,expired,0,,0",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(server, "KEA_LEASE_FILES", [lease_file]):
+                leases = handler.get_kea_dhcp_leases()
+
+        self.assertEqual(len(leases), 1)
+        self.assertEqual(leases[0]["address"], "10.10.210.10")
+        self.assertEqual(leases[0]["hostname"], "printer")
+        self.assertEqual(leases[0]["hardwareAddress"], "11:22:33:44:55:66")
 
     def test_get_runtime_routes_parses_ip_json(self):
         handler = self.make_handler()
