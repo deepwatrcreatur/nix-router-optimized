@@ -435,7 +435,7 @@ firewall wiring.
 
 ### router-network-security
 Optional router-oriented packet security sensors:
-- exposes bounded consumer options for Suricata, Snort 3, and Zeek
+- exposes bounded consumer options for Suricata, Suricata+EveBox, Snort 3, and Zeek
 - derives capture interfaces from router-firewall/router-optimizations when possible
 - derives local protected networks from routed IPv4 CIDRs when possible
 - uses the upstream NixOS Suricata module and repo-native wrappers for Snort and Zeek
@@ -447,7 +447,10 @@ services.router-network-security = {
   enable = true;
   interfaces = [ "wan0" "lan0" ];
 
-  suricata.enable = true;
+  suricata = {
+    enable = true;
+    evebox.enable = true;
+  };
 
   snort = {
     enable = true;
@@ -460,7 +463,8 @@ services.router-network-security = {
 
 This is intentionally a first-slice wrapper rather than a full IDS/IPS
 management plane. Suricata currently has the strongest nixpkgs-native
-integration; Snort and Zeek are thin systemd-based wrappers.
+integration; the EveBox slice is a local SQLite-backed UI for Suricata EVE
+review; Snort and Zeek are thin systemd-based wrappers.
 
 ### router-technitium
 Opt-in Technitium DNS service bundle:

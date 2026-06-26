@@ -53,6 +53,40 @@ in
     })
   ];
 
+  router-network-security-suricata-evebox-eval = eval.mkNixosEvalCheck "router-network-security-suricata-evebox" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-networking
+    self.nixosModules.router-network-security
+    firewallBase
+    routerNetworkingBase
+    {
+      services.router-network-security = {
+        enable = true;
+        suricata = {
+          enable = true;
+          evebox.enable = true;
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = config.systemd.services ? router-evebox;
+          message = "router-network-security should expose an EveBox service when requested.";
+        }
+        {
+          assertion = lib.hasInfix "/bin/evebox --data-directory /var/lib/evebox server --sqlite --no-tls --host 127.0.0.1 --port 5636 --input /var/log/suricata/eve.json --end --no-auth"
+            config.systemd.services.router-evebox.serviceConfig.ExecStart;
+          message = "router-network-security should launch EveBox against the local Suricata eve.json tail.";
+        }
+        {
+          assertion = config.systemd.services.router-evebox.serviceConfig.ReadOnlyPaths == [ "/var/log/suricata" ];
+          message = "router-network-security should allow EveBox to read the configured Suricata EVE directory so log rotation does not break access.";
+        }
+      ];
+    })
+  ];
+
   router-network-security-snort-eval = eval.mkNixosEvalCheck "router-network-security-snort" [
     self.nixosModules.router-firewall
     self.nixosModules.router-networking
@@ -125,6 +159,18 @@ in
     firewallBase
     {
       services.router-network-security.enable = true;
+    }
+  ];
+
+  router-network-security-suricata-evebox-without-suricata-fails-eval = eval.mkNixosEvalFailureCheck "router-network-security-suricata-evebox-without-suricata" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-network-security
+    firewallBase
+    {
+      services.router-network-security = {
+        enable = true;
+        suricata.evebox.enable = true;
+      };
     }
   ];
 }

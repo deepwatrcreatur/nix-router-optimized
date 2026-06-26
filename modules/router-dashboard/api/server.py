@@ -60,6 +60,7 @@ except json.JSONDecodeError:
 DASHBOARD_SYSTEMCTL_PATH = os.environ.get('DASHBOARD_SYSTEMCTL_PATH', '')
 INVENTORY_FILE = os.environ.get('DASHBOARD_INVENTORY_FILE', '')
 INVENTORY_ENABLED = os.environ.get('DASHBOARD_INVENTORY_ENABLED', '0') == '1'
+KEA_LEASES_FILE = os.environ.get('DASHBOARD_KEA_LEASES_FILE', '').strip()
 
 NAT64_PREFIX = os.environ.get('DASHBOARD_NAT64_PREFIX', '')
 NAT64_POOL = os.environ.get('DASHBOARD_NAT64_POOL', '')
@@ -89,12 +90,15 @@ TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
 TECHNITIUM_RUNTIME_API_KEY_FILE = os.environ.get('TECHNITIUM_RUNTIME_API_KEY_FILE', '')
 TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
 TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
-KEA_LEASE_FILES = [
-    Path('/var/lib/private/kea/dhcp4.leases.2'),
-    Path('/var/lib/private/kea/dhcp4.leases'),
-    Path('/var/lib/kea/dhcp4.leases.2'),
-    Path('/var/lib/kea/dhcp4.leases'),
-]
+KEA_LEASE_FILES = (
+    ([Path(KEA_LEASES_FILE)] if KEA_LEASES_FILE else [])
+    + [
+        Path('/var/lib/private/kea/dhcp4.leases.2'),
+        Path('/var/lib/private/kea/dhcp4.leases'),
+        Path('/var/lib/kea/dhcp4.leases.2'),
+        Path('/var/lib/kea/dhcp4.leases'),
+    ]
+)
 
 # Speed test state
 SPEEDTEST_STATE = {
@@ -2386,10 +2390,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         now = int(time.time())
 
         for lease_file in KEA_LEASE_FILES:
-            if not lease_file.exists():
-                continue
-
             try:
+                if not lease_file.exists():
+                    continue
+
                 with lease_file.open(newline='') as handle:
                     reader = csv.DictReader(handle)
                     for row in reader:

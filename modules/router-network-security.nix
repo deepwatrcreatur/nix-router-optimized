@@ -53,6 +53,7 @@ let
       derivedHomeNetworks
     else
       [ "any" ];
+  eveboxInputDir = dirOf cfg.suricata.evebox.inputFile;
 
   snortHomeNet =
     if effectiveHomeNetworks == [ ] || effectiveHomeNetworks == [ "any" ] then
@@ -196,6 +197,46 @@ in
         default = { };
         description = "Additional Suricata settings merged into the generated upstream settings tree.";
       };
+
+      evebox = {
+        enable = mkEnableOption "a local EveBox UI for Suricata EVE events";
+
+        package = mkPackageOption pkgs "evebox" { };
+
+        host = mkOption {
+          type = types.str;
+          default = "127.0.0.1";
+          description = "Address EveBox binds to.";
+        };
+
+        port = mkOption {
+          type = types.port;
+          default = 5636;
+          description = "TCP port EveBox binds to.";
+        };
+
+        inputFile = mkOption {
+          type = types.str;
+          default = "/var/log/suricata/eve.json";
+          description = "Suricata EVE JSON file EveBox tails.";
+        };
+
+        noAuth = mkOption {
+          type = types.bool;
+          default = true;
+          description = ''
+            Disable EveBox's built-in authentication. This first slice assumes
+            EveBox stays bound to localhost and is exposed only through a
+            consumer-managed trusted reverse proxy path.
+          '';
+        };
+
+        extraArgs = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Additional arguments appended to the EveBox server command.";
+        };
+      };
     };
 
     snort = {
@@ -270,6 +311,10 @@ in
         message = "router-network-security: enable at least one of suricata, snort, or zeek.";
       }
       {
+        assertion = !cfg.suricata.evebox.enable || cfg.suricata.enable;
+        message = "router-network-security: services.router-network-security.suricata.evebox requires Suricata to be enabled.";
+      }
+      {
         assertion = effectiveInterfaces != [ ];
         message = "router-network-security: set interfaces explicitly or provide router-firewall/router-optimizations interface data to derive them.";
       }
@@ -316,7 +361,61 @@ in
       group = "zeek";
     };
 
+    users.groups.evebox = mkIf cfg.suricata.evebox.enable { };
+    users.users.evebox = mkIf cfg.suricata.evebox.enable {
+      isSystemUser = true;
+      group = "evebox";
+      extraGroups = [ "suricata" ];
+    };
+
     systemd.services = mkMerge [
+      (mkIf cfg.suricata.evebox.enable {
+        router-evebox = {
+          description = "Router EveBox server";
+          after = [ "network-online.target" "suricata.service" ];
+          wants = [ "network-online.target" ];
+          wantedBy = [ "multi-user.target" ];
+          path = [ cfg.suricata.evebox.package ];
+          serviceConfig = {
+            Type = "simple";
+            Restart = "on-failure";
+            User = "evebox";
+            Group = "evebox";
+            StateDirectory = "evebox";
+            WorkingDirectory = "/var/lib/evebox";
+            ExecStart = concatStringsSep " " (
+              [
+                "${cfg.suricata.evebox.package}/bin/evebox"
+                "--data-directory"
+                "/var/lib/evebox"
+                "server"
+                "--sqlite"
+                "--no-tls"
+                "--host"
+                (escapeShellArg cfg.suricata.evebox.host)
+                "--port"
+                (toString cfg.suricata.evebox.port)
+                "--input"
+                (escapeShellArg cfg.suricata.evebox.inputFile)
+                "--end"
+              ]
+              ++ optionals cfg.suricata.evebox.noAuth [ "--no-auth" ]
+              ++ map escapeShellArg cfg.suricata.evebox.extraArgs
+            );
+            NoNewPrivileges = true;
+            PrivateTmp = true;
+            PrivateDevices = true;
+            ProtectSystem = "strict";
+            ProtectHome = true;
+            ProtectKernelTunables = true;
+            ProtectControlGroups = true;
+            ProtectKernelLogs = true;
+            ProtectHostname = true;
+            ReadOnlyPaths = [ eveboxInputDir ];
+            ReadWritePaths = [ "/var/lib/evebox" ];
+          };
+        };
+      })
       (mkIf cfg.snort.enable {
         router-snort = {
           description = "Router Snort sensor";
