@@ -46,7 +46,7 @@ in
           message = "router-network-security should derive Suricata capture interfaces from router-firewall.";
         }
         {
-          assertion = config.services.suricata.settings.vars.address-groups.HOME_NET == [ "10.10.10.1/24" ];
+          assertion = config.services.suricata.settings.vars.address-groups.HOME_NET == "10.10.10.1/24";
           message = "router-network-security should derive HOME_NET from router-networking routed IPv4 CIDRs.";
         }
         {
