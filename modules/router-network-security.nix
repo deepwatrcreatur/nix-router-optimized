@@ -62,6 +62,13 @@ let
       builtins.head effectiveHomeNetworks
     else
       "[${concatStringsSep "," effectiveHomeNetworks}]";
+  suricataHomeNet =
+    if effectiveHomeNetworks == [ ] || effectiveHomeNetworks == [ "any" ] then
+      "any"
+    else if builtins.length effectiveHomeNetworks == 1 then
+      builtins.head effectiveHomeNetworks
+    else
+      "[${concatStringsSep "," effectiveHomeNetworks}]";
 
   snortInterfaceArgs = concatMapStrings (iface: " -i ${escapeShellArg iface}") effectiveInterfaces;
   snortLuaArgs =
@@ -330,7 +337,7 @@ in
       inherit (cfg.suricata) enabledSources disabledRules;
       settings =
         {
-          vars.address-groups.HOME_NET = effectiveHomeNetworks;
+          vars.address-groups.HOME_NET = suricataHomeNet;
           vars.address-groups.EXTERNAL_NET = "any";
         }
         // optionalAttrs (cfg.suricata.captureBackend == "pcap") {
