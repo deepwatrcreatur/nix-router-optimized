@@ -331,7 +331,7 @@ in
       settings =
         {
           vars.address-groups.HOME_NET = effectiveHomeNetworks;
-          vars.address-groups.EXTERNAL_NET = "!$HOME_NET";
+          vars.address-groups.EXTERNAL_NET = "any";
         }
         // optionalAttrs (cfg.suricata.captureBackend == "pcap") {
           pcap = map (iface: { interface = iface; }) effectiveInterfaces;
