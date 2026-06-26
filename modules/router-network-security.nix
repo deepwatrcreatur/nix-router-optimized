@@ -53,6 +53,7 @@ let
       derivedHomeNetworks
     else
       [ "any" ];
+  eveboxInputDir = dirOf cfg.suricata.evebox.inputFile;
 
   snortHomeNet =
     if effectiveHomeNetworks == [ ] || effectiveHomeNetworks == [ "any" ] then
@@ -410,7 +411,7 @@ in
             ProtectControlGroups = true;
             ProtectKernelLogs = true;
             ProtectHostname = true;
-            ReadOnlyPaths = [ cfg.suricata.evebox.inputFile ];
+            ReadOnlyPaths = [ eveboxInputDir ];
             ReadWritePaths = [ "/var/lib/evebox" ];
           };
         };

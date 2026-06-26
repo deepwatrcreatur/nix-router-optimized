@@ -80,8 +80,8 @@ in
           message = "router-network-security should launch EveBox against the local Suricata eve.json tail.";
         }
         {
-          assertion = config.systemd.services.router-evebox.serviceConfig.ReadOnlyPaths == [ "/var/log/suricata/eve.json" ];
-          message = "router-network-security should allow EveBox to read only the configured Suricata EVE file.";
+          assertion = config.systemd.services.router-evebox.serviceConfig.ReadOnlyPaths == [ "/var/log/suricata" ];
+          message = "router-network-security should allow EveBox to read the configured Suricata EVE directory so log rotation does not break access.";
         }
       ];
     })
