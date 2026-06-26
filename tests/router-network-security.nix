@@ -49,6 +49,10 @@ in
           assertion = config.services.suricata.settings.vars.address-groups.HOME_NET == [ "10.10.10.1/24" ];
           message = "router-network-security should derive HOME_NET from router-networking routed IPv4 CIDRs.";
         }
+        {
+          assertion = config.services.suricata.settings.vars.address-groups.EXTERNAL_NET == "!$HOME_NET";
+          message = "router-network-security should define EXTERNAL_NET in terms of the derived HOME_NET so the default Suricata ruleset parses cleanly.";
+        }
       ];
     })
   ];
