@@ -53,6 +53,7 @@ let
       derivedHomeNetworks
     else
       [ "any" ];
+  eveboxPackage = pkgs.callPackage ../pkgs/evebox-with-webapp.nix { };
   eveboxInputDir = dirOf cfg.suricata.evebox.inputFile;
 
   snortHomeNet =
@@ -208,7 +209,16 @@ in
       evebox = {
         enable = mkEnableOption "a local EveBox UI for Suricata EVE events";
 
-        package = mkPackageOption pkgs "evebox" { };
+        package = mkOption {
+          type = types.package;
+          default = eveboxPackage;
+          defaultText = literalExpression "pkgs.callPackage ../pkgs/evebox-with-webapp.nix { }";
+          description = ''
+            EveBox package to run. The default rebuilds the nixpkgs EveBox
+            package with the upstream `webapp/` assets copied into the embedded
+            `resources/` tree so the UI works for flake consumers.
+          '';
+        };
 
         host = mkOption {
           type = types.str;

@@ -2,6 +2,7 @@
   self,
   lib,
   eval,
+  pkgs,
   ...
 }:
 
@@ -90,6 +91,17 @@ in
       ];
     })
   ];
+
+  router-network-security-suricata-evebox-package-assets = pkgs.runCommand
+    "router-network-security-suricata-evebox-package-assets"
+    {
+      eveboxPkg = pkgs.callPackage ../pkgs/evebox-with-webapp.nix { };
+      nativeBuildInputs = [ pkgs.binutils ];
+    }
+    ''
+      strings "$eveboxPkg/bin/evebox" | grep -F "webapp/index.html" >/dev/null
+      touch "$out"
+    '';
 
   router-network-security-snort-eval = eval.mkNixosEvalCheck "router-network-security-snort" [
     self.nixosModules.router-firewall

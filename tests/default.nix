@@ -88,7 +88,7 @@ let
   };
 
   routerNetworkSecurityChecks = import ./router-network-security.nix {
-    inherit self lib eval;
+    inherit self lib eval pkgs;
   };
 in
 {
