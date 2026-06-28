@@ -45,16 +45,24 @@ let
 
   startSingleActiveUnits = pkgs.writeShellScript "router-ha-start-single-active-units" ''
     set -euo pipefail
+    rc=0
     ${concatMapStringsSep "\n" (unit: ''
-      ${pkgs.systemd}/bin/systemctl start ${escapeShellArg unit}
+      if ! ${pkgs.systemd}/bin/systemctl --no-block start ${escapeShellArg unit}; then
+        rc=1
+      fi
     '') cfg.singleActiveUnits}
+    exit "$rc"
   '';
 
   stopSingleActiveUnits = pkgs.writeShellScript "router-ha-stop-single-active-units" ''
     set -euo pipefail
+    rc=0
     ${concatMapStringsSep "\n" (unit: ''
-      ${pkgs.systemd}/bin/systemctl stop ${escapeShellArg unit}
+      if ! ${pkgs.systemd}/bin/systemctl --no-block stop ${escapeShellArg unit}; then
+        rc=1
+      fi
     '') cfg.singleActiveUnits}
+    exit "$rc"
   '';
 
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);

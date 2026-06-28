@@ -625,6 +625,9 @@ in
     ({ config, ... }:
       let
         keepalivedConfig = config.services.keepalived.vrrpInstances.main.extraConfig;
+        masterNotify = extractNotifyScript "notify_master" keepalivedConfig;
+        backupNotify = extractNotifyScript "notify_backup" keepalivedConfig;
+        faultNotify = extractNotifyScript "notify_fault" keepalivedConfig;
       in
       assertModule [
         {
@@ -636,13 +639,13 @@ in
           message = "router-ha should seed runtime role state before Keepalived starts.";
         }
         {
-          assertion = lib.hasInfix "notify_master" keepalivedConfig;
+          assertion = lib.hasInfix "keepalived-master" masterNotify;
           message = "router-ha should render a master notify hook when singleActiveUnits are configured.";
         }
         {
           assertion =
-            lib.hasInfix "notify_backup" keepalivedConfig
-            && lib.hasInfix "notify_fault" keepalivedConfig;
+            lib.hasInfix "keepalived-backup" backupNotify
+            && lib.hasInfix "keepalived-fault" faultNotify;
           message = "router-ha should render backup and fault notify hooks when singleActiveUnits are configured.";
         }
         {
