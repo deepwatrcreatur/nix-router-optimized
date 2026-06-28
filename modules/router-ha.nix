@@ -4,6 +4,8 @@ with lib;
 
 let
   cfg = config.services.router-ha;
+  runtimeDir = "/run/router-ha";
+  roleStateFile = "${runtimeDir}/role";
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   hasRouterBgp = hasAttrByPath [ "services" "router-bgp" "enable" ] options;
   hasRouterNdpProxy = hasAttrByPath [ "services" "router-ndp-proxy" "enable" ] options;
@@ -30,6 +32,29 @@ let
     ${concatMapStringsSep "\n" (ip: ''
       ${pkgs.frr}/bin/vtysh -c "configure terminal" -c "router bgp ${toString bgpAsn}" -c "neighbor ${ip} shutdown"
     '') bgpNeighborIps}
+  '';
+
+  writeRoleState =
+    role:
+    pkgs.writeShellScript "router-ha-mark-${role}" ''
+      set -euo pipefail
+      ${pkgs.coreutils}/bin/install -d -m 0755 ${escapeShellArg runtimeDir}
+      ${pkgs.coreutils}/bin/printf '%s\n' ${escapeShellArg role} > ${escapeShellArg roleStateFile}
+      ${pkgs.coreutils}/bin/chmod 0644 ${escapeShellArg roleStateFile}
+    '';
+
+  startSingleActiveUnits = pkgs.writeShellScript "router-ha-start-single-active-units" ''
+    set -euo pipefail
+    ${concatMapStringsSep "\n" (unit: ''
+      ${pkgs.systemd}/bin/systemctl start ${escapeShellArg unit}
+    '') cfg.singleActiveUnits}
+  '';
+
+  stopSingleActiveUnits = pkgs.writeShellScript "router-ha-stop-single-active-units" ''
+    set -euo pipefail
+    ${concatMapStringsSep "\n" (unit: ''
+      ${pkgs.systemd}/bin/systemctl stop ${escapeShellArg unit}
+    '') cfg.singleActiveUnits}
   '';
 
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
@@ -74,6 +99,18 @@ in
       description = "The VRRP priority (higher wins). Defaults based on role.";
     };
 
+    singleActiveUnits = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "inadyn.service" ];
+      description = ''
+        Consumer-owned systemd units that should only run on the active router.
+        `router-ha` starts them on master promotion and stops them on backup or
+        fault transitions. This is intentionally generic and does not claim a
+        typed ownership model for every LAN-facing service.
+      '';
+    };
+
     wan = {
       enable = mkEnableOption "WAN High Availability (MAC cloning and interface toggle)";
       interface = mkOption {
@@ -106,6 +143,19 @@ in
         "net.ipv6.ip_nonlocal_bind" = mkIf virtualIpIsIpv6 1;
       };
 
+      systemd.services.router-ha-initial-role-state = {
+        description = "Seed router HA runtime role state";
+        wantedBy = [ "multi-user.target" ];
+        before = [ "keepalived.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          ${writeRoleState cfg.role}
+        '';
+      };
+
       # Keepalived for VRRP
       services.keepalived = {
         enable = true;
@@ -122,8 +172,9 @@ in
               auth_type PASS
               auth_pass ${cfg.vrrpPassword}
             }
-            ${optionalString (cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner) ''
+            ${optionalString (cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ]) ''
               notify_master "${pkgs.writeShellScript "keepalived-master" ''
+                ${writeRoleState "master"}
                 ${optionalString cfg.wan.enable ''
                   echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
                   ${optionalString (cfg.wan.clonedMac != null) ''
@@ -138,8 +189,12 @@ in
                 ${optionalString ndpProxySingleActiveOwner ''
                   ${pkgs.systemd}/bin/systemctl start router-ndp-proxy.service
                 ''}
+                ${optionalString (cfg.singleActiveUnits != [ ]) ''
+                  ${startSingleActiveUnits}
+                ''}
               ''}"
               notify_backup "${pkgs.writeShellScript "keepalived-backup" ''
+                ${writeRoleState "backup"}
                 ${optionalString cfg.wan.enable ''
                   echo "Transitioning to BACKUP: Bringing down WAN ${cfg.wan.interface}..."
                   ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
@@ -150,8 +205,12 @@ in
                 ${optionalString ndpProxySingleActiveOwner ''
                   ${pkgs.systemd}/bin/systemctl stop router-ndp-proxy.service
                 ''}
+                ${optionalString (cfg.singleActiveUnits != [ ]) ''
+                  ${stopSingleActiveUnits}
+                ''}
               ''}"
               notify_fault "${pkgs.writeShellScript "keepalived-fault" ''
+                ${writeRoleState "fault"}
                 ${optionalString cfg.wan.enable ''
                   echo "Transitioning to FAULT: Bringing down WAN ${cfg.wan.interface}..."
                   ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
@@ -161,6 +220,9 @@ in
                 ''}
                 ${optionalString ndpProxySingleActiveOwner ''
                   ${pkgs.systemd}/bin/systemctl stop router-ndp-proxy.service
+                ''}
+                ${optionalString (cfg.singleActiveUnits != [ ]) ''
+                  ${stopSingleActiveUnits}
                 ''}
               ''}"
             ''}

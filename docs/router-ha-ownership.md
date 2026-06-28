@@ -20,8 +20,20 @@ Today the repo has bounded ownership behavior in these areas:
 - **Kea-related sync/control affordances** where explicitly configured
 - **BGP single-active-owner behavior** where the `router-bgp` integration makes
   promotion semantics explicit
+- **Consumer-owned single-active units** through
+  `services.router-ha.singleActiveUnits`
 
 That does **not** mean every LAN-facing service is promotion-aware by default.
+
+`singleActiveUnits` is intentionally generic:
+
+- it starts listed units on master promotion
+- it stops them on backup or fault transitions
+- and it records the current runtime role in `/run/router-ha/role`
+
+That runtime surface exists so consumer configs can express their own
+ExecCondition or startup policy without upstream claiming typed ownership for
+every service.
 
 ## NTP Boundary
 
@@ -75,6 +87,9 @@ What should not be assumed:
 - **Supported upstream:** router NTP service itself
 - **Not currently supported upstream:** a typed `router-ha` adapter for NTP
 - **Expected policy owner:** consumer config
+
+Likewise, `singleActiveUnits` support does **not** imply that upstream has
+declared a first-class HA contract for whatever unit names a consumer lists.
 
 For risky ownership, WAN, or failover changes, use
 [`router-apply-safety.md`](./router-apply-safety.md) as the manual acceptance
