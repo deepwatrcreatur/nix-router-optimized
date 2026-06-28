@@ -24,6 +24,13 @@ let
       default = { };
     };
   };
+  extractNotifyScript =
+    key: extraConfig:
+    let
+      line = builtins.head (builtins.filter (lib.hasPrefix "${key} \"") (lib.splitString "\n" extraConfig));
+      trimmed = lib.removePrefix "${key} \"" line;
+    in
+    lib.removeSuffix "\"" trimmed;
 in
 {
   router-nat64-eval = eval.mkNixosEvalCheck "router-nat64" [
@@ -599,5 +606,52 @@ in
         message = "router-technitium should keep the RFC2136 TSIG key configurable through module options.";
       }
     ])
+  ];
+
+  router-ha-single-active-units-eval = eval.mkNixosEvalCheck "router-ha-single-active-units" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        enable = true;
+        role = "backup";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "lan0";
+        singleActiveUnits = [
+          "inadyn.service"
+          "caddy.service"
+        ];
+      };
+    }
+    ({ config, ... }:
+      let
+        keepalivedConfig = config.services.keepalived.vrrpInstances.main.extraConfig;
+        masterNotify = extractNotifyScript "notify_master" keepalivedConfig;
+        backupNotify = extractNotifyScript "notify_backup" keepalivedConfig;
+        faultNotify = extractNotifyScript "notify_fault" keepalivedConfig;
+      in
+      assertModule [
+        {
+          assertion = config.systemd.services ? router-ha-initial-role-state;
+          message = "router-ha should seed runtime role state before Keepalived starts.";
+        }
+        {
+          assertion = config.systemd.services.router-ha-initial-role-state.before == [ "keepalived.service" ];
+          message = "router-ha should seed runtime role state before Keepalived starts.";
+        }
+        {
+          assertion = lib.hasInfix "keepalived-master" masterNotify;
+          message = "router-ha should render a master notify hook when singleActiveUnits are configured.";
+        }
+        {
+          assertion =
+            lib.hasInfix "keepalived-backup" backupNotify
+            && lib.hasInfix "keepalived-fault" faultNotify;
+          message = "router-ha should render backup and fault notify hooks when singleActiveUnits are configured.";
+        }
+        {
+          assertion = config.systemd.services.router-ha-initial-role-state.wantedBy == [ "multi-user.target" ];
+          message = "router-ha should install a boot-time role-state seeding service.";
+        }
+      ])
   ];
 }
