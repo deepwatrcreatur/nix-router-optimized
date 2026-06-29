@@ -43,6 +43,10 @@ let
       ${pkgs.coreutils}/bin/chmod 0644 ${escapeShellArg roleStateFile}
     '';
 
+  masterRoleScript = writeRoleState "master";
+  backupRoleScript = writeRoleState "backup";
+  faultRoleScript = writeRoleState "fault";
+
   startSingleActiveUnits = pkgs.writeShellScript "router-ha-start-single-active-units" ''
     set -euo pipefail
     rc=0
@@ -64,6 +68,48 @@ let
     '') cfg.singleActiveUnits}
     exit "$rc"
   '';
+
+  notifyMasterScript = pkgs.writeShellScript "keepalived-master" ''
+    ${masterRoleScript}
+    ${optionalString cfg.wan.enable ''
+      echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
+      ${optionalString (cfg.wan.clonedMac != null) ''
+        ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} address ${cfg.wan.clonedMac}
+      ''}
+      ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} up
+      ${pkgs.systemd}/bin/systemctl restart systemd-networkd
+    ''}
+    ${optionalString bgpSingleActiveOwner ''
+      ${bgpPromoteScript}
+    ''}
+    ${optionalString ndpProxySingleActiveOwner ''
+      ${pkgs.systemd}/bin/systemctl start router-ndp-proxy.service
+    ''}
+    ${optionalString (cfg.singleActiveUnits != [ ]) ''
+      ${startSingleActiveUnits}
+    ''}
+  '';
+
+  demoteActiveOwnership = role: roleScript: pkgs.writeShellScript "router-ha-demote-${role}" ''
+    ${roleScript}
+    ${optionalString cfg.wan.enable ''
+      echo "Transitioning away from MASTER: Bringing down WAN ${cfg.wan.interface}..."
+      ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
+    ''}
+    ${optionalString bgpSingleActiveOwner ''
+      ${bgpDemoteScript}
+    ''}
+    ${optionalString ndpProxySingleActiveOwner ''
+      ${pkgs.systemd}/bin/systemctl stop router-ndp-proxy.service
+    ''}
+    ${optionalString (cfg.singleActiveUnits != [ ]) ''
+      ${stopSingleActiveUnits}
+    ''}
+  '';
+
+  notifyBackupScript = demoteActiveOwnership "backup" backupRoleScript;
+  notifyFaultScript = demoteActiveOwnership "fault" faultRoleScript;
+  keepalivedStopScript = demoteActiveOwnership "stop" backupRoleScript;
 
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
   virtualIpIsIpv6 = hasInfix ":" virtualIpAddress;
@@ -160,13 +206,17 @@ in
           RemainAfterExit = true;
         };
         script = ''
-          ${writeRoleState cfg.role}
+          ${backupRoleScript}
         '';
       };
 
       # Keepalived for VRRP
       services.keepalived = {
         enable = true;
+        enableScriptSecurity = true;
+        extraGlobalDefs = ''
+          script_user root
+        '';
         vrrpInstances.main = {
           state = if cfg.role == "master" then "MASTER" else "BACKUP";
           interface = cfg.vrrpInterface;
@@ -181,62 +231,17 @@ in
               auth_pass ${cfg.vrrpPassword}
             }
             ${optionalString (cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ]) ''
-              notify_master "${pkgs.writeShellScript "keepalived-master" ''
-                ${writeRoleState "master"}
-                ${optionalString cfg.wan.enable ''
-                  echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
-                  ${optionalString (cfg.wan.clonedMac != null) ''
-                    ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} address ${cfg.wan.clonedMac}
-                  ''}
-                  ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} up
-                  ${pkgs.systemd}/bin/systemctl restart systemd-networkd
-                ''}
-                ${optionalString bgpSingleActiveOwner ''
-                  ${bgpPromoteScript}
-                ''}
-                ${optionalString ndpProxySingleActiveOwner ''
-                  ${pkgs.systemd}/bin/systemctl start router-ndp-proxy.service
-                ''}
-                ${optionalString (cfg.singleActiveUnits != [ ]) ''
-                  ${startSingleActiveUnits}
-                ''}
-              ''}"
-              notify_backup "${pkgs.writeShellScript "keepalived-backup" ''
-                ${writeRoleState "backup"}
-                ${optionalString cfg.wan.enable ''
-                  echo "Transitioning to BACKUP: Bringing down WAN ${cfg.wan.interface}..."
-                  ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
-                ''}
-                ${optionalString bgpSingleActiveOwner ''
-                  ${bgpDemoteScript}
-                ''}
-                ${optionalString ndpProxySingleActiveOwner ''
-                  ${pkgs.systemd}/bin/systemctl stop router-ndp-proxy.service
-                ''}
-                ${optionalString (cfg.singleActiveUnits != [ ]) ''
-                  ${stopSingleActiveUnits}
-                ''}
-              ''}"
-              notify_fault "${pkgs.writeShellScript "keepalived-fault" ''
-                ${writeRoleState "fault"}
-                ${optionalString cfg.wan.enable ''
-                  echo "Transitioning to FAULT: Bringing down WAN ${cfg.wan.interface}..."
-                  ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
-                ''}
-                ${optionalString bgpSingleActiveOwner ''
-                  ${bgpDemoteScript}
-                ''}
-                ${optionalString ndpProxySingleActiveOwner ''
-                  ${pkgs.systemd}/bin/systemctl stop router-ndp-proxy.service
-                ''}
-                ${optionalString (cfg.singleActiveUnits != [ ]) ''
-                  ${stopSingleActiveUnits}
-                ''}
-              ''}"
+              notify_master "${notifyMasterScript}"
+              notify_backup "${notifyBackupScript}"
+              notify_fault "${notifyFaultScript}"
             ''}
           '';
         };
       };
+
+      systemd.services.keepalived.serviceConfig.ExecStopPost = [
+        "+${keepalivedStopScript}"
+      ];
     }
 
     # Firewall integration

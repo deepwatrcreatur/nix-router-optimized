@@ -639,18 +639,36 @@ in
           message = "router-ha should seed runtime role state before Keepalived starts.";
         }
         {
+          assertion = config.services.keepalived.enableScriptSecurity;
+          message = "router-ha should enable Keepalived script security when notify hooks are in use.";
+        }
+        {
+          assertion = lib.hasInfix "script_user root" config.services.keepalived.extraGlobalDefs;
+          message = "router-ha should render an explicit Keepalived script user for notify hooks.";
+        }
+        {
           assertion = lib.hasInfix "keepalived-master" masterNotify;
           message = "router-ha should render a master notify hook when singleActiveUnits are configured.";
         }
         {
           assertion =
-            lib.hasInfix "keepalived-backup" backupNotify
-            && lib.hasInfix "keepalived-fault" faultNotify;
+            lib.hasInfix "router-ha-demote-backup" backupNotify
+            && lib.hasInfix "router-ha-demote-fault" faultNotify;
           message = "router-ha should render backup and fault notify hooks when singleActiveUnits are configured.";
         }
         {
           assertion = config.systemd.services.router-ha-initial-role-state.wantedBy == [ "multi-user.target" ];
           message = "router-ha should install a boot-time role-state seeding service.";
+        }
+        {
+          assertion = lib.hasInfix "router-ha-mark-backup" config.systemd.services.router-ha-initial-role-state.script;
+          message = "router-ha should seed a non-owning runtime role until Keepalived proves mastership.";
+        }
+        {
+          assertion =
+            lib.hasInfix "router-ha-demote-stop"
+              (builtins.concatStringsSep "\n" config.systemd.services.keepalived.serviceConfig.ExecStopPost);
+          message = "router-ha should demote runtime ownership and tear down single-active units if keepalived stops.";
         }
       ])
   ];
