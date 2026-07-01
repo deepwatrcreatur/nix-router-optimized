@@ -54,6 +54,63 @@ in
           assertion = config.services.suricata.settings.vars.address-groups.EXTERNAL_NET == "any";
           message = "router-network-security should define a first-slice EXTERNAL_NET value the default Suricata ruleset can parse reliably.";
         }
+        {
+          assertion = config.systemd.services.suricata-update.wantedBy == [ ];
+          message = "router-network-security should not make suricata-update an activation-time requirement by default.";
+        }
+        {
+          assertion = config.systemd.timers.suricata-update.wantedBy == [ "timers.target" ];
+          message = "router-network-security should keep Suricata rule updates timer-driven when activation updates are disabled.";
+        }
+        {
+          assertion = config.systemd.timers.suricata-update.timerConfig.OnActiveSec == "15m";
+          message = "router-network-security should delay the first timer-driven Suricata update long enough to keep activation offline-safe.";
+        }
+        {
+          assertion = config.systemd.services ? router-suricata-seed-rules;
+          message = "router-network-security should seed packaged Suricata rules before update/start.";
+        }
+        {
+          assertion = lib.hasInfix "router-suricata-seed-rules"
+            config.systemd.services.router-suricata-seed-rules.serviceConfig.ExecStart;
+          message = "router-network-security should install a dedicated seed-rules helper script.";
+        }
+        {
+          assertion = config.systemd.services.router-suricata-seed-rules.requiredBy == [
+            "suricata.service"
+            "suricata-update.service"
+          ];
+          message = "router-network-security should seed Suricata support files into the runtime rule path.";
+        }
+      ];
+    })
+  ];
+
+  router-network-security-suricata-activation-update-eval = eval.mkNixosEvalCheck "router-network-security-suricata-activation-update" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-networking
+    self.nixosModules.router-network-security
+    firewallBase
+    routerNetworkingBase
+    {
+      services.router-network-security = {
+        enable = true;
+        suricata = {
+          enable = true;
+          startUpdateServiceOnActivation = true;
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = config.systemd.services.suricata-update.wantedBy == [ "multi-user.target" ];
+          message = "router-network-security should preserve activation-time Suricata updates when explicitly requested.";
+        }
+        {
+          assertion = config.systemd.timers.suricata-update.wantedBy == [ "timers.target" ];
+          message = "router-network-security should keep the Suricata update timer enabled even when activation-time updates are requested.";
+        }
       ];
     })
   ];

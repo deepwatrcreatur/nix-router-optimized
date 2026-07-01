@@ -134,6 +134,52 @@ let
       )
       effectiveInterfaces
   );
+
+  suricataRulePath = "/var/lib/suricata/rules";
+  packagedSuricataShare = "${cfg.suricata.package}/share/suricata";
+  suricataSeedScript = pkgs.writeShellScript "router-suricata-seed-rules" ''
+    set -euo pipefail
+
+    install -d -m 0755 -o ${config.services.suricata.settings.run-as.user} -g ${config.services.suricata.settings.run-as.group} /var/lib/suricata
+    install -d -m 0755 -o ${config.services.suricata.settings.run-as.user} -g ${config.services.suricata.settings.run-as.group} ${suricataRulePath}
+
+    for support_file in classification.config reference.config; do
+      if [ ! -e "${suricataRulePath}/$support_file" ]; then
+        install -m 0644 -o ${config.services.suricata.settings.run-as.user} -g ${config.services.suricata.settings.run-as.group} \
+          "${packagedSuricataShare}/$support_file" "${suricataRulePath}/$support_file"
+      fi
+    done
+
+    for rule_file in "${packagedSuricataShare}"/rules/*.rules; do
+      target="${suricataRulePath}/$(basename "$rule_file")"
+      if [ ! -e "$target" ]; then
+        install -m 0644 -o ${config.services.suricata.settings.run-as.user} -g ${config.services.suricata.settings.run-as.group} \
+          "$rule_file" "$target"
+      fi
+    done
+
+    fallback_rules="${suricataRulePath}/.suricata.rules.fallback"
+
+    : > "$fallback_rules"
+    chown ${config.services.suricata.settings.run-as.user}:${config.services.suricata.settings.run-as.group} "$fallback_rules"
+    chmod 0644 "$fallback_rules"
+
+    for rule_file in "${packagedSuricataShare}"/rules/*.rules; do
+        case "$(basename "$rule_file")" in
+          dnp3-events.rules|modbus-events.rules)
+            continue
+            ;;
+        esac
+      cat "$rule_file" >> "$fallback_rules"
+      printf '\n' >> "$fallback_rules"
+    done
+
+    if [ ! -e "${suricataRulePath}/suricata.rules" ] || grep -Eq 'sid:(227000[0-6]|225000[1-3]|225000[5-9]);' "${suricataRulePath}/suricata.rules"; then
+      mv "$fallback_rules" "${suricataRulePath}/suricata.rules"
+    else
+      rm -f "$fallback_rules"
+    fi
+  '';
 in
 {
   options.services.router-network-security = {
@@ -196,6 +242,16 @@ in
           "2270002"
           "2270003"
           "2270004"
+          "2270005"
+          "2270006"
+          "2250001"
+          "2250002"
+          "2250003"
+          "2250005"
+          "2250006"
+          "2250007"
+          "2250008"
+          "2250009"
         ];
         description = "Rule IDs disabled through the upstream Suricata module.";
       };
@@ -253,6 +309,28 @@ in
           default = [ ];
           description = "Additional arguments appended to the EveBox server command.";
         };
+      };
+
+      startUpdateServiceOnActivation = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Whether `suricata-update.service` should be started directly as part of
+          normal activation. When false, the update service remains available for
+          manual runs and its timer stays enabled, but activation is not blocked by
+          transient WAN or DNS failures.
+        '';
+      };
+
+      seedPackagedRules = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Seed the runtime Suricata rule directory with the packaged baseline
+          support files and built-in event rules before update or sensor start.
+          This keeps `suricata -T` viable even when remote rule updates have not
+          run yet.
+        '';
       };
     };
 
@@ -337,6 +415,7 @@ in
       }
     ];
 
+
     warnings = optionals (cfg.suricata.enable && cfg.snort.enable) [
       "router-network-security: Suricata and Snort are both enabled. Concurrent full-packet engines on the same interfaces can be expensive and may require consumer-side tuning."
     ];
@@ -387,6 +466,26 @@ in
     };
 
     systemd.services = mkMerge [
+      (mkIf (cfg.suricata.enable && cfg.suricata.seedPackagedRules) {
+        router-suricata-seed-rules = {
+          description = "Seed baseline Suricata rules for offline-safe startup";
+          requiredBy = [
+            "suricata.service"
+            "suricata-update.service"
+          ];
+          before = [
+            "suricata.service"
+            "suricata-update.service"
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = suricataSeedScript;
+          };
+        };
+      })
+      (mkIf (cfg.suricata.enable && !cfg.suricata.startUpdateServiceOnActivation) {
+        suricata-update.wantedBy = mkForce [ ];
+      })
       (mkIf cfg.suricata.evebox.enable {
         router-evebox = {
           description = "Router EveBox server";
@@ -467,5 +566,15 @@ in
       })
       (mkIf cfg.zeek.enable zeekServices)
     ];
+
+    systemd.timers = mkIf cfg.suricata.enable {
+      suricata-update = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = mkIf (!cfg.suricata.startUpdateServiceOnActivation) {
+          OnBootSec = mkForce null;
+          OnActiveSec = mkDefault "15m";
+        };
+      };
+    };
   };
 }
