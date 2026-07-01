@@ -125,6 +125,30 @@ let
       )
       effectiveInterfaces
   );
+
+  suricataRulePath = "/var/lib/suricata/rules";
+  packagedSuricataShare = "${cfg.suricata.package}/share/suricata";
+  suricataSeedScript = pkgs.writeShellScript "router-suricata-seed-rules" ''
+    set -euo pipefail
+
+    install -d -m 0755 -o ${config.services.suricata.settings.run-as.user} -g ${config.services.suricata.settings.run-as.group} /var/lib/suricata
+    install -d -m 0755 -o ${config.services.suricata.settings.run-as.user} -g ${config.services.suricata.settings.run-as.group} ${suricataRulePath}
+
+    for support_file in classification.config reference.config; do
+      if [ ! -e "${suricataRulePath}/$support_file" ]; then
+        install -m 0644 -o ${config.services.suricata.settings.run-as.user} -g ${config.services.suricata.settings.run-as.group} \
+          "${packagedSuricataShare}/$support_file" "${suricataRulePath}/$support_file"
+      fi
+    done
+
+    for rule_file in "${packagedSuricataShare}"/rules/*.rules; do
+      target="${suricataRulePath}/$(basename "$rule_file")"
+      if [ ! -e "$target" ]; then
+        install -m 0644 -o ${config.services.suricata.settings.run-as.user} -g ${config.services.suricata.settings.run-as.group} \
+          "$rule_file" "$target"
+      fi
+    done
+  '';
 in
 {
   options.services.router-network-security = {
@@ -195,6 +219,28 @@ in
         type = types.attrs;
         default = { };
         description = "Additional Suricata settings merged into the generated upstream settings tree.";
+      };
+
+      startUpdateServiceOnActivation = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Whether `suricata-update.service` should be started directly as part of
+          normal activation. When false, the update service remains available for
+          manual runs and its timer stays enabled, but activation is not blocked by
+          transient WAN or DNS failures.
+        '';
+      };
+
+      seedPackagedRules = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Seed the runtime Suricata rule directory with the packaged baseline
+          support files and built-in event rules before update or sensor start.
+          This keeps `suricata -T` viable even when remote rule updates have not
+          run yet.
+        '';
       };
     };
 
@@ -275,6 +321,7 @@ in
       }
     ];
 
+
     warnings = optionals (cfg.suricata.enable && cfg.snort.enable) [
       "router-network-security: Suricata and Snort are both enabled. Concurrent full-packet engines on the same interfaces can be expensive and may require consumer-side tuning."
     ];
@@ -317,6 +364,26 @@ in
     };
 
     systemd.services = mkMerge [
+      (mkIf (cfg.suricata.enable && cfg.suricata.seedPackagedRules) {
+        router-suricata-seed-rules = {
+          description = "Seed baseline Suricata rules for offline-safe startup";
+          requiredBy = [
+            "suricata.service"
+            "suricata-update.service"
+          ];
+          before = [
+            "suricata.service"
+            "suricata-update.service"
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = suricataSeedScript;
+          };
+        };
+      })
+      (mkIf (cfg.suricata.enable && !cfg.suricata.startUpdateServiceOnActivation) {
+        suricata-update.wantedBy = mkForce [ ];
+      })
       (mkIf cfg.snort.enable {
         router-snort = {
           description = "Router Snort sensor";
@@ -350,5 +417,9 @@ in
       })
       (mkIf cfg.zeek.enable zeekServices)
     ];
+
+    systemd.timers = mkIf cfg.suricata.enable {
+      suricata-update.wantedBy = [ "timers.target" ];
+    };
   };
 }
