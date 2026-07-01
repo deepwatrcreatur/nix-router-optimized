@@ -164,6 +164,11 @@ let
       chmod 0644 "${suricataRulePath}/suricata.rules"
 
       for rule_file in "${packagedSuricataShare}"/rules/*.rules; do
+        case "$(basename "$rule_file")" in
+          dnp3-events.rules|modbus-events.rules)
+            continue
+            ;;
+        esac
         cat "$rule_file" >> "${suricataRulePath}/suricata.rules"
         printf '\n' >> "${suricataRulePath}/suricata.rules"
       done
@@ -231,6 +236,16 @@ in
           "2270002"
           "2270003"
           "2270004"
+          "2270005"
+          "2270006"
+          "2250001"
+          "2250002"
+          "2250003"
+          "2250005"
+          "2250006"
+          "2250007"
+          "2250008"
+          "2250009"
         ];
         description = "Rule IDs disabled through the upstream Suricata module.";
       };
