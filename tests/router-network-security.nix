@@ -63,6 +63,10 @@ in
           message = "router-network-security should keep Suricata rule updates timer-driven when activation updates are disabled.";
         }
         {
+          assertion = config.systemd.timers.suricata-update.timerConfig.OnActiveSec == "15m";
+          message = "router-network-security should delay the first timer-driven Suricata update long enough to keep activation offline-safe.";
+        }
+        {
           assertion = config.systemd.services ? router-suricata-seed-rules;
           message = "router-network-security should seed packaged Suricata rules before update/start.";
         }

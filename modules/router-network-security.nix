@@ -536,7 +536,13 @@ in
     ];
 
     systemd.timers = mkIf cfg.suricata.enable {
-      suricata-update.wantedBy = [ "timers.target" ];
+      suricata-update = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = mkIf (!cfg.suricata.startUpdateServiceOnActivation) {
+          OnBootSec = mkForce null;
+          OnActiveSec = mkDefault "15m";
+        };
+      };
     };
   };
 }
