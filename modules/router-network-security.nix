@@ -157,6 +157,17 @@ let
           "$rule_file" "$target"
       fi
     done
+
+    if [ ! -e "${suricataRulePath}/suricata.rules" ]; then
+      : > "${suricataRulePath}/suricata.rules"
+      chown ${config.services.suricata.settings.run-as.user}:${config.services.suricata.settings.run-as.group} "${suricataRulePath}/suricata.rules"
+      chmod 0644 "${suricataRulePath}/suricata.rules"
+
+      for rule_file in "${packagedSuricataShare}"/rules/*.rules; do
+        cat "$rule_file" >> "${suricataRulePath}/suricata.rules"
+        printf '\n' >> "${suricataRulePath}/suricata.rules"
+      done
+    fi
   '';
 in
 {
