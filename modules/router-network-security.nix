@@ -158,20 +158,26 @@ let
       fi
     done
 
-    if [ ! -e "${suricataRulePath}/suricata.rules" ]; then
-      : > "${suricataRulePath}/suricata.rules"
-      chown ${config.services.suricata.settings.run-as.user}:${config.services.suricata.settings.run-as.group} "${suricataRulePath}/suricata.rules"
-      chmod 0644 "${suricataRulePath}/suricata.rules"
+    fallback_rules="${suricataRulePath}/.suricata.rules.fallback"
 
-      for rule_file in "${packagedSuricataShare}"/rules/*.rules; do
+    : > "$fallback_rules"
+    chown ${config.services.suricata.settings.run-as.user}:${config.services.suricata.settings.run-as.group} "$fallback_rules"
+    chmod 0644 "$fallback_rules"
+
+    for rule_file in "${packagedSuricataShare}"/rules/*.rules; do
         case "$(basename "$rule_file")" in
           dnp3-events.rules|modbus-events.rules)
             continue
             ;;
         esac
-        cat "$rule_file" >> "${suricataRulePath}/suricata.rules"
-        printf '\n' >> "${suricataRulePath}/suricata.rules"
-      done
+      cat "$rule_file" >> "$fallback_rules"
+      printf '\n' >> "$fallback_rules"
+    done
+
+    if [ ! -e "${suricataRulePath}/suricata.rules" ] || grep -Eq 'sid:(227000[0-6]|225000[1-3]|225000[5-9]);' "${suricataRulePath}/suricata.rules"; then
+      mv "$fallback_rules" "${suricataRulePath}/suricata.rules"
+    else
+      rm -f "$fallback_rules"
     fi
   '';
 in
