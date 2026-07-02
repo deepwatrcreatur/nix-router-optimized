@@ -51,8 +51,9 @@ In other words, do **not** collapse all router services behind one blanket
 
 - **Promotion-aware / VRRP-owned**
   - WAN interface ownership via `services.router-ha.wan`
-  - public DDNS update execution when the consumer makes both
-    `inadyn.service` and `inadyn.timer` `singleActiveUnits`
+  - public DDNS update execution when the consumer makes `inadyn.service` and,
+    if present in the evaluated system, the corresponding inadyn timer unit
+    `singleActiveUnits`
   - any other service the consumer explicitly adds to
     `services.router-ha.singleActiveUnits`
 - **Shared on both nodes**
@@ -81,6 +82,8 @@ In other words, do **not** collapse all router services behind one blanket
     };
     singleActiveUnits = [
       "inadyn.service"
+      # Include the matching timer unit only if your evaluated system exposes
+      # one under this name.
       "inadyn.timer"
     ];
   };
@@ -93,7 +96,9 @@ In other words, do **not** collapse all router services behind one blanket
 ```
 
 That example is intentionally schematic. The important part is the **split of
-ownership models**, not the literal placeholder values.
+ownership models**, not the literal placeholder values. Consumers should verify
+the actual unit names in their evaluated config before listing timer units in
+`singleActiveUnits`.
 
 ## NTP Boundary
 
