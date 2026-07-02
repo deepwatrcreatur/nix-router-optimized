@@ -35,6 +35,71 @@ That runtime surface exists so consumer configs can express their own
 ExecCondition or startup policy without upstream claiming typed ownership for
 every service.
 
+## Validated Consumer Pattern
+
+The currently validated consumer pattern for a VRRP router pair is:
+
+- let `router-ha` own **WAN/VIP role transition**
+- let `router-ha.singleActiveUnits` own **specific single-owner runtime units**
+- keep some services **shared on both nodes**
+- keep some services **manual-promotion only**
+
+In other words, do **not** collapse all router services behind one blanket
+"backup becomes master, therefore everything should start" assumption.
+
+### A practical split that is working
+
+- **Promotion-aware / VRRP-owned**
+  - WAN interface ownership via `services.router-ha.wan`
+  - public DDNS update execution when the consumer makes `inadyn.service` and,
+    if present in the evaluated system, the corresponding inadyn timer unit
+    `singleActiveUnits`
+  - any other service the consumer explicitly adds to
+    `services.router-ha.singleActiveUnits`
+- **Shared on both nodes**
+  - `router-ntp` / Chrony, when the consumer wants standby time-sync
+    continuity instead of single-owner NTP
+  - passive/observability services such as Suricata when the deployment wants
+    them running on both nodes
+- **Still consumer-owned and often manual**
+  - DHCP ownership for the current reference pair
+  - any DNS, UPnP, or other LAN-facing service that the consumer has not wired
+    explicitly behind a tested ownership boundary
+
+### Minimal consumer sketch
+
+```nix
+{
+  services.router-ha = {
+    enable = true;
+    role = "master"; # or "backup" per host
+    virtualIp = "10.10.10.1/16";
+    vrrpInterface = "br-lan";
+    wan = {
+      enable = true;
+      interface = "wan0";
+      clonedMac = "02:00:00:00:00:01";
+    };
+    singleActiveUnits = [
+      "inadyn.service"
+      # Include the matching timer unit only if your evaluated system exposes
+      # one under this name.
+      "inadyn.timer"
+    ];
+  };
+
+  services.router-ddns.enable = true;
+
+  # Shared service example: keep Chrony on both nodes.
+  services.router-ntp.enable = true;
+}
+```
+
+That example is intentionally schematic. The important part is the **split of
+ownership models**, not the literal placeholder values. Consumers should verify
+the actual unit names in their evaluated config before listing timer units in
+`singleActiveUnits`.
+
 ## NTP Boundary
 
 `services.router-ntp` is **not** a typed `router-ha` ownership adapter today.
@@ -76,6 +141,9 @@ Examples of consumer-owned choices:
 - keep Chrony available on both nodes
 - gate Chrony behind a promoted-node profile
 - couple NTP visibility to a broader active-service layer
+
+The current validated reference deployment uses the **first** of those choices:
+Chrony available on both nodes.
 
 What should not be assumed:
 
