@@ -11,6 +11,8 @@ let
     inherit lib pkgs nixpkgs system;
   };
 
+  routerHaPairExample = import ../examples/router-ha-pair-example.nix;
+
   baseModule = {
     networking.hostName = "router-check";
     system.stateVersion = "25.11";
@@ -284,6 +286,50 @@ in
     {
       assertion = !(lib.hasInfix "zone_lan_input" config.networking.nftables.ruleset);
       message = "router-zones example must stay forward-only and not create input-zone chains.";
+    }
+  ]);
+
+  docs-router-ha-pair-master-example-eval = mkDocExampleCheck "docs-router-ha-pair-master-example" [
+    self.nixosModules.router-ha
+    self.nixosModules.router-ntp
+    self.nixosModules.router-firewall
+    routerHaPairExample.master
+  ] (config: [
+    {
+      assertion = config.services.keepalived.enable;
+      message = "router-ha pair master example should enable keepalived.";
+    }
+    {
+      assertion = config.services.keepalived.vrrpInstances.main.state == "MASTER";
+      message = "router-ha pair master example should render a MASTER instance.";
+    }
+    {
+      assertion = config.services.router-ha.singleActiveUnits == [ "inadyn.service" ];
+      message = "router-ha pair master example should keep a narrow singleActiveUnits list.";
+    }
+    {
+      assertion = config.services.chrony.enable;
+      message = "router-ha pair master example should keep Chrony enabled.";
+    }
+  ]);
+
+  docs-router-ha-pair-backup-example-eval = mkDocExampleCheck "docs-router-ha-pair-backup-example" [
+    self.nixosModules.router-ha
+    self.nixosModules.router-ntp
+    self.nixosModules.router-firewall
+    routerHaPairExample.backup
+  ] (config: [
+    {
+      assertion = config.services.keepalived.vrrpInstances.main.state == "BACKUP";
+      message = "router-ha pair backup example should render a BACKUP instance.";
+    }
+    {
+      assertion = config.services.keepalived.vrrpInstances.main.priority == 90;
+      message = "router-ha pair backup example should keep the documented lower priority.";
+    }
+    {
+      assertion = builtins.elem 123 (config.services.router-firewall.trustedUdpPorts or [ ]);
+      message = "router-ha pair backup example should keep router-ntp firewall behavior.";
     }
   ]);
 

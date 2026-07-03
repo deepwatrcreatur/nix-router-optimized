@@ -116,6 +116,10 @@ Kea DHCP failover. See
 [`docs/router-dhcp-single-active.md`](./docs/router-dhcp-single-active.md)
 before assuming DHCP follows VRRP automatically.
 
+If you want a more copyable starting point for a `router` / `router-backup`
+pair, see [`docs/router-ha-pair-guide.md`](./docs/router-ha-pair-guide.md) and
+[`examples/router-ha-pair-example.nix`](./examples/router-ha-pair-example.nix).
+
 #### WAN Topology (Unmanaged Switch)
 To share a single-IP ISP modem between two routers without a managed switch:
 1. ISP Modem -> Unmanaged Switch

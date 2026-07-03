@@ -12,6 +12,10 @@ The current upstream stance is:
 This note exists so operators do not infer broader service orchestration than
 the modules actually claim.
 
+If you want a concrete starting point instead of a boundary note, start with
+[`router-ha-pair-guide.md`](./router-ha-pair-guide.md) and
+[`examples/router-ha-pair-example.nix`](../examples/router-ha-pair-example.nix).
+
 ## Current Upstream Shape
 
 Today the repo has bounded ownership behavior in these areas:
@@ -98,7 +102,8 @@ In other words, do **not** collapse all router services behind one blanket
 That example is intentionally schematic. The important part is the **split of
 ownership models**, not the literal placeholder values. Consumers should verify
 the actual unit names in their evaluated config before listing timer units in
-`singleActiveUnits`.
+`singleActiveUnits`. For a more copyable two-node layout, use
+[`router-ha-pair-guide.md`](./router-ha-pair-guide.md).
 
 ## NTP Boundary
 

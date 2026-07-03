@@ -31,6 +31,8 @@ from module names alone.
 
 - [`router-ha-ownership.md`](./router-ha-ownership.md) — active-owner and shared
   capability boundary
+- [`router-ha-pair-guide.md`](./router-ha-pair-guide.md) — copyable two-node
+  VRRP pair starting point for flake consumers
 - [`router-dhcp-single-active.md`](./router-dhcp-single-active.md) — why the
   current reference DHCP posture is single-active with manual promotion
 - [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md) — evidence
