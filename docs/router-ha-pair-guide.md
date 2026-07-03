@@ -64,12 +64,20 @@ At minimum, replace these values from the example:
 - `lan0` with your real LAN interface
 - `wan0` with your real WAN interface
 - `02:00:00:00:00:01` with your WAN-side cloned MAC if your ISP expects one
-- `replace-me` with your VRRP password
+- `replace-me` with a low-sensitivity VRRP password that you are comfortable
+  having rendered into store-backed Keepalived config
 - `10.10.10.0/24` with your real LAN subnet
 
 If you use `router-ddns`, keep `inadyn.service` in `singleActiveUnits`. Add the
 matching timer unit only if your evaluated system actually exposes it under that
 name.
+
+Important credential note:
+
+- `services.router-ha.vrrpPassword` is interpolated into generated Keepalived
+  config, which means it is not handled like a runtime-only secret file
+- do not treat it like a high-value credential
+- do not commit a real shared VRRP password into a public repository
 
 ## Minimal Flake Layout
 

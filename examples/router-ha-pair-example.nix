@@ -5,6 +5,9 @@ let
       virtualIp = "10.10.10.1/24";
       vrrpInterface = "lan0";
       vrrpId = 51;
+      # This value is rendered into store-backed Keepalived config. Do not
+      # treat it like a high-value secret or commit a real shared password in a
+      # public repository.
       vrrpPassword = "replace-me";
       wan = {
         enable = true;
