@@ -42,6 +42,61 @@ let
   maybeSet = ifaces: if ifaces == [ ] then "" else "{${quotedSet ifaces}}";
   tcpPortSet = ports: concatStringsSep ", " (map toString ports);
   cidrSet = cidrs: concatStringsSep ", " cidrs;
+  flowtableRuleCommentPrefix = "router-firewall-flowtable";
+  flowtablePortRangeType = types.strMatching "^[0-9]+-[0-9]+$";
+  flowtablePortExprType = types.oneOf [
+    types.port
+    flowtablePortRangeType
+  ];
+  normalizePortExpr = port: toString port;
+  portExprSet = ports: concatStringsSep ", " (map normalizePortExpr ports);
+  excludeRuleText = protocol: ports: "${protocol} dport != { ${portExprSet ports} }";
+  parsePortRange =
+    range:
+    let
+      match = builtins.match "^([0-9]+)-([0-9]+)$" range;
+    in
+    if match == null then
+      null
+    else
+      {
+        start = builtins.fromJSON (builtins.elemAt match 0);
+        end = builtins.fromJSON (builtins.elemAt match 1);
+      };
+  validPortRange =
+    range:
+    let
+      parsed = parsePortRange range;
+    in
+    parsed != null && parsed.start <= parsed.end;
+  flowtableExcludedUdpPorts = unique (
+    (map normalizePortExpr cfg.flowtable.excludeUdpPorts)
+    ++ optional cfg.flowtable.sipFriendly.enable "5060"
+    ++ optional cfg.flowtable.sipFriendly.enable "5061"
+    ++ optional cfg.flowtable.sipFriendly.enable "10000-20000"
+  );
+  flowtableExcludedTcpPorts = unique (
+    (map normalizePortExpr cfg.flowtable.excludeTcpPorts)
+    ++ optional cfg.flowtable.sipFriendly.enable "5060"
+    ++ optional cfg.flowtable.sipFriendly.enable "5061"
+  );
+  flowtableInsertRules =
+    let
+      tcpRule =
+        if flowtableExcludedTcpPorts == [ ] then
+          ''meta l4proto tcp flow add @f comment "${flowtableRuleCommentPrefix} tcp"''
+        else
+          ''${excludeRuleText "tcp" flowtableExcludedTcpPorts} flow add @f comment "${flowtableRuleCommentPrefix} tcp"'';
+      udpRule =
+        if flowtableExcludedUdpPorts == [ ] then
+          ''meta l4proto udp flow add @f comment "${flowtableRuleCommentPrefix} udp"''
+        else
+          ''${excludeRuleText "udp" flowtableExcludedUdpPorts} flow add @f comment "${flowtableRuleCommentPrefix} udp"'';
+    in
+    [
+      tcpRule
+      udpRule
+    ];
 
   mkInputRule =
     ifaces: rule:
@@ -359,6 +414,45 @@ in
       description = "Interfaces used by the nftables flowtable. Defaults to all router interfaces.";
     };
 
+    flowtable.excludeUdpPorts = mkOption {
+      type = types.listOf flowtablePortExprType;
+      default = [ ];
+      example = [
+        5060
+        5061
+        "10000-20000"
+      ];
+      description = ''
+        UDP destination ports or ranges excluded from flowtable acceleration.
+        Use this for protocols that stay more stable on normal conntrack/NAT
+        handling than on aggressive forwarding offload, such as SIP/RTP.
+      '';
+    };
+
+    flowtable.excludeTcpPorts = mkOption {
+      type = types.listOf flowtablePortExprType;
+      default = [ ];
+      example = [
+        5060
+        5061
+      ];
+      description = ''
+        TCP destination ports or ranges excluded from flowtable acceleration.
+        This is usually most relevant for SIP deployments that use TCP/TLS
+        signaling.
+      '';
+    };
+
+    flowtable.sipFriendly.enable = mkEnableOption "safe SIP/RTP flowtable exclusions" // {
+      description = ''
+        Exclude common SIP signaling and RTP media ports from flowtable
+        acceleration while keeping flow offload enabled for most other traffic.
+        This is a practical homelab default when phones or ATAs register fine
+        but calls become flaky or lose audio under aggressive forwarding
+        offload.
+      '';
+    };
+
     loggingRateLimit = {
       enable = mkOption {
         type = types.bool;
@@ -405,6 +499,14 @@ in
       {
         assertion = !(config.services.nftables-fasttrack.enable or false);
         message = "router-firewall and nftables-fasttrack cannot both be enabled. Disable nftables-fasttrack when using router-firewall.";
+      }
+      {
+        assertion = all validPortRange (filter builtins.isString cfg.flowtable.excludeUdpPorts);
+        message = "router-firewall flowtable.excludeUdpPorts range strings must be valid port ranges with start <= end.";
+      }
+      {
+        assertion = all validPortRange (filter builtins.isString cfg.flowtable.excludeTcpPorts);
+        message = "router-firewall flowtable.excludeTcpPorts range strings must be valid port ranges with start <= end.";
       }
     ];
 
@@ -717,8 +819,29 @@ in
             ${pkgs.nftables}/bin/nft "add flowtable inet filter f { hook ingress priority 0; devices = { ''${flowtable_devices} }; }"
           fi
 
-          if ! ${pkgs.nftables}/bin/nft list chain inet filter forward 2>/dev/null | ${pkgs.gnugrep}/bin/grep -F 'flow add @f' >/dev/null; then
-            ${pkgs.nftables}/bin/nft 'insert rule inet filter forward position 0 ip protocol { tcp, udp } flow add @f'
+          forward_chain="$(${pkgs.nftables}/bin/nft -a list chain inet filter forward 2>/dev/null || true)"
+          stale_handles="$(
+            printf '%s\n' "$forward_chain" \
+              | ${pkgs.gnugrep}/bin/grep -E ${escapeShellArg ''(${flowtableRuleCommentPrefix}|ip protocol \{ tcp, udp \} flow add @f|ip protocol tcp flow add @f|ip protocol udp flow add @f)$''} \
+              | ${pkgs.gnused}/bin/sed -n 's/.*handle \([0-9][0-9]*\)$/\1/p'
+          )"
+
+          transaction_file="$(mktemp)"
+          trap 'rm -f "$transaction_file"' EXIT
+
+          if [ -n "$stale_handles" ]; then
+            printf '%s\n' "$stale_handles" | while IFS= read -r handle; do
+              [ -n "$handle" ] || continue
+              printf 'delete rule inet filter forward handle %s\n' "$handle" >>"$transaction_file"
+            done
+          fi
+
+          ${concatMapStringsSep "\n" (rule: ''
+            printf '%s\n' ${escapeShellArg "insert rule inet filter forward ${rule}"} >>"$transaction_file"
+          '') (reverseList flowtableInsertRules)}
+
+          if [ -s "$transaction_file" ]; then
+            ${pkgs.nftables}/bin/nft -f "$transaction_file"
           fi
         '';
     };

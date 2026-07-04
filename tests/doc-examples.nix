@@ -751,6 +751,31 @@ in
     }
   ]);
 
+  docs-router-firewall-sip-friendly-eval = mkDocExampleCheck "docs-router-firewall-sip-friendly" [
+    self.nixosModules.router-firewall
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "eth0" ];
+        lanInterfaces = [ "br-lan" ];
+        flowtable.sipFriendly.enable = true;
+      };
+    }
+  ] (config: [
+    {
+      assertion =
+        lib.hasInfix "tcp dport != { 5060, 5061 } flow add @f comment \"router-firewall-flowtable tcp\""
+          config.systemd.services.router-firewall-flowtable.script;
+      message = "router-firewall sipFriendly example should keep common SIP TCP signaling ports off the flowtable.";
+    }
+    {
+      assertion =
+        lib.hasInfix "udp dport != { 5060, 5061, 10000-20000 } flow add @f comment \"router-firewall-flowtable udp\""
+          config.systemd.services.router-firewall-flowtable.script;
+      message = "router-firewall sipFriendly example should keep common SIP/RTP UDP ports off the flowtable.";
+    }
+  ]);
+
   docs-router-dashboard-remote-access-example-eval = mkDocExampleCheck "docs-router-dashboard-remote-access-example" [
     self.nixosModules.router-dashboard
     self.nixosModules.router-tunnels
