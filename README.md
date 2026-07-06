@@ -312,12 +312,28 @@ Role-aware nftables policy for routed routers:
 - derives WAN/LAN/management interfaces from `services.router-optimizations.interfaces`
 - exposes router services on trusted segments without hard-coding device names
 - supports Tailscale, WAN service ports, routed forwarding, flowtable setup, MSS clamping, and hairpin NAT
+- keeps flowtable acceleration enabled by default, but can exclude fragile protocols such as SIP/RTP from offload
 
 Use `trustedTcpPorts` or `trustedUdpPorts` for services hosted on the router itself
 that LAN/management clients should reach directly, such as Caddy on `80/443` when
 split DNS points service domains at the router's LAN IP. Hairpin NAT is a fallback
 for clients that bypass local DNS; it does not replace trusted input rules for
 traffic terminating on the router.
+
+For VoIP-heavy homes or small offices, prefer the bounded flowtable exclusions
+instead of disabling flow acceleration globally:
+
+```nix
+services.router-firewall = {
+  enable = true;
+  flowtable.sipFriendly.enable = true;
+};
+```
+
+That preset excludes common SIP signaling ports (`5060`/`5061`) and a broad
+RTP media range (`10000-20000`) from flowtable acceleration while leaving the
+fast path enabled for most other traffic. Advanced users can override this with
+`flowtable.excludeUdpPorts` and `flowtable.excludeTcpPorts`.
 
 ### router-log-storage
 Persistent log-storage layout for small router systems:
