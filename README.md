@@ -102,6 +102,12 @@ Important honesty boundary:
 
 ## Quick Start
 
+If you want one router and do not need HA yet, start with
+[`docs/router-single-router-guide.md`](./docs/router-single-router-guide.md)
+and [`examples/router-single-basic.nix`](./examples/router-single-basic.nix).
+Use the HA pair guide only when you are intentionally building a two-node
+failover setup.
+
 ### As a Flake Input
 
 ...
@@ -803,6 +809,11 @@ that IPv4 and IPv6 multi-WAN are symmetric.
 ## Configuration Examples
 
 See `examples/` directory for complete working configurations.
+
+Recommended starting points:
+- `examples/router-single-basic.nix` for a one-WAN, one-LAN, non-HA router
+- `examples/router-ha-pair-example.nix` plus `docs/router-ha-pair-guide.md` for
+  a two-node VRRP pair
 
 Additional docs:
 - `docs/troubleshooting.md` for common operational failures
