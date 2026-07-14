@@ -55,7 +55,7 @@ Example flake usage:
     router-optimized.url = "github:deepwatrcreatur/nix-router-optimized";
   };
 
-  outputs = { nixpkgs, router-optimized, ... }: {
+  outputs = { self, nixpkgs, router-optimized, ... }: {
     nixosConfigurations.router = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
@@ -75,6 +75,11 @@ Example flake usage:
   };
 }
 ```
+
+Before using that snippet, copy
+[`examples/router-single-basic.nix`](../examples/router-single-basic.nix) into
+your own flake as `./router-single-basic.nix`, then edit the interface names
+and subnet for your environment.
 
 ## What Not To Enable Yet
 
@@ -107,7 +112,7 @@ Useful checks:
 ```bash
 ip -o -4 addr show dev lan0
 ip route show default
-sudo ss -ulpn | grep -E '(:53 |:67 )'
+sudo ss -tulpn | grep -E '(:53 |:67 )'
 getent ahostsv4 github.com
 ping -c 2 1.1.1.1
 ```
