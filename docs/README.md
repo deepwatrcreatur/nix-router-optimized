@@ -9,6 +9,13 @@ from module names alone.
 
 ## Start Here By Topic
 
+### Deployment shapes
+
+- [`router-single-router-guide.md`](./router-single-router-guide.md) — copyable
+  starting point for one router with one WAN and one LAN
+- [`router-ha-pair-guide.md`](./router-ha-pair-guide.md) — copyable two-node
+  VRRP pair starting point for flake consumers
+
 ### IPv6 and translation
 
 - [`router-ipv6-approach-guide.md`](./router-ipv6-approach-guide.md) — first stop
@@ -31,8 +38,6 @@ from module names alone.
 
 - [`router-ha-ownership.md`](./router-ha-ownership.md) — active-owner and shared
   capability boundary
-- [`router-ha-pair-guide.md`](./router-ha-pair-guide.md) — copyable two-node
-  VRRP pair starting point for flake consumers
 - [`router-dhcp-single-active.md`](./router-dhcp-single-active.md) — why the
   current reference DHCP posture is single-active with manual promotion
 - [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md) — evidence

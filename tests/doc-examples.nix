@@ -12,6 +12,7 @@ let
   };
 
   routerHaPairExample = import ../examples/router-ha-pair-example.nix;
+  routerSingleBasicExample = import ../examples/router-single-basic.nix;
 
   baseModule = {
     networking.hostName = "router-check";
@@ -123,6 +124,36 @@ let
   ];
 in
 {
+  docs-router-single-basic-example-eval = mkDocExampleCheck "docs-router-single-basic-example" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-dhcp
+    self.nixosModules.router-dns-service
+    self.nixosModules.router-firewall
+    self.nixosModules.router-optimizations
+    routerSingleBasicExample
+  ] (config: [
+    {
+      assertion = config.systemd.network.networks."10-router-wan-primary".matchConfig.Name == "wan0";
+      message = "Single-router example should keep the documented WAN interface.";
+    }
+    {
+      assertion = config.systemd.network.networks."20-router-lan".matchConfig.Name == "lan0";
+      message = "Single-router example should keep the documented LAN interface.";
+    }
+    {
+      assertion = config.systemd.network.networks."20-router-lan".networkConfig.DHCPServer;
+      message = "Single-router example should enable DHCP on the LAN segment.";
+    }
+    {
+      assertion = config.router.dns.enable && config.router.dns.provider == "unbound";
+      message = "Single-router example should use the documented Unbound resolver path.";
+    }
+    {
+      assertion = lib.hasInfix ''iifname {"lan0"} oifname {"wan0"} accept'' config.networking.nftables.ruleset;
+      message = "Single-router example should derive LAN-to-WAN firewall policy.";
+    }
+  ]);
+
   readme-quick-start-router-eval = mkDocExampleCheck "readme-quick-start-router" (
     readmeQuickStartModules
   ) (config: [
