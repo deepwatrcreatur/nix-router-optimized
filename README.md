@@ -110,7 +110,26 @@ failover setup.
 
 ### As a Flake Input
 
-...
+For a first bring-up, prefer the smallest working shape:
+
+1. Import only the core modules you need:
+   `router-networking`, `router-dhcp`, `router-dns-service`,
+   `router-firewall`, and `router-optimizations`.
+2. Copy [`examples/router-single-basic.nix`](./examples/router-single-basic.nix)
+   into your own flake and edit the interface names and LAN subnet.
+3. Read [`docs/router-single-router-guide.md`](./docs/router-single-router-guide.md)
+   before you add optional services.
+
+That path is intentionally:
+
+- one router
+- one WAN
+- one LAN
+- no VRRP / `router-ha`
+- DNS and DHCP first, extras later
+
+If you want the complete copyable starting point, use the single-router guide
+instead of trying to infer the shape from module names alone.
 
 ### High Availability Setup
 
