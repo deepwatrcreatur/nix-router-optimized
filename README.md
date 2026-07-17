@@ -113,8 +113,11 @@ failover setup.
 For a first bring-up, prefer the smallest working shape:
 
 1. Import only the core modules you need:
-   `router-networking`, `router-dhcp`, `router-dns-service`,
-   `router-firewall`, and `router-optimizations`.
+   `inputs.router-optimized.nixosModules.router-networking`,
+   `inputs.router-optimized.nixosModules.router-dhcp`,
+   `inputs.router-optimized.nixosModules.router-dns-service`,
+   `inputs.router-optimized.nixosModules.router-firewall`, and
+   `inputs.router-optimized.nixosModules.router-optimizations`.
 2. Copy [`examples/router-single-basic.nix`](./examples/router-single-basic.nix)
    into your own flake and edit the interface names and LAN subnet.
 3. Read [`docs/router-single-router-guide.md`](./docs/router-single-router-guide.md)
