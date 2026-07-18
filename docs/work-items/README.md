@@ -39,7 +39,7 @@ The authority split is:
 
 ## Current Ranked Queue
 
-- None currently queued.
+- [91-router-ha-lab-nspawn-phase-1-harness](./91-router-ha-lab-nspawn-phase-1-harness.md) — `ready`
 
 ## Recently Completed
 

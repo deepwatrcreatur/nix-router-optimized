@@ -38,6 +38,8 @@ from module names alone.
 
 - [`router-ha-ownership.md`](./router-ha-ownership.md) — active-owner and shared
   capability boundary
+- [`router-ha-lab-plan.md`](./router-ha-lab-plan.md) — staged plan for a safe
+  isolated `systemd-nspawn` HA lab
 - [`router-dhcp-single-active.md`](./router-dhcp-single-active.md) — why the
   current reference DHCP posture is single-active with manual promotion
 - [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md) — evidence
