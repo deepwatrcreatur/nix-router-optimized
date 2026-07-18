@@ -21,6 +21,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [15](./15-ndp-proxy-tool-inclusion-boundary.md) | Whether to Add `ndppd`, `ndpresponder`, `ndproxy`, and `ndp-proxy-go` as Flake Options | 2026-05-29 | Closed |
 | [16](./16-openbsd-ansible-router-comparison-and-borrowing-boundary.md) | What Can `nix-router-optimized` Borrow from `francis-io/OpenBSD-Ansible-Router`? | 2026-06-08 | Closed |
 | [17](./17-bgp-router-id-guidance-for-ipv6-native-ha.md) | How Should `nix-router-optimized` Recommend BGP Router IDs for IPv6-Native HA Deployments? | 2026-06-13 | Closed |
+| [18](./18-router-ha-lab-backend-and-scope.md) | What Should Be the First Safe HA Lab Backend for `nix-router-optimized`? | 2026-07-18 | Closed |
 
 ## Methodology
 
