@@ -15,6 +15,15 @@
         ];
       };
 
+      mkLabMachine =
+        module:
+        nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            module
+          ];
+        };
+
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -266,5 +275,10 @@
           }
         ];
       };
+
+      nixosConfigurations.lab-router = mkLabMachine ./lab/nspawn/machines/router.nix;
+      nixosConfigurations.lab-router-backup = mkLabMachine ./lab/nspawn/machines/router-backup.nix;
+      nixosConfigurations.lab-wan = mkLabMachine ./lab/nspawn/machines/wan.nix;
+      nixosConfigurations.lab-client = mkLabMachine ./lab/nspawn/machines/client.nix;
     };
 }
