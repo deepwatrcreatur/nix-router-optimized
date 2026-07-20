@@ -13,28 +13,50 @@ closure_path() {
   nix build --no-link --print-out-paths "${repo_root}#nixosConfigurations.$1.config.system.build.toplevel"
 }
 
+wan_host_if_for() {
+  local machine="$1"
+  machine="${machine#lab-ha-}"
+  echo "lab-ha-w-${machine}"
+}
+
 boot_one() {
   local attr="$1"
   local machine="$2"
   local bridge_lan="$3"
   local bridge_wan="$4"
   local root
-  local -a args
+  local unit
+  local wan_host_if
+  local -a args run_args
   ensure_lab_name "$machine"
   root="$(closure_path "$attr")"
+  unit="lab-nspawn-${machine}.service"
   args=(
     --quiet
     --boot
     --directory="${root}"
     --machine="${machine}"
     --network-bridge="${bridge_lan}"
-    --network-zone="${LAB_PREFIX}"
     --bind-ro=/nix/store
   )
   if [[ -n "${bridge_wan}" ]]; then
-    args+=(--network-bridge="${bridge_wan}")
+    wan_host_if="$(wan_host_if_for "${machine}")"
+    args+=(--network-veth-extra="${wan_host_if}:host1")
   fi
-  systemd-nspawn "${args[@]}"
+  run_args=(
+    --quiet
+    --unit="${unit}"
+    --property=Type=exec
+    --property=KillMode=mixed
+    systemd-nspawn
+  )
+  run_args+=("${args[@]}")
+  systemd-run "${run_args[@]}"
+
+  if [[ -n "${bridge_wan}" ]]; then
+    ip link set "${wan_host_if}" master "${bridge_wan}"
+    ip link set "${wan_host_if}" up
+  fi
 }
 
 boot_one "lab-router" "${LAB_MACHINE_ROUTER}" "${LAB_LAN_BRIDGE}" "${LAB_WAN_BRIDGE}"

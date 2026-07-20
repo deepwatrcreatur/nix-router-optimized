@@ -10,7 +10,7 @@ machines=(
 owners=0
 
 for machine in "${machines[@]}"; do
-  if machinectl shell "${machine}" /bin/sh -lc "ip -o addr show dev host0 | grep -q '${vip}'"; then
+  if machinectl shell "${machine}" /bin/sh -lc "ip -o addr show dev host0 | grep -F -q '${vip}/'"; then
     owners=$((owners + 1))
   fi
 done
