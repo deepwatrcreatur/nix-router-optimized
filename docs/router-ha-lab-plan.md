@@ -60,6 +60,8 @@ That means proving:
   real LAN or WAN
 
 Phase 1 is about **control-plane confidence**, not full data-plane realism.
+It should be treated as a **phase-1 control-plane harness**, not as final proof
+of router-grade HA.
 
 ## What Phase 1 Must Not Try To Prove
 

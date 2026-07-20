@@ -90,6 +90,10 @@ let
   routerNetworkSecurityChecks = import ./router-network-security.nix {
     inherit self lib eval pkgs;
   };
+
+  routerHaLabChecks = import ./router-ha-lab.nix {
+    inherit self lib eval pkgs;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -146,6 +150,7 @@ in
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
 // routerHaBoundaryChecks
+// routerHaLabChecks
 // routerNdppdChecks
 // lib.mapAttrs' (
   name: module:

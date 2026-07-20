@@ -1,6 +1,6 @@
 # 91 - Router HA Lab `systemd-nspawn` Phase-1 Harness
 
-## Status: `ready`
+## Status: `in-progress`
 
 ## Objective
 
@@ -47,41 +47,41 @@ not as a replacement for all later validation.
 
 ## Requirements
 
-- [ ] Add a new `lab/` subtree for interactive HA lab work
-- [ ] Add a top-level `lab/README.md`
-- [ ] Add an initial `nspawn`-specific layout under `lab/nspawn/`
-- [ ] Add one first topology, scoped roughly as:
+- [x] Add a new `lab/` subtree for interactive HA lab work
+- [x] Add a top-level `lab/README.md`
+- [x] Add an initial `nspawn`-specific layout under `lab/nspawn/`
+- [x] Add one first topology, scoped roughly as:
       - `router`
       - `router-backup`
       - `wan` or `upstream-sim`
       - `client`
-- [ ] Keep the topology flat and lab-only:
+- [x] Keep the topology flat and lab-only:
       - one `lan-net`
       - one `wan-net`
       - no physical NIC attachment
-- [ ] Add create/run/destroy scripts or equivalent entrypoints for the lab
-- [ ] Enforce host-local safety boundaries so the lab cannot accidentally route
+- [x] Add create/run/destroy scripts or equivalent entrypoints for the lab
+- [x] Enforce host-local safety boundaries so the lab cannot accidentally route
       into the real homelab
-- [ ] Add at least one scenario/assertion path that proves:
+- [x] Add at least one scenario/assertion path that proves:
       - one node wins VIP ownership
       - the VIP is not dual-owned
-- [ ] Add at least one bounded single-active service-ownership drill
-- [ ] Keep DHCP in the current support posture:
+- [x] Add at least one bounded single-active service-ownership drill
+- [x] Keep DHCP in the current support posture:
       - no automatic DHCP failover claim
       - manual/single-active behavior only
-- [ ] Document what the lab is good enough for
-- [ ] Document what the lab is not good enough for
+- [x] Document what the lab is good enough for
+- [x] Document what the lab is not good enough for
 
 ## Verification
 
-- [ ] A contributor can stand up the lab without changing the host's production
+- [x] A contributor can stand up the lab without changing the host's production
       router configuration
-- [ ] The lab uses only lab-local bridges/veths/namespaces and test address
+- [x] The lab uses only lab-local bridges/veths/namespaces and test address
       space
-- [ ] The first scenario shows exactly one VRRP owner for the VIP
-- [ ] The scenario surface is small enough to iterate quickly instead of trying
+- [x] The first scenario shows exactly one VRRP owner for the VIP
+- [x] The scenario surface is small enough to iterate quickly instead of trying
       to simulate the whole homelab
-- [ ] The docs explicitly say the lab is a phase-1 control-plane harness, not a
+- [x] The docs explicitly say the lab is a phase-1 control-plane harness, not a
       final proof of router-grade HA
 
 ## Non-Goals
