@@ -96,7 +96,10 @@ constraints that remain part of the current design:
 - the host must disable bridge netfilter for the lab bridges while the harness
   is active (`bridge-nf-call-iptables/ip6tables/arptables = 0`), otherwise
   guest-to-guest LAN delivery is broken even though VRRP/ICMP frames appear on
-  the host-side veths
+  the host-side veths; these sysctls are host-global, so the lab should only
+  be run on an isolated development host or under an operator-approved
+  precondition that temporarily changing host bridge-netfilter behavior will
+  not interfere with other bridge users
 - precreated veths need an explicit settle step before `systemd-nspawn`
   accepts them via `--network-interface`
 - extracted LXC roots can contain immutable paths such as `/var/empty`, so

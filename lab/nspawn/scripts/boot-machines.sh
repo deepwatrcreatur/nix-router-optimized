@@ -77,73 +77,50 @@ delete_link_if_present() {
   ip link delete "${link_name}" >/dev/null 2>&1 || true
 }
 
-lan_host_if_for() {
-  case "$1" in
-    "${LAB_MACHINE_ROUTER}")
-      echo "lhrlan0"
-      ;;
-    "${LAB_MACHINE_BACKUP}")
-      echo "lhblan0"
-      ;;
-    "${LAB_MACHINE_CLIENT}")
-      echo "lhclan0"
-      ;;
-    *)
-      echo "No LAN host veth mapping defined for machine: $1" >&2
-      return 1
-      ;;
-  esac
-}
+link_name_for() {
+  local machine="$1"
+  local network="$2"
+  local side="$3"
 
-lan_guest_if_for() {
-  case "$1" in
-    "${LAB_MACHINE_ROUTER}")
-      echo "grlan0"
+  case "${machine}:${network}:${side}" in
+    "${LAB_MACHINE_ROUTER}:lan:host")
+      echo "${LAB_LAN_HOST_LINKS[0]}"
       ;;
-    "${LAB_MACHINE_BACKUP}")
-      echo "gblan0"
+    "${LAB_MACHINE_BACKUP}:lan:host")
+      echo "${LAB_LAN_HOST_LINKS[1]}"
       ;;
-    "${LAB_MACHINE_CLIENT}")
-      echo "gclan0"
+    "${LAB_MACHINE_CLIENT}:lan:host")
+      echo "${LAB_LAN_HOST_LINKS[2]}"
       ;;
-    *)
-      echo "No LAN guest veth mapping defined for machine: $1" >&2
-      return 1
+    "${LAB_MACHINE_ROUTER}:wan:host")
+      echo "${LAB_WAN_HOST_LINKS[0]}"
       ;;
-  esac
-}
-
-wan_host_if_for() {
-  case "$1" in
-    "${LAB_MACHINE_ROUTER}")
-      echo "lhrwan0"
+    "${LAB_MACHINE_BACKUP}:wan:host")
+      echo "${LAB_WAN_HOST_LINKS[1]}"
       ;;
-    "${LAB_MACHINE_BACKUP}")
-      echo "lhbwan0"
+    "${LAB_MACHINE_WAN}:wan:host")
+      echo "${LAB_WAN_HOST_LINKS[2]}"
       ;;
-    "${LAB_MACHINE_WAN}")
-      echo "lhwwan0"
+    "${LAB_MACHINE_ROUTER}:lan:guest")
+      echo "${LAB_LAN_GUEST_LINKS[0]}"
       ;;
-    *)
-      echo "No WAN host veth mapping defined for machine: $1" >&2
-      return 1
+    "${LAB_MACHINE_BACKUP}:lan:guest")
+      echo "${LAB_LAN_GUEST_LINKS[1]}"
       ;;
-  esac
-}
-
-wan_guest_if_for() {
-  case "$1" in
-    "${LAB_MACHINE_ROUTER}")
-      echo "grwan0"
+    "${LAB_MACHINE_CLIENT}:lan:guest")
+      echo "${LAB_LAN_GUEST_LINKS[2]}"
       ;;
-    "${LAB_MACHINE_BACKUP}")
-      echo "gbwan0"
+    "${LAB_MACHINE_ROUTER}:wan:guest")
+      echo "${LAB_WAN_GUEST_LINKS[0]}"
       ;;
-    "${LAB_MACHINE_WAN}")
-      echo "gwwan0"
+    "${LAB_MACHINE_BACKUP}:wan:guest")
+      echo "${LAB_WAN_GUEST_LINKS[1]}"
+      ;;
+    "${LAB_MACHINE_WAN}:wan:guest")
+      echo "${LAB_WAN_GUEST_LINKS[2]}"
       ;;
     *)
-      echo "No WAN guest veth mapping defined for machine: $1" >&2
+      echo "No ${network} ${side} veth mapping defined for machine: ${machine}" >&2
       return 1
       ;;
   esac
@@ -197,10 +174,10 @@ boot_one() {
 
   case "${machine}" in
     "${LAB_MACHINE_ROUTER}"|"${LAB_MACHINE_BACKUP}")
-      lan_host_if="$(lan_host_if_for "${machine}")"
-      lan_guest_if="$(lan_guest_if_for "${machine}")"
-      wan_host_if="$(wan_host_if_for "${machine}")"
-      wan_guest_if="$(wan_guest_if_for "${machine}")"
+      lan_host_if="$(link_name_for "${machine}" lan host)"
+      lan_guest_if="$(link_name_for "${machine}" lan guest)"
+      wan_host_if="$(link_name_for "${machine}" wan host)"
+      wan_guest_if="$(link_name_for "${machine}" wan guest)"
       create_attached_veth_pair "${lan_host_if}" "${lan_guest_if}" "${LAB_LAN_BRIDGE}"
       create_attached_veth_pair "${wan_host_if}" "${wan_guest_if}" "${LAB_WAN_BRIDGE}"
       args+=(
@@ -209,14 +186,14 @@ boot_one() {
       )
       ;;
     "${LAB_MACHINE_CLIENT}")
-      lan_host_if="$(lan_host_if_for "${machine}")"
-      lan_guest_if="$(lan_guest_if_for "${machine}")"
+      lan_host_if="$(link_name_for "${machine}" lan host)"
+      lan_guest_if="$(link_name_for "${machine}" lan guest)"
       create_attached_veth_pair "${lan_host_if}" "${lan_guest_if}" "${LAB_LAN_BRIDGE}"
       args+=(--network-interface="${lan_guest_if}:host0")
       ;;
     "${LAB_MACHINE_WAN}")
-      wan_host_if="$(wan_host_if_for "${machine}")"
-      wan_guest_if="$(wan_guest_if_for "${machine}")"
+      wan_host_if="$(link_name_for "${machine}" wan host)"
+      wan_guest_if="$(link_name_for "${machine}" wan guest)"
       create_attached_veth_pair "${wan_host_if}" "${wan_guest_if}" "${LAB_WAN_BRIDGE}"
       args+=(--network-interface="${wan_guest_if}:host0")
       ;;

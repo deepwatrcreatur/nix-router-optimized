@@ -8,8 +8,7 @@ source "${script_dir}/../scripts/lib.sh"
 require_root
 
 service="router-lab-owner-demo.service"
-timeout_seconds="${LAB_ASSERT_TIMEOUT_SECONDS:-30}"
-deadline=$((SECONDS + timeout_seconds))
+timeout_seconds="${LAB_ASSERT_TIMEOUT_SECONDS:-${LAB_DEFAULT_ASSERT_TIMEOUT_SECONDS:-30}}"
 
 count_active() {
   local router_active=0
@@ -26,14 +25,15 @@ count_active() {
   printf '%s %s\n' "${router_active}" "${backup_active}"
 }
 
-while (( SECONDS < deadline )); do
+demo_unit_is_single_active() {
   read -r router_active backup_active < <(count_active)
-  if [[ $((router_active + backup_active)) -eq 1 ]]; then
-    echo "${service} is single-active"
-    exit 0
-  fi
-  sleep 1
-done
+  [[ $((router_active + backup_active)) -eq 1 ]]
+}
+
+if poll_until_true "${timeout_seconds}" demo_unit_is_single_active; then
+  echo "${service} is single-active"
+  exit 0
+fi
 
 read -r router_active backup_active < <(count_active)
 echo "expected ${service} to be active on exactly one router node" >&2

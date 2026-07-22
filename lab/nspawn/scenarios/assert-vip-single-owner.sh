@@ -12,8 +12,7 @@ machines=(
   "lab-ha-router"
   "lab-ha-router-backup"
 )
-timeout_seconds="${LAB_ASSERT_TIMEOUT_SECONDS:-30}"
-deadline=$((SECONDS + timeout_seconds))
+timeout_seconds="${LAB_ASSERT_TIMEOUT_SECONDS:-${LAB_DEFAULT_ASSERT_TIMEOUT_SECONDS:-30}}"
 
 count_owners() {
   local owners=0
@@ -28,14 +27,16 @@ count_owners() {
   printf '%s\n' "${owners}"
 }
 
-while (( SECONDS < deadline )); do
+vip_is_singly_owned() {
+  local owners
   owners="$(count_owners)"
-  if [[ "${owners}" -eq 1 ]]; then
-    echo "VIP ${vip} is singly owned"
-    exit 0
-  fi
-  sleep 1
-done
+  [[ "${owners}" -eq 1 ]]
+}
+
+if poll_until_true "${timeout_seconds}" vip_is_singly_owned; then
+  echo "VIP ${vip} is singly owned"
+  exit 0
+fi
 
 owners="$(count_owners)"
 echo "expected exactly one VIP owner for ${vip}, found ${owners}" >&2

@@ -81,10 +81,10 @@ delete_lab_link() {
 
 delete_leftover_links() {
   local -a links=(
-    lhrlan0 lhblan0 lhclan0
-    lhrwan0 lhbwan0 lhwwan0
-    grlan0 gblan0 gclan0
-    grwan0 gbwan0 gwwan0
+    "${LAB_LAN_HOST_LINKS[@]}"
+    "${LAB_WAN_HOST_LINKS[@]}"
+    "${LAB_LAN_GUEST_LINKS[@]}"
+    "${LAB_WAN_GUEST_LINKS[@]}"
   )
   local link
   for link in "${links[@]}"; do
@@ -102,7 +102,7 @@ delete_state_dir() {
     return 0
   fi
 
-  mapfile -t mountpoints < <(findmnt -R -n -o TARGET "${LAB_STATE_DIR}" 2>/dev/null || true)
+  mapfile -t mountpoints < <(findmnt -R -n -o TARGET "${LAB_STATE_DIR}" 2>/dev/null | grep -F "^${LAB_STATE_DIR}/" || true)
   for (( idx=${#mountpoints[@]} - 1; idx >= 0; idx-- )); do
     umount "${mountpoints[$idx]}" >/dev/null 2>&1 || true
   done
