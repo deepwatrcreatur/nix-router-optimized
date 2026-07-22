@@ -52,3 +52,20 @@ mind.
 
 - [`nspawn/README.md`](./nspawn/README.md)
 - [`../docs/router-ha-lab-plan.md`](../docs/router-ha-lab-plan.md)
+
+## Current Runtime Boundary
+
+The phase-1 lab is now documented at two levels:
+
+- the planning boundary in [`../docs/router-ha-lab-plan.md`](../docs/router-ha-lab-plan.md)
+- the backend-specific runtime status in [`nspawn/README.md`](./nspawn/README.md)
+
+The important current distinction is:
+
+- the topology and script entry points are checked into `main`
+- the live `nspawn` rehearsal now passes the bounded phase-1 runtime assertions
+- the runtime backend still has explicit host-side caveats that should remain
+  documented, especially bridge-netfilter handling and manual veth plumbing
+
+So this subtree should be read as a real working HA lab harness with a bounded
+scope, not as a finished production-like simulator.

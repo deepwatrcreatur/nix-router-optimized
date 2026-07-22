@@ -1,6 +1,10 @@
-{ ... }:
+{ lib, ... }:
 
 {
+  imports = [
+    ../modules/runtime-compat.nix
+  ];
+
   boot.isContainer = true;
   networking.useDHCP = false;
   networking.useNetworkd = true;
@@ -17,6 +21,8 @@
   environment.etc."resolv.conf".text = ''
     nameserver 1.1.1.1
   '';
+
+  users.users.messagebus.home = lib.mkForce "/var/empty";
 
   systemd.network.enable = true;
 }
