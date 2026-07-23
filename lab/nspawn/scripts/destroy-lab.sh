@@ -97,6 +97,7 @@ delete_state_dir() {
   local -a immutable_candidates=()
   local idx
   local path
+  local quarantine_dir=""
 
   if [[ ! -d "${LAB_STATE_DIR}" ]]; then
     return 0
@@ -116,8 +117,17 @@ delete_state_dir() {
   rm -rf -- "${LAB_STATE_DIR}" >/dev/null 2>&1 || true
 
   if [[ -e "${LAB_STATE_DIR}" ]]; then
+    quarantine_dir="${LAB_STATE_DIR}.stale.$(date +%s)"
+    mv "${LAB_STATE_DIR}" "${quarantine_dir}" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -e "${LAB_STATE_DIR}" ]]; then
     echo "lab state directory still present after delete: ${LAB_STATE_DIR}" >&2
     return 1
+  fi
+
+  if [[ -n "${quarantine_dir}" && -e "${quarantine_dir}" ]]; then
+    echo "quarantined undeletable lab state at: ${quarantine_dir}" >&2
   fi
 }
 

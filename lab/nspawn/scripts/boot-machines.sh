@@ -42,7 +42,14 @@ extract_rootfs() {
   fi
 
   root_dir="$(rootfs_dir_for "${machine}")"
-  tar -xJf "${tarball}" -C "${root_dir}"
+  tar \
+    --extract \
+    --file "${tarball}" \
+    --xz \
+    --directory "${root_dir}" \
+    --no-same-owner \
+    --no-same-permissions \
+    --no-xattrs
   printf '%s\n' "${root_dir}"
 }
 

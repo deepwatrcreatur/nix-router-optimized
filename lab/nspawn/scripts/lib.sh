@@ -8,10 +8,12 @@ LAB_NFT_TABLE="${LAB_PREFIX}"
 LAB_STATE_DIR="/run/${LAB_PREFIX}"
 LAB_BRIDGE_NF_STATE_FILE="${LAB_STATE_DIR}/bridge-nf.env"
 LAB_DEFAULT_ASSERT_TIMEOUT_SECONDS="${LAB_DEFAULT_ASSERT_TIMEOUT_SECONDS:-30}"
-if command -v chattr >/dev/null 2>&1; then
-  LAB_CHATTR_BIN="$(command -v chattr)"
-elif [[ -n "${SUDO_USER:-}" && -x "/home/${SUDO_USER}/.nix-profile/bin/chattr" ]]; then
-  LAB_CHATTR_BIN="/home/${SUDO_USER}/.nix-profile/bin/chattr"
+if [[ -x /run/current-system/sw/bin/chattr ]]; then
+  LAB_CHATTR_BIN="/run/current-system/sw/bin/chattr"
+elif [[ -x /usr/bin/chattr ]]; then
+  LAB_CHATTR_BIN="/usr/bin/chattr"
+elif [[ -x /bin/chattr ]]; then
+  LAB_CHATTR_BIN="/bin/chattr"
 else
   LAB_CHATTR_BIN=""
 fi
@@ -52,6 +54,44 @@ require_root() {
   fi
 }
 
+validated_positive_integer() {
+  local value="$1"
+  if [[ ! "${value}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "expected positive decimal integer, got: ${value}" >&2
+    return 1
+  fi
+  printf '%s\n' "${value}"
+}
+
+run_with_timeout() {
+  local timeout_seconds_raw="$1"
+  shift
+  local timeout_seconds
+  local pid
+  local elapsed=0
+
+  timeout_seconds="$(validated_positive_integer "${timeout_seconds_raw}")"
+
+  (
+    "$@"
+  ) &
+  pid=$!
+
+  while kill -0 "${pid}" >/dev/null 2>&1; do
+    if (( elapsed >= timeout_seconds )); then
+      kill "${pid}" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "${pid}" >/dev/null 2>&1 || true
+      wait "${pid}" >/dev/null 2>&1 || true
+      return 124
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  wait "${pid}"
+}
+
 ensure_lab_name() {
   case "$1" in
     lab-ha-*) ;;
@@ -75,12 +115,21 @@ in_machine() {
 }
 
 poll_until_true() {
-  local timeout_seconds="${1:-${LAB_DEFAULT_ASSERT_TIMEOUT_SECONDS}}"
+  local timeout_seconds_raw="${1:-${LAB_DEFAULT_ASSERT_TIMEOUT_SECONDS}}"
   shift
-  local deadline=$((SECONDS + timeout_seconds))
+  local timeout_seconds
+  local deadline
+  local attempt_timeout=5
+
+  timeout_seconds="$(validated_positive_integer "${timeout_seconds_raw}")"
+  deadline=$((SECONDS + timeout_seconds))
+
+  if (( timeout_seconds < attempt_timeout )); then
+    attempt_timeout="${timeout_seconds}"
+  fi
 
   while (( SECONDS < deadline )); do
-    if "$@"; then
+    if run_with_timeout "${attempt_timeout}" "$@"; then
       return 0
     fi
     sleep 1
