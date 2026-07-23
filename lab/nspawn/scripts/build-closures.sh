@@ -6,7 +6,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 build_one() {
   local attr="$1"
   echo "==> Building $attr"
-  nix build "${repo_root}#nixosConfigurations.${attr}.config.system.build.toplevel"
+  nix build "${repo_root}#nixosConfigurations.${attr}.config.system.build.images.lxc"
 }
 
 build_one "lab-router"

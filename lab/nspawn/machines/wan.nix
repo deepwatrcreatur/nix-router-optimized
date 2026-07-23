@@ -1,6 +1,10 @@
-{ ... }:
+{ lib, ... }:
 
 {
+  imports = [
+    ../modules/runtime-compat.nix
+  ];
+
   boot.isContainer = true;
   networking.hostName = "lab-ha-wan";
   networking.useDHCP = false;
@@ -18,6 +22,8 @@
   environment.etc."resolv.conf".text = ''
     nameserver 1.1.1.1
   '';
+
+  users.users.messagebus.home = lib.mkForce "/var/empty";
 
   systemd.network.enable = true;
   systemd.network.networks."10-wan" = {

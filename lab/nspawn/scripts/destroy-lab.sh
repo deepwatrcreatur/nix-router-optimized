@@ -9,6 +9,11 @@ require_root
 
 terminate_machine() {
   local machine="$1"
+  local unit="lab-nspawn-${machine}.service"
+
+  systemctl stop "${unit}" >/dev/null 2>&1 || true
+  systemctl reset-failed "${unit}" >/dev/null 2>&1 || true
+
   if ! machinectl show "${machine}" >/dev/null 2>&1; then
     return 0
   fi
@@ -57,6 +62,75 @@ delete_nft_table() {
   fi
 }
 
+restore_bridge_nf() {
+  if [[ ! -f "${LAB_BRIDGE_NF_STATE_FILE}" ]]; then
+    return 0
+  fi
+
+  # shellcheck disable=SC1090
+  source "${LAB_BRIDGE_NF_STATE_FILE}"
+  sysctl -w net.bridge.bridge-nf-call-iptables="${BRIDGE_NF_IPTABLES}" >/dev/null 2>&1 || true
+  sysctl -w net.bridge.bridge-nf-call-ip6tables="${BRIDGE_NF_IP6TABLES}" >/dev/null 2>&1 || true
+  sysctl -w net.bridge.bridge-nf-call-arptables="${BRIDGE_NF_ARPTABLES}" >/dev/null 2>&1 || true
+}
+
+delete_lab_link() {
+  local link="$1"
+  ip link delete "${link}" >/dev/null 2>&1 || true
+}
+
+delete_leftover_links() {
+  local -a links=(
+    "${LAB_LAN_HOST_LINKS[@]}"
+    "${LAB_WAN_HOST_LINKS[@]}"
+    "${LAB_LAN_GUEST_LINKS[@]}"
+    "${LAB_WAN_GUEST_LINKS[@]}"
+  )
+  local link
+  for link in "${links[@]}"; do
+    delete_lab_link "${link}"
+  done
+}
+
+delete_state_dir() {
+  local -a mountpoints=()
+  local -a immutable_candidates=()
+  local idx
+  local path
+  local quarantine_dir=""
+
+  if [[ ! -d "${LAB_STATE_DIR}" ]]; then
+    return 0
+  fi
+
+  mapfile -t mountpoints < <(findmnt -R -n -o TARGET "${LAB_STATE_DIR}" 2>/dev/null | grep -F "^${LAB_STATE_DIR}/" || true)
+  for (( idx=${#mountpoints[@]} - 1; idx >= 0; idx-- )); do
+    umount "${mountpoints[$idx]}" >/dev/null 2>&1 || true
+  done
+
+  if [[ -n "${LAB_CHATTR_BIN}" ]]; then
+    mapfile -t immutable_candidates < <(find "${LAB_STATE_DIR}" -type d \( -path '*/root.*/var/empty' -o -path '*/root.*/var/empty/*' \) 2>/dev/null || true)
+    for path in "${immutable_candidates[@]}"; do
+      "${LAB_CHATTR_BIN}" -i "${path}" >/dev/null 2>&1 || true
+    done
+  fi
+  rm -rf -- "${LAB_STATE_DIR}" >/dev/null 2>&1 || true
+
+  if [[ -e "${LAB_STATE_DIR}" ]]; then
+    quarantine_dir="${LAB_STATE_DIR}.stale.$(date +%s)"
+    mv "${LAB_STATE_DIR}" "${quarantine_dir}" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -e "${LAB_STATE_DIR}" ]]; then
+    echo "lab state directory still present after delete: ${LAB_STATE_DIR}" >&2
+    return 1
+  fi
+
+  if [[ -n "${quarantine_dir}" && -e "${quarantine_dir}" ]]; then
+    echo "quarantined undeletable lab state at: ${quarantine_dir}" >&2
+  fi
+}
+
 for machine in \
   "${LAB_MACHINE_ROUTER}" \
   "${LAB_MACHINE_BACKUP}" \
@@ -68,4 +142,7 @@ done
 
 delete_bridge "${LAB_LAN_BRIDGE}"
 delete_bridge "${LAB_WAN_BRIDGE}"
+delete_leftover_links
+restore_bridge_nf
 delete_nft_table
+delete_state_dir

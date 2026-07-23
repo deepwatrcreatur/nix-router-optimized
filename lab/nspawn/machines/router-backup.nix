@@ -38,4 +38,12 @@
     priority = 90;
     singleActiveUnits = [ "router-lab-owner-demo.service" ];
   };
+
+  services.keepalived.vrrpInstances.main = {
+    # The nspawn lab uses unicast VRRP to avoid backend-specific multicast gaps.
+    unicastSrcIp = "192.0.2.3";
+    unicastPeers = [ "192.0.2.2" ];
+  };
+
+  services.keepalived.openFirewall = true;
 }

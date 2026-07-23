@@ -1,22 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../scripts/lib.sh
+source "${script_dir}/../scripts/lib.sh"
+
+require_root
+
 service="router-lab-owner-demo.service"
-router_active=0
-backup_active=0
+timeout_seconds="${LAB_ASSERT_TIMEOUT_SECONDS:-${LAB_DEFAULT_ASSERT_TIMEOUT_SECONDS:-30}}"
 
-if machinectl shell lab-ha-router /bin/sh -lc "systemctl is-active --quiet ${service}"; then
-  router_active=1
+count_active() {
+  local router_active=0
+  local backup_active=0
+
+  if in_machine lab-ha-router bash -lc "systemctl is-active --quiet ${service}"; then
+    router_active=1
+  fi
+
+  if in_machine lab-ha-router-backup bash -lc "systemctl is-active --quiet ${service}"; then
+    backup_active=1
+  fi
+
+  printf '%s %s\n' "${router_active}" "${backup_active}"
+}
+
+demo_unit_is_single_active() {
+  read -r router_active backup_active < <(count_active)
+  [[ $((router_active + backup_active)) -eq 1 ]]
+}
+
+if poll_until_true "${timeout_seconds}" demo_unit_is_single_active; then
+  echo "${service} is single-active"
+  exit 0
 fi
 
-if machinectl shell lab-ha-router-backup /bin/sh -lc "systemctl is-active --quiet ${service}"; then
-  backup_active=1
-fi
-
-if [[ $((router_active + backup_active)) -ne 1 ]]; then
-  echo "expected ${service} to be active on exactly one router node" >&2
-  echo "router=${router_active} backup=${backup_active}" >&2
-  exit 1
-fi
-
-echo "${service} is single-active"
+read -r router_active backup_active < <(count_active)
+echo "expected ${service} to be active on exactly one router node" >&2
+echo "router=${router_active} backup=${backup_active}" >&2
+exit 1

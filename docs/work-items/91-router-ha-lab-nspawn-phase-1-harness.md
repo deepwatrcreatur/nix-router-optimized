@@ -1,6 +1,6 @@
 # 91 - Router HA Lab `systemd-nspawn` Phase-1 Harness
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 
@@ -112,3 +112,20 @@ The intended progression is:
 1. `nspawn` for fast safe learning
 2. VM tests for durable regression coverage
 3. broader HA work after the first two layers are trustworthy
+
+## Outcome
+
+This item now has a working bounded phase-1 runtime harness:
+
+- the `ha-basic` topology boots as four `systemd-nspawn` guests
+- the cold-start scripted flow passes the bounded assertions for:
+  - single VIP ownership
+  - single-active demo-unit ownership
+- the repo documentation now records the important backend caveats:
+  - bootable LXC rootfs extraction
+  - lab-only runtime compatibility overrides
+  - `nsenter`-based scenario transport
+  - bridge-netfilter disablement while the lab is active
+
+Follow-on HA work should continue from this lab rather than returning directly
+to live homelab experimentation.
