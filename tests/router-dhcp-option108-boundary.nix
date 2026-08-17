@@ -56,4 +56,33 @@ in
       };
     }
   ];
+
+  router-clat-without-nat64-fails-eval = eval.mkNixosEvalFailureCheck "router-clat-without-nat64" [
+    self.nixosModules.router-clat
+    {
+      services.router-clat = {
+        enable = true;
+        upstreamInterface = "eth0";
+        listenInterfaces = [ "eth1" ];
+      };
+    }
+  ];
+
+  router-kea-option108-without-nat64-fails-eval = eval.mkNixosEvalFailureCheck "router-kea-option108-without-nat64" [
+    self.nixosModules.router-kea
+    {
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          subnet = "10.10.200.0/24";
+          gatewayAddress = "10.10.200.1";
+          dnsServers = [ "10.10.200.1" ];
+          poolRanges = [
+            { start = "10.10.200.10"; end = "10.10.200.200"; }
+          ];
+          ipv6OnlyPreferred.enable = true;
+        };
+      };
+    }
+  ];
 }

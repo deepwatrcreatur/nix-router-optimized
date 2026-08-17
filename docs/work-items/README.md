@@ -43,6 +43,10 @@ The authority split is:
 
 ## Recently Completed
 
+- [91-ula-rfc9686-prefix-delegation-and-address-selection](./91-ula-rfc9686-prefix-delegation-and-address-selection.md) — `done`
+- [93-option108-464xlat-opt-in-guardrails-and-docs](./93-option108-464xlat-opt-in-guardrails-and-docs.md) — `done`
+
+- [92-slaac-mdns-lan-host-resolution-guidelines-and-modules](./92-slaac-mdns-lan-host-resolution-guidelines-and-modules.md) — `done`
 - [90-router-degraded-mode-status-fallback-boundary](./90-router-degraded-mode-status-fallback-boundary.md) — `done`
 - [89-router-runtime-credential-discipline-audit](./89-router-runtime-credential-discipline-audit.md) — `done`
 - [88-router-egress-bogon-hardening](./88-router-egress-bogon-hardening.md) — `done`

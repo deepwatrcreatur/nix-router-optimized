@@ -847,6 +847,7 @@ in
 
   docs-router-clat-valid-minimal-eval = mkDocExampleCheck "docs-router-clat-valid-minimal" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     self.nixosModules.router-firewall
     self.nixosModules.router-optimizations
     {
@@ -855,6 +856,7 @@ in
         upstreamInterface = "eth0";
         listenInterfaces = [ "eth1" ];
       };
+      services.router-nat64.enable = true;
       services.router-firewall.enable = true;
       services.router-optimizations = {
         enable = true;
@@ -938,7 +940,9 @@ in
 
   docs-router-clat-reject-loop-topology-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-loop-topology" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     {
+      services.router-nat64.enable = true;
       services.router-clat = {
         enable = true;
         upstreamInterface = "eth0";
@@ -949,7 +953,9 @@ in
 
   docs-router-clat-reject-empty-listen-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-empty-listen" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     {
+      services.router-nat64.enable = true;
       services.router-clat = {
         enable = true;
         upstreamInterface = "eth0";
@@ -960,7 +966,9 @@ in
 
   docs-router-clat-reject-gc-exceeds-ttl-eval = eval.mkNixosEvalFailureCheck "docs-router-clat-reject-gc-exceeds-ttl" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     {
+      services.router-nat64.enable = true;
       services.router-clat = {
         enable = true;
         upstreamInterface = "eth0";
@@ -1034,7 +1042,9 @@ in
 
   docs-router-clat-elixir-selector-eval = mkDocExampleCheck "docs-router-clat-elixir-selector" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     {
+      services.router-nat64.enable = true;
       services.router-clat = {
         enable = true;
         upstreamInterface = "eth0";
@@ -1075,6 +1085,7 @@ in
 
   docs-router-dashboard-clat-status-wiring-eval = mkDocExampleCheck "docs-router-dashboard-clat-status-wiring" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     self.nixosModules.router-dashboard
     self.nixosModules.router-firewall
     self.nixosModules.router-optimizations
@@ -1084,6 +1095,7 @@ in
         upstreamInterface = "eth0";
         listenInterfaces = [ "eth1" ];
       };
+      services.router-nat64.enable = true;
       services.router-dashboard.enable = true;
       services.router-firewall.enable = true;
       services.router-optimizations = {

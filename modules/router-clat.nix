@@ -184,7 +184,14 @@ in
     {
       assertions = [
         {
-          assertion = cfg.listenInterfaces != [];
+          assertion = nat64Enabled;
+          message = ''
+            router-clat: CLAT translation requires active NAT64 (services.router-nat64.enable = true).
+            CLAT synthesizes IPv6 packets for legacy IPv4 client traffic, which requires NAT64 on the router to reach IPv4-only WAN destinations.
+          '';
+        }
+        {
+          assertion = cfg.listenInterfaces != [ ];
           message = "router-clat: listenInterfaces must not be empty.";
         }
         {

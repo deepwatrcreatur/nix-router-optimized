@@ -122,6 +122,17 @@ The design should **not** begin by exposing every sharp implementation detail of
 the prototype. The first public surface should be the minimum needed to express
 the model honestly.
 
+### Opt-In Prerequisites & Safety Guardrails
+
+`router-clat` is an experimental, specialized IPv4-to-IPv6 translation bridge for power users deploying IPv6-mostly or IPv6-only LAN subnets.
+
+- **Declarative Opt-In (`enable = false;` default):** `services.router-clat.enable` is strictly `false` by default across the flake. It must be explicitly enabled per host configuration.
+- **Mandatory NAT64 Dependency:** CLAT synthesizes IPv6 packets for legacy IPv4 client traffic on the LAN. In order for those translated IPv6 packets to reach IPv4-only WAN destinations, active NAT64 translation MUST be running on the router.
+- **Enforced Module Safety Assertions:** NixOS module assertions strictly require:
+  - `services.router-clat.enable = true;` -> `services.router-nat64.enable = true;`
+  - Evaluating `services.router-clat.enable = true;` without active `services.router-nat64` will fail evaluation immediately with an explicit safety assertion error.
+- **Address Pool Non-Overlap:** `legacyIpv4Pool` and `mappingPrefix6` must not overlap with `router-nat64` pools/prefixes to prevent routing loops and kernel translation table collisions.
+
 ## Control Plane vs Data Plane
 
 The core design principle is:

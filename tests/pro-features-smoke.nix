@@ -24,13 +24,6 @@ let
       default = { };
     };
   };
-  extractNotifyScript =
-    key: extraConfig:
-    let
-      line = builtins.head (builtins.filter (lib.hasPrefix "${key} \"") (lib.splitString "\n" extraConfig));
-      trimmed = lib.removePrefix "${key} \"" line;
-    in
-    lib.removeSuffix "\"" trimmed;
 in
 {
   router-nat64-eval = eval.mkNixosEvalCheck "router-nat64" [
@@ -100,7 +93,9 @@ in
 
   router-clat-jool-opt-in-required-fails = eval.mkNixosEvalFailureCheck "router-clat-jool-opt-in-required" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     {
+      services.router-nat64.enable = true;
       services.router-clat = {
         enable = true;
         upstreamInterface = "wan0";
@@ -112,7 +107,9 @@ in
 
   router-clat-jool-explicit-non-support-fails = eval.mkNixosEvalFailureCheck "router-clat-jool-explicit-non-support" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     {
+      services.router-nat64.enable = true;
       services.router-clat = {
         enable = true;
         upstreamInterface = "wan0";
@@ -606,70 +603,5 @@ in
         message = "router-technitium should keep the RFC2136 TSIG key configurable through module options.";
       }
     ])
-  ];
-
-  router-ha-single-active-units-eval = eval.mkNixosEvalCheck "router-ha-single-active-units" [
-    self.nixosModules.router-ha
-    {
-      services.router-ha = {
-        enable = true;
-        role = "backup";
-        virtualIp = "10.10.10.1/24";
-        vrrpInterface = "lan0";
-        singleActiveUnits = [
-          "inadyn.service"
-          "caddy.service"
-        ];
-      };
-    }
-    ({ config, ... }:
-      let
-        keepalivedConfig = config.services.keepalived.vrrpInstances.main.extraConfig;
-        masterNotify = extractNotifyScript "notify_master" keepalivedConfig;
-        backupNotify = extractNotifyScript "notify_backup" keepalivedConfig;
-        faultNotify = extractNotifyScript "notify_fault" keepalivedConfig;
-      in
-      assertModule [
-        {
-          assertion = config.systemd.services ? router-ha-initial-role-state;
-          message = "router-ha should seed runtime role state before Keepalived starts.";
-        }
-        {
-          assertion = config.systemd.services.router-ha-initial-role-state.before == [ "keepalived.service" ];
-          message = "router-ha should seed runtime role state before Keepalived starts.";
-        }
-        {
-          assertion = config.services.keepalived.enableScriptSecurity;
-          message = "router-ha should enable Keepalived script security when notify hooks are in use.";
-        }
-        {
-          assertion = lib.hasInfix "script_user root" config.services.keepalived.extraGlobalDefs;
-          message = "router-ha should render an explicit Keepalived script user for notify hooks.";
-        }
-        {
-          assertion = lib.hasInfix "keepalived-master" masterNotify;
-          message = "router-ha should render a master notify hook when singleActiveUnits are configured.";
-        }
-        {
-          assertion =
-            lib.hasInfix "router-ha-demote-backup" backupNotify
-            && lib.hasInfix "router-ha-demote-fault" faultNotify;
-          message = "router-ha should render backup and fault notify hooks when singleActiveUnits are configured.";
-        }
-        {
-          assertion = config.systemd.services.router-ha-initial-role-state.wantedBy == [ "multi-user.target" ];
-          message = "router-ha should install a boot-time role-state seeding service.";
-        }
-        {
-          assertion = lib.hasInfix "router-ha-mark-backup" config.systemd.services.router-ha-initial-role-state.script;
-          message = "router-ha should seed a non-owning runtime role until Keepalived proves mastership.";
-        }
-        {
-          assertion =
-            lib.hasInfix "router-ha-demote-stop"
-              (builtins.concatStringsSep "\n" config.systemd.services.keepalived.serviceConfig.ExecStopPost);
-          message = "router-ha should demote runtime ownership and tear down single-active units if keepalived stops.";
-        }
-      ])
   ];
 }

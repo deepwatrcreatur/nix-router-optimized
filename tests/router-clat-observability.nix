@@ -8,6 +8,7 @@
 {
   router-clat-dashboard-metadata-eval = eval.mkNixosEvalCheck "router-clat-dashboard-metadata" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     self.nixosModules.router-dashboard
     {
       services.router-clat = {
@@ -15,6 +16,7 @@
         upstreamInterface = "wan0";
         listenInterfaces = [ "lan0" "lan1" ];
       };
+      services.router-nat64.enable = true;
 
       services.router-dashboard.enable = true;
     }
@@ -41,6 +43,7 @@
 
   router-clat-rendered-tayga-conf-eval = eval.mkNixosEvalCheck "router-clat-rendered-tayga-conf" [
     self.nixosModules.router-clat
+    self.nixosModules.router-nat64
     {
       services.router-clat = {
         enable = true;
@@ -49,6 +52,7 @@
         legacyIpv4Pool = "100.64.46.0/24";
         mappingPrefix6 = "fd46:ca17:1::/96";
       };
+      services.router-nat64.enable = true;
     }
     ({ config, ... }:
       let
