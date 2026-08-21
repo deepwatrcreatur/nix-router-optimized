@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Kea DHCP Metrics Exporter & Health Monitor
 Queries Kea DHCP4 control socket (/run/kea/dhcp4.sock), calculates pool
