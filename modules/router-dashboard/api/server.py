@@ -60,7 +60,6 @@ except json.JSONDecodeError:
 DASHBOARD_SYSTEMCTL_PATH = os.environ.get('DASHBOARD_SYSTEMCTL_PATH', '')
 INVENTORY_FILE = os.environ.get('DASHBOARD_INVENTORY_FILE', '')
 INVENTORY_ENABLED = os.environ.get('DASHBOARD_INVENTORY_ENABLED', '0') == '1'
-KEA_LEASES_FILE = os.environ.get('DASHBOARD_KEA_LEASES_FILE', '').strip()
 
 NAT64_PREFIX = os.environ.get('DASHBOARD_NAT64_PREFIX', '')
 NAT64_POOL = os.environ.get('DASHBOARD_NAT64_POOL', '')
@@ -90,15 +89,12 @@ TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
 TECHNITIUM_RUNTIME_API_KEY_FILE = os.environ.get('TECHNITIUM_RUNTIME_API_KEY_FILE', '')
 TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
 TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
-KEA_LEASE_FILES = (
-    ([Path(KEA_LEASES_FILE)] if KEA_LEASES_FILE else [])
-    + [
-        Path('/var/lib/private/kea/dhcp4.leases.2'),
-        Path('/var/lib/private/kea/dhcp4.leases'),
-        Path('/var/lib/kea/dhcp4.leases.2'),
-        Path('/var/lib/kea/dhcp4.leases'),
-    ]
-)
+KEA_LEASE_FILES = [
+    Path('/var/lib/private/kea/dhcp4.leases.2'),
+    Path('/var/lib/private/kea/dhcp4.leases'),
+    Path('/var/lib/kea/dhcp4.leases.2'),
+    Path('/var/lib/kea/dhcp4.leases'),
+]
 
 # Speed test state
 SPEEDTEST_STATE = {
@@ -2390,10 +2386,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         now = int(time.time())
 
         for lease_file in KEA_LEASE_FILES:
-            try:
-                if not lease_file.exists():
-                    continue
+            if not lease_file.exists():
+                continue
 
+            try:
                 with lease_file.open(newline='') as handle:
                     reader = csv.DictReader(handle)
                     for row in reader:
@@ -2442,6 +2438,16 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             key=lambda lease: lease['address']
         )
 
+    def get_kea_metrics_data(self):
+        metrics_file = Path('/run/router/kea-metrics.json')
+        if metrics_file.exists():
+            try:
+                with metrics_file.open() as handle:
+                    return json.load(handle)
+            except Exception:
+                pass
+        return {}
+
     def send_kea_dhcp_leases(self, leases, scopes):
         scope = scopes[0] if scopes else {}
         scope_name = scope.get('name', 'LAN')
@@ -2469,8 +2475,11 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'leases': leases[:50],
         }
 
+        kea_metrics = self.get_kea_metrics_data()
+
         self.send_json({
             'available': True,
+            'provider': 'kea',
             'scopes': [{
                 'name': scope_name,
                 'interface': interface_name,
@@ -2483,6 +2492,12 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'sections': [section],
             'totalLeases': len(leases),
             'displayedLeases': min(len(leases), 100),
+            'poolUtilization': kea_metrics.get('pool_utilization_percent', 0.0),
+            'declinedAddresses': kea_metrics.get('declined_addresses', 0),
+            'totalAddresses': kea_metrics.get('total_addresses', 0),
+            'assignedAddresses': kea_metrics.get('assigned_addresses', len(leases)),
+            'nakSentCount': kea_metrics.get('pkt4_nak_sent', 0),
+            'ackReceivedCount': kea_metrics.get('pkt4_ack_received', 0),
         })
 
     def get_fail2ban_status_data(self):

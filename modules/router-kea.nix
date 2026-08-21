@@ -19,6 +19,10 @@ let
   nat64Enabled = hasRouterNat64 && (config.services.router-nat64.enable or false);
   dns64Enabled = hasRouterDns64 && (config.services.router-dns64.enable or false);
 
+  routerKeaExporter = pkgs.writers.writePython3Bin "router-kea-exporter" { } (
+    builtins.readFile ./router-kea/router-kea-exporter.py
+  );
+
   # Auto-derive LAN interfaces from router-networking when none are specified.
   effectiveInterfaces =
     if cfg.dhcp4.interfaces != [ ] then
@@ -410,6 +414,20 @@ in
         description = "Reverse zone name (without trailing dot). Set to \".\" to disable reverse updates.";
       };
     };
+
+    exporter = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable Kea metrics exporter service for Prometheus and router-dashboard monitoring.";
+      };
+
+      port = mkOption {
+        type = types.port;
+        default = 9547;
+        description = "HTTP port for router-kea-exporter Prometheus metrics endpoint.";
+      };
+    };
   };
 
   config = mkIf cfg.enable (mkMerge [
@@ -628,6 +646,19 @@ in
             "/run/kea/dhcp-ddns-runtime.conf"
           ]
         );
+      };
+
+      systemd.services.router-kea-exporter = mkIf cfg.exporter.enable {
+        description = "Kea DHCP Metrics Exporter & Health Monitor";
+        after = [ "kea-dhcp4-server.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          ExecStart = "${routerKeaExporter}/bin/router-kea-exporter --port ${toString cfg.exporter.port}";
+          Restart = "always";
+          RestartSec = "5s";
+          User = "root";
+          RuntimeDirectory = "router";
+        };
       };
     }
 

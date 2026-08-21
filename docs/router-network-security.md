@@ -6,7 +6,6 @@ sensors on router hosts.
 It currently provides consumer-facing options for:
 
 - Suricata
-- EveBox for Suricata event review
 - Snort 3
 - Zeek
 
@@ -26,12 +25,6 @@ Uses the upstream NixOS `services.suricata` module from nixpkgs and fills in
 capture interfaces plus `vars.address-groups.HOME_NET`.
 
 This is the strongest-integrated path today.
-
-If you want a local review UI for Suricata events, the first slice also exposes
-`services.router-network-security.suricata.evebox.enable`. This runs EveBox on
-localhost, backed by SQLite, and tails `/var/log/suricata/eve.json`. The
-intended exposure model is a consumer-managed trusted reverse proxy path, not a
-direct public bind.
 
 ### Snort 3
 
@@ -60,10 +53,7 @@ status files plus logs.
 services.router-network-security = {
   enable = true;
 
-  suricata = {
-    enable = true;
-    evebox.enable = true;
-  };
+  suricata.enable = true;
 
   snort = {
     enable = true;

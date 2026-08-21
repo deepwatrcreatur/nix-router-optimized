@@ -24,20 +24,74 @@ Today the repo has bounded ownership behavior in these areas:
 - **Kea-related sync/control affordances** where explicitly configured
 - **BGP single-active-owner behavior** where the `router-bgp` integration makes
   promotion semantics explicit
-- **Consumer-owned single-active units** through
-  `services.router-ha.singleActiveUnits`
 
 That does **not** mean every LAN-facing service is promotion-aware by default.
 
-`singleActiveUnits` is intentionally generic:
+## Validated Consumer Pattern
 
-- it starts listed units on master promotion
-- it stops them on backup or fault transitions
-- and it records the current runtime role in `/run/router-ha/role`
+The currently validated consumer pattern for a VRRP router pair is:
 
-That runtime surface exists so consumer configs can express their own
-ExecCondition or startup policy without upstream claiming typed ownership for
-every service.
+- let `router-ha` own **WAN/VIP role transition**
+- let `router-ha.singleActiveUnits` own **specific single-owner runtime units**
+- keep some services **shared on both nodes**
+- keep some services **manual-promotion only**
+
+In other words, do **not** collapse all router services behind one blanket
+"backup becomes master, therefore everything should start" assumption.
+
+### A practical split that is working
+
+- **Promotion-aware / VRRP-owned**
+  - WAN interface ownership via `services.router-ha.wan`
+  - public DDNS update execution when the consumer makes both
+    `inadyn.service` and `inadyn.timer` `singleActiveUnits`
+  - any other service the consumer explicitly adds to
+    `services.router-ha.singleActiveUnits`
+- **Shared on both nodes**
+  - `router-ntp` / Chrony, when the consumer wants standby time-sync
+    continuity instead of single-owner NTP
+  - passive/observability services such as Suricata when the deployment wants
+    them running on both nodes
+- **Still consumer-owned and often manual**
+  - DHCP ownership for the current reference pair
+  - any DNS, UPnP, or other LAN-facing service that the consumer has not wired
+    explicitly behind a tested ownership boundary
+
+### Minimal consumer sketch
+
+```nix
+{
+  services.router-ha = {
+    enable = true;
+    role = "master"; # or "backup" per host
+    virtualIp = "10.10.10.1/16";
+    vrrpInterface = "br-lan";
+    wan = {
+      enable = true;
+      interface = "wan0";
+      clonedMac = "02:00:00:00:00:01";
+    };
+    singleActiveUnits = [
+      "inadyn.service"
+      "inadyn.timer"
+    ];
+  };
+
+  services.router-ddns.enable = true;
+
+  # Shared service example: keep Chrony on both nodes.
+  services.router-ntp.enable = true;
+
+  # Manual / consumer-owned example: gate DHCP separately if your pair is still
+  # single-active rather than promotion-aware.
+  systemd.services.kea-dhcp4-server.serviceConfig.ExecCondition = [
+    ''/bin/sh -c "exit 1"''
+  ];
+}
+```
+
+That example is intentionally schematic. The important part is the **split of
+ownership models**, not the literal placeholder values.
 
 ## Validated Consumer Pattern
 
@@ -160,9 +214,6 @@ What should not be assumed:
 - **Supported upstream:** router NTP service itself
 - **Not currently supported upstream:** a typed `router-ha` adapter for NTP
 - **Expected policy owner:** consumer config
-
-Likewise, `singleActiveUnits` support does **not** imply that upstream has
-declared a first-class HA contract for whatever unit names a consumer lists.
 
 For risky ownership, WAN, or failover changes, use
 [`router-apply-safety.md`](./router-apply-safety.md) as the manual acceptance

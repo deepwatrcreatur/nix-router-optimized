@@ -442,7 +442,12 @@ in
             targets = [ "localhost:9100" ];
           }];
         }
-      ];
+      ] ++ optional (config.services.router-kea.enable or config.services.kea.dhcp4.enable or false) {
+        job_name = "kea";
+        static_configs = [{
+          targets = [ "localhost:${toString (config.services.router-kea.exporter.port or 9547)}" ];
+        }];
+      };
 
       # Retention settings
       retentionTime = cfg.prometheusRetentionTime;
@@ -483,6 +488,46 @@ in
                   description = "Interface {{ $labels.device }} is experiencing {{ $value | humanize }} errors/s.";
                 };
               }
+              {
+                alert = "KeaDhcpPoolUtilizationWarning";
+                expr = "kea_dhcp4_pool_utilization_percent > 75";
+                for = "2m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "Kea DHCP IP pool utilization warning (>75%)";
+                  description = "Dynamic IP pool utilization is {{ $value }}% (threshold: 75%).";
+                };
+              }
+              {
+                alert = "KeaDhcpPoolUtilizationCritical";
+                expr = "kea_dhcp4_pool_utilization_percent > 90";
+                for = "1m";
+                labels.severity = "critical";
+                annotations = {
+                  summary = "Kea DHCP IP pool utilization critical (>90%)";
+                  description = "Dynamic IP pool utilization is {{ $value }}% (threshold: 90%).";
+                };
+              }
+              {
+                alert = "KeaDhcpDeclinedAddressesWarning";
+                expr = "kea_dhcp4_declined_addresses > 5";
+                for = "1m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "Kea DHCP DECLINED address count high (>5)";
+                  description = "Kea DHCP declined-addresses count is {{ $value }} (threshold: 5).";
+                };
+              }
+              {
+                alert = "KeaDhcpNakRateCritical";
+                expr = "rate(kea_dhcp4_pkt4_nak_sent[1m]) * 60 > 10";
+                for = "1m";
+                labels.severity = "critical";
+                annotations = {
+                  summary = "Kea DHCP NAK rate critical (>10/min)";
+                  description = "Kea DHCP pkt4-nak-sent rate is {{ $value }} NAKs/min (threshold: 10/min).";
+                };
+              }
             ];
           }];
         })
@@ -503,6 +548,7 @@ in
           admin_user = "admin";
           # Password stored in persistent state dir so it survives reboots
           admin_password = "$__file{${cfg.grafanaDataDir}/.admin-password}";
+          secret_key = lib.mkDefault "SW2YcwTIb9zpOOhoPsMm";
         };
         analytics.reporting_enabled = false;
       };

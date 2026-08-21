@@ -52,7 +52,6 @@
         in
         {
           router-diag = pkgs.callPackage ./pkgs/router-diag { };
-          evebox-with-webapp = pkgs.callPackage ./pkgs/evebox-with-webapp.nix { };
           ulogd = ulogdWithJson pkgs;
         }
       );
@@ -67,7 +66,6 @@
       );
 
       overlays.default = final: prev: {
-        evebox-with-webapp = final.callPackage ./pkgs/evebox-with-webapp.nix { };
         ulogd = ulogdWithJson prev;
       };
 

@@ -400,4 +400,68 @@ in
         ];
     })
   ];
+
+  router-kea-monitoring-eval = eval.mkNixosEvalCheck "router-kea-monitoring" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-kea
+    self.nixosModules.router-observability
+    self.nixosModules.monitoring
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+        routedInterfaces.lan = {
+          device = "eth1";
+          ipv4Address = "10.10.200.1/24";
+        };
+      };
+
+      services.router-kea = {
+        enable = true;
+        exporter.enable = true;
+        dhcp4 = {
+          subnet = "10.10.200.0/24";
+          gatewayAddress = "10.10.200.1";
+          dnsServers = [ "10.10.200.1" ];
+          poolRanges = [
+            { start = "10.10.200.10"; end = "10.10.200.200"; }
+          ];
+        };
+      };
+
+      router.monitoring = {
+        enable = true;
+        alerting.enable = true;
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = config.systemd.services ? router-kea-exporter;
+          message = "router-kea-exporter systemd service should be generated when Kea exporter is enabled.";
+        }
+        {
+          assertion = config.systemd.services.router-kea-exporter.wantedBy == [ "multi-user.target" ];
+          message = "router-kea-exporter should be wantedBy multi-user.target.";
+        }
+        {
+          assertion = builtins.any (job: job.job_name == "kea") config.services.prometheus.scrapeConfigs;
+          message = "Prometheus scrapeConfigs should include the kea scrape job.";
+        }
+        {
+          assertion =
+            let
+              rulesJson = builtins.fromJSON (builtins.head config.services.prometheus.rules);
+              rulesList = (builtins.head rulesJson.groups).rules;
+              alertNames = map (r: r.alert) rulesList;
+            in
+            builtins.elem "KeaDhcpPoolUtilizationWarning" alertNames
+            && builtins.elem "KeaDhcpPoolUtilizationCritical" alertNames
+            && builtins.elem "KeaDhcpDeclinedAddressesWarning" alertNames
+            && builtins.elem "KeaDhcpNakRateCritical" alertNames;
+          message = "Prometheus alert rules should include Kea DHCP utilization, declined, and NAK alerts.";
+        }
+      ];
+    })
+  ];
 }

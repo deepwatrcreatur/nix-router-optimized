@@ -76,11 +76,24 @@ class DhcpWidget extends BaseWidget {
       // Update scopes
       const scopesEl = this.container?.querySelector(`#${this.id}-scopes`);
       if (scopesEl && data.scopes) {
+        const utilHtml = data.poolUtilization !== undefined ? `
+          <span class="scope-count" style="margin-left: 6px; background: rgba(59, 130, 246, 0.2); color: #60a5fa;">
+            Util: ${data.poolUtilization}%
+          </span>
+        ` : '';
+        const declinedHtml = (data.declinedAddresses || 0) > 0 ? `
+          <span class="scope-count" style="margin-left: 6px; background: rgba(239, 68, 68, 0.2); color: #ef4444;">
+            ⚠️ ${data.declinedAddresses} declined
+          </span>
+        ` : '';
+
         scopesEl.innerHTML = data.scopes.map(scope => `
           <div class="dhcp-scope-badge ${scope.enabled ? 'scope-enabled' : 'scope-disabled'}">
             <span class="scope-name">${scope.name}</span>
             <span class="scope-range">${scope.startAddress} - ${scope.endAddress}</span>
             <span class="scope-count">${scope.leaseCount} leases</span>
+            ${utilHtml}
+            ${declinedHtml}
           </div>
         `).join('');
       }
