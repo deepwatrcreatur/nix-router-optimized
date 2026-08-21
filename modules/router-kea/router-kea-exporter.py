@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
 Kea DHCP Metrics Exporter & Health Monitor
-Queries Kea DHCP4 control socket (/run/kea/dhcp4.sock), calculates pool utilization,
-exposes Prometheus metrics on HTTP, updates /run/router/kea-metrics.json, and logs
-threshold warnings/errors to journalctl.
+Queries Kea DHCP4 control socket (/run/kea/dhcp4.sock), calculates pool
+utilization, exposes Prometheus metrics on HTTP, updates
+/run/router/kea-metrics.json, and logs threshold warnings/errors.
 """
 
-import os
-import sys
-import json
-import time
-import socket
-import csv
-import logging
 import argparse
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import csv
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
+import logging
+import os
 from pathlib import Path
+import socket
+import sys
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,6 +48,7 @@ METRICS_CACHE = {
 }
 PREV_NAK = {'count': 0, 'time': 0.0}
 
+
 def query_kea_socket(command="statistic-get-all"):
     if not os.path.exists(KEA_SOCKET_PATH):
         return None
@@ -55,7 +56,8 @@ def query_kea_socket(command="statistic-get-all"):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.settimeout(3.0)
         s.connect(KEA_SOCKET_PATH)
-        payload = json.dumps({"command": command, "arguments": {}}).encode("utf-8")
+        payload = json.dumps(
+            {"command": command, "arguments": {}}).encode("utf-8")
         s.sendall(payload)
         s.shutdown(socket.SHUT_WR)
 
@@ -73,6 +75,7 @@ def query_kea_socket(command="statistic-get-all"):
     except Exception as e:
         logger.debug(f"Control socket query error: {e}")
     return None
+
 
 def parse_kea_leases_fallback():
     now = int(time.time())
@@ -100,16 +103,17 @@ def parse_kea_leases_fallback():
             pass
     return active_count, declined_count
 
+
 def update_metrics():
-    global METRICS_CACHE, PREV_NAK
     now = time.time()
     args = query_kea_socket("statistic-get-all")
 
     if args is not None:
         METRICS_CACHE['kea_up'] = 1
+
         def get_val(key, default=0):
             val = args.get(key)
-            if val and isinstance(val, list) and len(val) > 0 and len(val[0]) > 0:
+            if val and isinstance(val, list) and len(val) > 0 and val[0]:
                 return val[0][0]
             return default
 
@@ -135,7 +139,8 @@ def update_metrics():
         if env_total and env_total.isdigit():
             total = int(env_total)
         else:
-            total = 5842  # default LAN slice pool capacity (10.10.200.1 - 10.10.222.254)
+            # default LAN slice pool capacity (10.10.200.1 - 10.10.222.254)
+            total = 5842
 
     utilization = ((assigned + declined) / total * 100.0) if total > 0 else 0.0
 
@@ -161,15 +166,26 @@ def update_metrics():
     })
 
     if utilization > 90.0:
-        logger.error(f"Kea DHCP Critical: IP pool utilization ({utilization:.1f}%) > 90%")
+        logger.error(
+            f"Kea DHCP Critical: IP pool utilization "
+            f"({utilization:.1f}%) > 90%"
+        )
     elif utilization > 75.0:
-        logger.warning(f"Kea DHCP Warning: IP pool utilization ({utilization:.1f}%) > 75%")
+        logger.warning(
+            f"Kea DHCP Warning: IP pool utilization "
+            f"({utilization:.1f}%) > 75%"
+        )
 
     if declined > 5:
-        logger.warning(f"Kea DHCP Warning: declined-addresses count ({declined}) > 5")
+        logger.warning(
+            f"Kea DHCP Warning: declined-addresses count ({declined}) > 5"
+        )
 
     if nak_rate > 10.0:
-        logger.error(f"Kea DHCP Critical: pkt4-nak-sent rate ({nak_rate:.1f}/min) > 10/min")
+        logger.error(
+            f"Kea DHCP Critical: pkt4-nak-sent rate "
+            f"({nak_rate:.1f}/min) > 10/min"
+        )
 
     try:
         STATUS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -179,7 +195,9 @@ def update_metrics():
         dhcp_status_data = {
             "available": True,
             "provider": "kea",
-            "lastUpdated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+            "lastUpdated": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)
+            ),
             "poolUtilization": METRICS_CACHE['pool_utilization_percent'],
             "assignedAddresses": METRICS_CACHE['assigned_addresses'],
             "declinedAddresses": METRICS_CACHE['declined_addresses'],
@@ -192,6 +210,7 @@ def update_metrics():
     except Exception as e:
         logger.debug(f"Failed to write status JSON: {e}")
 
+
 class MetricsHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -201,35 +220,40 @@ class MetricsHandler(BaseHTTPRequestHandler):
             update_metrics()
             m = METRICS_CACHE
             lines = [
-                "# HELP kea_dhcp4_up Kea DHCP4 daemon control socket responsiveness",
+                "# HELP kea_dhcp4_up Kea DHCP4 daemon responsiveness",
                 "# TYPE kea_dhcp4_up gauge",
                 f"kea_dhcp4_up {m['kea_up']}",
-                "# HELP kea_dhcp4_assigned_addresses Number of currently assigned DHCPv4 addresses",
+                "# HELP kea_dhcp4_assigned_addresses Assigned IP count",
                 "# TYPE kea_dhcp4_assigned_addresses gauge",
-                f"kea_dhcp4_assigned_addresses {m['assigned_addresses']}",
-                "# HELP kea_dhcp4_declined_addresses Number of DECLINED DHCPv4 addresses",
+                f"kea_dhcp4_assigned_addresses "
+                f"{m['assigned_addresses']}",
+                "# HELP kea_dhcp4_declined_addresses DECLINED addresses",
                 "# TYPE kea_dhcp4_declined_addresses gauge",
                 f"kea_dhcp4_declined_addresses {m['declined_addresses']}",
-                "# HELP kea_dhcp4_cumulative_assigned_addresses Total cumulative assigned DHCPv4 addresses",
+                "# HELP kea_dhcp4_cumulative_assigned_addresses Cumulative",
                 "# TYPE kea_dhcp4_cumulative_assigned_addresses counter",
-                f"kea_dhcp4_cumulative_assigned_addresses {m['cumulative_assigned_addresses']}",
-                "# HELP kea_dhcp4_pkt4_ack_received Total DHCPACK packets received/processed",
+                f"kea_dhcp4_cumulative_assigned_addresses "
+                f"{m['cumulative_assigned_addresses']}",
+                "# HELP kea_dhcp4_pkt4_ack_received Total DHCPACK packets",
                 "# TYPE kea_dhcp4_pkt4_ack_received counter",
                 f"kea_dhcp4_pkt4_ack_received {m['pkt4_ack_received']}",
                 "# HELP kea_dhcp4_pkt4_nak_sent Total DHCPNAK packets sent",
                 "# TYPE kea_dhcp4_pkt4_nak_sent counter",
                 f"kea_dhcp4_pkt4_nak_sent {m['pkt4_nak_sent']}",
-                "# HELP kea_dhcp4_total_addresses Total capacity of dynamic DHCPv4 address pool",
+                "# HELP kea_dhcp4_total_addresses Dynamic pool capacity",
                 "# TYPE kea_dhcp4_total_addresses gauge",
                 f"kea_dhcp4_total_addresses {m['total_addresses']}",
-                "# HELP kea_dhcp4_pool_utilization_percent Dynamic DHCPv4 pool utilization percentage",
+                "# HELP kea_dhcp4_pool_utilization_percent Utilization %",
                 "# TYPE kea_dhcp4_pool_utilization_percent gauge",
-                f"kea_dhcp4_pool_utilization_percent {m['pool_utilization_percent']}",
+                f"kea_dhcp4_pool_utilization_percent "
+                f"{m['pool_utilization_percent']}",
                 ""
             ]
             body = "\n".join(lines).encode('utf-8')
             self.send_response(200)
-            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header(
+                "Content-Type", "text/plain; version=0.0.4; charset=utf-8"
+            )
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -242,25 +266,35 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         else:
-            self.send_error(404, "Not Found")
+            self.send_response(404)
+            self.end_headers()
+
 
 def main():
     parser = argparse.ArgumentParser(description="Kea DHCP Metrics Exporter")
-    parser.add_argument("--port", type=int, default=EXPORT_PORT, help="Exporter HTTP port")
-    parser.add_argument("--once", action="store_true", help="Run metric update once and exit")
+    parser.add_argument(
+        "--port", type=int, default=EXPORT_PORT, help="Exporter HTTP port"
+    )
+    parser.add_argument(
+        "--once", action="store_true", help="Update metrics once and exit"
+    )
     args = parser.parse_args()
 
-    update_metrics()
     if args.once:
+        update_metrics()
         print(json.dumps(METRICS_CACHE, indent=2))
         sys.exit(0)
 
-    server = HTTPServer(('0.0.0.0', args.port), MetricsHandler)
-    logger.info(f"Starting router-kea-exporter on port {args.port}...")
+    update_metrics()
+    server_address = ('', args.port)
+    httpd = HTTPServer(server_address, MetricsHandler)
+    logger.info(f"Kea Metrics Exporter listening on port {args.port}")
     try:
-        server.serve_forever()
+        httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+    httpd.server_close()
+
 
 if __name__ == '__main__':
     main()
