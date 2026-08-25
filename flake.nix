@@ -110,6 +110,8 @@
             self.nixosModules.router-security-hardened
             self.nixosModules.router-network-security
             self.nixosModules.router-zones
+            self.nixosModules.router-pangolin
+            self.nixosModules.router-twingate
           ];
         };
 
@@ -158,6 +160,8 @@
         router-security-hardened = import ./modules/router-security-hardened.nix;
         router-network-security = routerNetworkSecurityModule;
         router-zones = import ./modules/router-zones.nix;
+        router-pangolin = import ./modules/router-pangolin.nix;
+        router-twingate = import ./modules/router-twingate.nix;
       };
 
       # Example configuration for testing
