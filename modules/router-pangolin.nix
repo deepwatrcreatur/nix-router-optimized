@@ -72,5 +72,9 @@ in
     services.router-firewall = mkIf (firewallEnabled && cfg.openFirewall) {
       wanTcpPorts = [ 80 443 ];
     };
+
+    systemd.services.pangolin = mkIf (cfg.environmentFile != null) {
+      serviceConfig.EnvironmentFile = lib.mkForce [ "-${cfg.environmentFile}" ];
+    };
   };
 }
