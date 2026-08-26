@@ -55,12 +55,12 @@ in
   config = mkIf cfg.enable {
     services.pangolin = {
       enable = true;
-      baseDomain = cfg.baseDomain;
-      dashboardDomain = cfg.dashboardDomain;
-      environmentFile = cfg.environmentFile;
       openFirewall = cfg.openFirewall;
       settings = cfg.settings;
-    };
+    }
+    // optionalAttrs (cfg.baseDomain != null) { baseDomain = cfg.baseDomain; }
+    // optionalAttrs (cfg.dashboardDomain != null) { dashboardDomain = cfg.dashboardDomain; }
+    // optionalAttrs (cfg.environmentFile != null) { environmentFile = cfg.environmentFile; };
 
     services.router-firewall = mkIf (firewallEnabled && cfg.openFirewall) {
       wanTcpPorts = [ 80 443 ];
