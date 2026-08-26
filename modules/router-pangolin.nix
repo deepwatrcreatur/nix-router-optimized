@@ -23,19 +23,25 @@ in
 
     baseDomain = mkOption {
       type = types.nullOr types.str;
-      default = null;
+      default = "deepwatercreature.com";
       description = "Base domain for Pangolin tunnel endpoints.";
     };
 
     dashboardDomain = mkOption {
       type = types.nullOr types.str;
-      default = null;
+      default = "pangolin.deepwatercreature.com";
       description = "Dashboard domain for Pangolin management interface.";
+    };
+
+    letsEncryptEmail = mkOption {
+      type = types.nullOr types.str;
+      default = "deepwatrcreatur@gmail.com";
+      description = "Email for ACME Let's Encrypt certificates.";
     };
 
     environmentFile = mkOption {
       type = types.nullOr types.str;
-      default = null;
+      default = "/etc/pangolin/pangolin.env";
       description = "Path to environment file containing secrets for Pangolin.";
     };
 
@@ -60,6 +66,7 @@ in
     }
     // optionalAttrs (cfg.baseDomain != null) { baseDomain = cfg.baseDomain; }
     // optionalAttrs (cfg.dashboardDomain != null) { dashboardDomain = cfg.dashboardDomain; }
+    // optionalAttrs (cfg.letsEncryptEmail != null) { letsEncryptEmail = cfg.letsEncryptEmail; }
     // optionalAttrs (cfg.environmentFile != null) { environmentFile = cfg.environmentFile; };
 
     services.router-firewall = mkIf (firewallEnabled && cfg.openFirewall) {
