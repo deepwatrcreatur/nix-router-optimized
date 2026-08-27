@@ -58,23 +58,26 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    services.pangolin = {
-      enable = true;
-      openFirewall = cfg.openFirewall;
-      settings = cfg.settings;
+  config = mkIf cfg.enable (mkMerge [
+    {
+      services.pangolin = {
+        enable = true;
+        openFirewall = cfg.openFirewall;
+        settings = cfg.settings;
+      }
+      // optionalAttrs (cfg.baseDomain != null) { baseDomain = cfg.baseDomain; }
+      // optionalAttrs (cfg.dashboardDomain != null) { dashboardDomain = cfg.dashboardDomain; }
+      // optionalAttrs (cfg.letsEncryptEmail != null) { letsEncryptEmail = cfg.letsEncryptEmail; }
+      // optionalAttrs (cfg.environmentFile != null) { environmentFile = cfg.environmentFile; };
+
+      systemd.services.pangolin = mkIf (cfg.environmentFile != null) {
+        serviceConfig.EnvironmentFile = lib.mkForce [ "-${cfg.environmentFile}" ];
+      };
     }
-    // optionalAttrs (cfg.baseDomain != null) { baseDomain = cfg.baseDomain; }
-    // optionalAttrs (cfg.dashboardDomain != null) { dashboardDomain = cfg.dashboardDomain; }
-    // optionalAttrs (cfg.letsEncryptEmail != null) { letsEncryptEmail = cfg.letsEncryptEmail; }
-    // optionalAttrs (cfg.environmentFile != null) { environmentFile = cfg.environmentFile; };
-
-    services.router-firewall = mkIf (firewallEnabled && cfg.openFirewall) {
-      wanTcpPorts = [ 80 443 ];
-    };
-
-    systemd.services.pangolin = mkIf (cfg.environmentFile != null) {
-      serviceConfig.EnvironmentFile = lib.mkForce [ "-${cfg.environmentFile}" ];
-    };
-  };
+    (optionalAttrs (hasRouterOption [ "services" "router-firewall" "enable" ]) {
+      services.router-firewall = mkIf (firewallEnabled && cfg.openFirewall) {
+        wanTcpPorts = [ 80 443 ];
+      };
+    })
+  ]);
 }

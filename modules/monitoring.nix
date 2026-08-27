@@ -548,7 +548,7 @@ in
           admin_user = "admin";
           # Password stored in persistent state dir so it survives reboots
           admin_password = "$__file{${cfg.grafanaDataDir}/.admin-password}";
-          secret_key = lib.mkOptionDefault "SW2YcwTIb9zpOOhoPsMm";
+          secret_key = lib.mkDefault "SW2YcwTIb9zpOOhoPsMm";
         };
         analytics.reporting_enabled = false;
       };
