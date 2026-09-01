@@ -690,6 +690,31 @@ let
     echo "Technitium DNS listeners synchronized"
   '';
 
+  dnssecSyncScript = pkgs.writeShellScript "technitium-sync-dnssec" ''
+    set -euo pipefail
+
+    ${commonShellHelpers}
+
+    if ! resolve_api_token_file >/dev/null; then
+      echo "Technitium API token file not found; cannot sync DNSSEC settings" >&2
+      exit 1
+    fi
+
+    wait_for_technitium
+
+    TOKEN="$(read_api_token)"
+    VALUE="${if cfg.dnssec.enableValidation then "Enable" else "Disable"}"
+
+    technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "token=$TOKEN" \
+      --data-urlencode "dnssecValidation=$VALUE" \
+      "http://127.0.0.1:5380/api/settings/set" \
+      >/dev/null
+
+    echo "Technitium DNSSEC validation synchronized ($VALUE)"
+  '';
+
   encryptedDnsSyncScript = pkgs.writeShellScript "technitium-sync-encrypted-dns" ''
     set -euo pipefail
     umask 077
@@ -1086,6 +1111,14 @@ in
       '';
     };
 
+    dnssec = {
+      enableValidation = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable DNSSEC validation for recursive DNS lookups in Technitium.";
+      };
+    };
+
     encryptedDns = mkOption {
       type = encryptedDnsModule;
       default = { };
@@ -1350,6 +1383,25 @@ in
 
       script = ''
         ${dhcpReservationScript}
+      '';
+    };
+
+    systemd.services.technitium-sync-dnssec = mkIf hasTokenSource {
+      description = "Sync Technitium DNSSEC validation settings";
+      after = [
+        "technitium-dns-server.service"
+        "agenix.service"
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
+      wants = [ "technitium-dns-server.service" ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+
+      script = ''
+        ${dnssecSyncScript}
       '';
     };
 

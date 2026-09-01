@@ -22,15 +22,24 @@ in
   imports = [
     ./dns.nix
     ./router-technitium.nix
+    ./router-rgbdns.nix
   ];
 
   options.services.router-dns-service = {
     enable = mkEnableOption "router-oriented DNS service defaults";
 
     provider = mkOption {
-      type = types.enum [ "technitium" "unbound" "dnsmasq" ];
+      type = types.enum [ "technitium" "rgbdns" "unbound" "dnsmasq" ];
       default = "technitium";
       description = "DNS provider to run on the router.";
+    };
+
+    dnssec = {
+      enableValidation = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable DNSSEC validation for recursive DNS lookups.";
+      };
     };
 
     listenAddresses = mkOption {
@@ -191,7 +200,7 @@ in
       supportsAuthoritativeDnsUpdates = cfg.provider == "technitium";
     };
 
-    router.dns = mkIf (cfg.provider != "technitium") {
+    router.dns = mkIf (cfg.provider != "technitium" && cfg.provider != "rgbdns") {
       enable = true;
       provider = cfg.provider;
       listenAddresses = effectiveServiceListenAddresses;
@@ -209,6 +218,13 @@ in
       forceBlockListUpdateOnActivation = cfg.technitium.forceBlockListUpdateOnActivation;
       listenEndPoints = map formatTechnitiumEndPoint cfg.serviceListenAddresses;
       ntpServers = cfg.ntpServers;
+      dnssec.enableValidation = cfg.dnssec.enableValidation;
+    };
+
+    services.router-rgbdns = mkIf (cfg.provider == "rgbdns") {
+      enable = true;
+      listenAddresses = effectiveServiceListenAddresses;
+      dnssec.enable = cfg.dnssec.enableValidation;
     };
   };
 }
