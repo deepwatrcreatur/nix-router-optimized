@@ -94,6 +94,7 @@
             self.nixosModules.router-vpn
             self.nixosModules.router-tunnels
             self.nixosModules.router-cloudflare-tunnel
+            self.nixosModules.router-cloudflare-warp
             self.nixosModules.router-remote-admin
             self.nixosModules.router-ntp
             self.nixosModules.router-kea
@@ -143,6 +144,7 @@
         router-vpn = import ./modules/router-vpn.nix;
         router-tunnels = import ./modules/router-tunnels.nix;
         router-cloudflare-tunnel = import ./modules/router-cloudflare-tunnel.nix;
+        router-cloudflare-warp = import ./modules/router-cloudflare-warp.nix;
         router-remote-admin = import ./modules/router-remote-admin.nix;
         router-ntp = import ./modules/router-ntp.nix;
         router-kea = import ./modules/router-kea.nix;
