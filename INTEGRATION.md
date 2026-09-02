@@ -90,6 +90,29 @@ services.router = {
 4. Add support for VLANs and multiple LANs
 5. Add traffic shaping/QoS modules
 
+### Recommended Security & Performance Extras
+
+#### 1. DNSSEC Validation (`dnssec.enableValidation = true`)
+Highly recommended to prevent DNS spoofing and cache poisoning across recursive lookups:
+```nix
+services.router-dns-service = {
+  enable = true;
+  provider = "technitium";
+  dnssec.enableValidation = true;
+};
+```
+
+#### 2. Cloudflare WARP WAN Acceleration (`services.router-cloudflare-warp`)
+Highly recommended for accelerating bulk downloads or bypassing ISP transit throttling:
+```nix
+services.router-cloudflare-warp = {
+  enable = true;
+  mode = "warp";
+  routingMode = "selective-lan-ips";
+  targetLanIps = [ "10.10.11.73" "10.10.11.84" ];
+};
+```
+
 ## Known Issues
 
 ### Dashboard Issues
