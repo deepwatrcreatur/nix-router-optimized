@@ -104,7 +104,7 @@ in
       if hasRouterFirewallOption then
         {
           services.router-firewall = mkIf (config.services.router-firewall.enable or false) {
-            trustedInterfaces = [ cfg.interfaceName ];
+            extraTrustedInterfaces = [ cfg.interfaceName ];
           };
         }
       else
