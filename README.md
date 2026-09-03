@@ -329,6 +329,25 @@ This is complementary to `caddy-reverse-proxy`: Caddy still handles your local
 reverse proxy and policy, while Cloudflare Tunnel can publish selected services
 without opening inbound ports on the router.
 
+### router-cloudflare-warp
+Outbound Cloudflare WARP VPN client integration for bulk download acceleration and ISP throttling bypass.
+
+> **Important Usage & Trade-Off Guidance**:
+> - **Selective Policy Routing Recommended (`selective-lan-ips`)**: Avoid using `routingMode = "all-traffic"` network-wide. Routing an entire household through shared Cloudflare VPN egress IPs will cause Google CAPTCHAs, banking fraud alerts, streaming VPN blocks (Netflix/Hulu), and single-point-of-failure risks.
+> - **Selective LAN IPs**: Use `routingMode = "selective-lan-ips"` to route only designated bulk downloaders or workstations through the WARP tunnel.
+> - **DNS Isolation**: Local DNS resolvers (such as Technitium) remain authoritative for `/etc/resolv.conf` and local domain resolution so internal homelab records and blocklists are preserved.
+
+Example:
+
+```nix
+services.router-cloudflare-warp = {
+  enable = true;
+  mode = "warp";
+  routingMode = "selective-lan-ips";
+  targetLanIps = [ "10.10.11.84" ]; # Route specific downloader IP only
+};
+```
+
 ### router-dns-service
 Provider-aware local resolver layer:
 - chooses between `technitium`, `unbound`, and `dnsmasq`

@@ -102,14 +102,20 @@ services.router-dns-service = {
 };
 ```
 
-#### 2. Cloudflare WARP WAN Acceleration (`services.router-cloudflare-warp`)
-Highly recommended for accelerating bulk downloads or bypassing ISP transit throttling:
+#### 2. Cloudflare WARP Outbound Tunnel (`services.router-cloudflare-warp`)
+Optional extra for bypassing ISP transit throttling on specific devices.
+
+> **Important Usage Note**:
+> - **Do NOT use `routingMode = "all-traffic"` network-wide**: Routing your entire household through Cloudflare WARP will cause Google CAPTCHAs, banking security flags, streaming VPN blocks (Netflix/Hulu), and single-point-of-failure risks.
+> - **Recommended (`selective-lan-ips`)**: Keep household devices on your direct ISP connection. Use `routingMode = "selective-lan-ips"` to route only specific bulk downloaders or workstations through WARP.
+> - **DNS Isolation**: Ensure WARP DNS overrides are disabled so Technitium DNS remains the sole resolver for your homelab domain (`deepwatercreature.com`) and blocklists.
+
 ```nix
 services.router-cloudflare-warp = {
   enable = true;
   mode = "warp";
   routingMode = "selective-lan-ips";
-  targetLanIps = [ "10.10.11.73" "10.10.11.84" ];
+  targetLanIps = [ "10.10.11.84" ]; # Only specific downloader/machine
 };
 ```
 
