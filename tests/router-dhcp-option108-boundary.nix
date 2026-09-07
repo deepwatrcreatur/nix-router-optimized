@@ -17,7 +17,7 @@ let
   };
 in
 {
-  router-dhcp-option108-unsupported-fails-eval = eval.mkNixosEvalFailureCheck "router-dhcp-option108-unsupported" [
+  router-dhcp-option108-success-eval = eval.mkNixosEvalCheck "router-dhcp-option108-success" [
     self.nixosModules.router-networking
     self.nixosModules.router-dhcp
     {
@@ -36,6 +36,14 @@ in
         interfaces.lan.option108.enable = true;
       };
     }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = lib.hasInfix "IPv6OnlyPreferred=yes" config.systemd.network.networks."20-router-lan".extraConfig;
+          message = "option108.enable must append IPv6OnlyPreferred=yes under [DHCPServer] in extraConfig.";
+        }
+      ];
+    })
   ];
 
   router-technitium-option108-unsupported-fails-eval = eval.mkNixosEvalFailureCheck "router-technitium-option108-unsupported" [

@@ -193,9 +193,6 @@ let
       // optionalAttrs (effectiveDns != [ ]) {
         DNS = effectiveDns;
       }
-      // optionalAttrs (ifaceCfg.option108.enable or false) {
-        IPv6OnlyPreferred = true;
-      }
       // pxeDhcpConfig
       // ifaceCfg.extraDhcpServerConfig;
       dhcpServerStaticLeases = map (
@@ -206,6 +203,10 @@ let
         }
         // optionalAttrs (lease.hostname != null) { Hostname = lease.hostname; }
       ) ifaceCfg.staticLeases;
+      extraConfig = optionalString (ifaceCfg.option108.enable or false) ''
+        [DHCPServer]
+        IPv6OnlyPreferred=yes
+      '';
     };
 in
 {
@@ -258,14 +259,6 @@ in
             && (ifaceCfg.pxe.bootFilename == null || ifaceCfg.pxe.bootFilename == "")
           );
         message = "services.router-dhcp.interfaces.${name}.pxe.bootFilename must be set when PXE is enabled.";
-      }) cfg.interfaces)
-      ++ (mapAttrsToList (name: ifaceCfg: {
-        assertion = !(ifaceCfg.option108.enable or false);
-        message = ''
-          services.router-dhcp.interfaces.${name}.option108.enable is not supported declaratively.
-          Use services.router-dhcp.interfaces.${name}.extraDhcpServerConfig only as a manual
-          escape hatch if you need to experiment with raw systemd-networkd DHCPServer keys.
-        '';
       }) cfg.interfaces);
 
     systemd.network.networks = mapAttrs' (
