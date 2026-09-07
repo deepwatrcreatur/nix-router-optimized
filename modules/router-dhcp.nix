@@ -122,12 +122,11 @@ let
         };
         default = { };
         description = ''
-          Explicit DHCP option 108 boundary for the systemd-networkd backend.
+          First-class DHCP option 108 (RFC 8925) configuration for systemd-networkd.
 
-          `services.router-dhcp` does not provide a first-class declarative
-          option 108 surface. If you need to experiment manually, use
-          `extraDhcpServerConfig` and validate the underlying
-          systemd-networkd behavior yourself.
+          When enabled, systemd-networkd advertises option 108 (IPv6OnlyPreferred=yes)
+          in DHCPv4 responses, signaling to compatible IPv6-capable endpoints to skip
+          or release IPv4 address acquisition on IPv6-only or IPv6-preferred subnets.
         '';
       };
 
@@ -204,6 +203,10 @@ let
         }
         // optionalAttrs (lease.hostname != null) { Hostname = lease.hostname; }
       ) ifaceCfg.staticLeases;
+      extraConfig = optionalString (ifaceCfg.option108.enable or false) ''
+        [DHCPServer]
+        IPv6OnlyPreferred=yes
+      '';
     };
 in
 {
@@ -256,14 +259,6 @@ in
             && (ifaceCfg.pxe.bootFilename == null || ifaceCfg.pxe.bootFilename == "")
           );
         message = "services.router-dhcp.interfaces.${name}.pxe.bootFilename must be set when PXE is enabled.";
-      }) cfg.interfaces)
-      ++ (mapAttrsToList (name: ifaceCfg: {
-        assertion = !(ifaceCfg.option108.enable or false);
-        message = ''
-          services.router-dhcp.interfaces.${name}.option108.enable is not supported declaratively.
-          Use services.router-dhcp.interfaces.${name}.extraDhcpServerConfig only as a manual
-          escape hatch if you need to experiment with raw systemd-networkd DHCPServer keys.
-        '';
       }) cfg.interfaces);
 
     systemd.network.networks = mapAttrs' (
