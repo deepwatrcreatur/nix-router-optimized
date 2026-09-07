@@ -230,6 +230,20 @@ let
         description = "Delegated IPv6 prefix slice to advertise on this segment.";
       };
 
+      ulaPrefix = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "fd42:100:1::/64";
+        description = "Optional static ULA (Unique Local Address) IPv6 prefix slice to advertise alongside GUA on this segment.";
+      };
+
+      ulaAddress = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "fd42:100:1::1/64";
+        description = "Optional static ULA IPv6 CIDR address to assign to this router interface.";
+      };
+
       preferredLifetimeSec = mkOption {
         type = types.int;
         default = 1800;
@@ -471,7 +485,7 @@ let
 
   mkRoutedInterface = name: iface: {
     matchConfig.Name = iface.device;
-    address = [ iface.ipv4Address ];
+    address = [ iface.ipv4Address ] ++ optional (iface.ulaAddress != null) iface.ulaAddress;
     routes = (map mkRoute iface.extraRoutes)
       ++ (optional (iface.vpnExit != null) {
         Gateway = "::"; # Special value for "on-link" if no gateway is known? No, we want dev.
@@ -530,7 +544,11 @@ let
         PreferredLifetimeSec = iface.preferredLifetimeSec;
         ValidLifetimeSec = iface.validLifetimeSec;
       }
-    ];
+    ] ++ optional (iface.ulaPrefix != null) {
+      Prefix = iface.ulaPrefix;
+      PreferredLifetimeSec = iface.preferredLifetimeSec;
+      ValidLifetimeSec = iface.validLifetimeSec;
+    };
     routingPolicyRules =
       (optional iface.policyRouting.enable
         {
