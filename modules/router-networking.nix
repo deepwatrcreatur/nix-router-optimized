@@ -244,6 +244,12 @@ let
         description = "Optional static ULA IPv6 CIDR address to assign to this router interface.";
       };
 
+      ipv6OnlyPreferred = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether to advertise the RFC 9686 IPv6-Only Preferred option in Router Advertisements.";
+      };
+
       preferredLifetimeSec = mkOption {
         type = types.int;
         default = 1800;
@@ -510,7 +516,7 @@ let
       // optionalAttrs (iface.dns != [ ]) { DNS = iface.dns; }
       // optionalAttrs (iface.domains != [ ]) { Domains = iface.domains; };
     ipv6SendRAConfig =
-      if iface.prefixDelegationMode == "managed" then
+      (if iface.prefixDelegationMode == "managed" then
         {
           Managed = true;
           OtherInformation = true;
@@ -521,7 +527,10 @@ let
           Managed = false;
           OtherInformation = false;
           EmitDNS = iface.dns != [ ];
-        };
+        })
+      // optionalAttrs iface.ipv6OnlyPreferred {
+        IPv6OnlyPreferred = true;
+      };
     extraConfig =
       let
         allPvds = iface.pvds ++ (optional (iface.pvd != null) iface.pvd);
