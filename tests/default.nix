@@ -43,6 +43,10 @@ let
     inherit self lib eval;
   };
 
+  routerIpv6RaControlChecks = import ./router-ipv6-ra-control.nix {
+    inherit self lib eval;
+  };
+
   keaChecks = import ./router-kea-eval.nix {
     inherit self eval;
   };
@@ -139,6 +143,7 @@ in
 // docExampleChecks
 // nptv6Checks
 // pvdChecks
+// routerIpv6RaControlChecks
 // keaChecks
 // routerDashboardInventoryChecks
 // routerDashboardFirewallChecks
