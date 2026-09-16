@@ -250,6 +250,28 @@ let
         description = "Whether to advertise the RFC 9686 IPv6-Only Preferred option in Router Advertisements.";
       };
 
+      ipv6SendRA = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to broadcast IPv6 Router Advertisements on this interface.";
+      };
+
+      dhcpPrefixDelegation = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to assign delegated IPv6 prefixes to this interface via DHCPv6-PD.";
+      };
+
+      routerLifetimeSec = mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        example = 0;
+        description = ''
+          Lifetime in seconds of the router as a default gateway in Router Advertisements.
+          Set to 0 to prevent clients from using this router as an internet default gateway.
+        '';
+      };
+
       preferredLifetimeSec = mkOption {
         type = types.int;
         default = 1800;
@@ -509,8 +531,8 @@ let
     networkConfig =
       {
         DHCPServer = mkDefault false;
-        IPv6SendRA = true;
-        DHCPPrefixDelegation = true;
+        IPv6SendRA = iface.ipv6SendRA;
+        DHCPPrefixDelegation = iface.dhcpPrefixDelegation;
         IPv6PrivacyExtensions = if iface.privacyExtensions then "kernel" else "no";
       }
       // optionalAttrs (iface.dns != [ ]) { DNS = iface.dns; }
@@ -530,6 +552,9 @@ let
         })
       // optionalAttrs iface.ipv6OnlyPreferred {
         IPv6OnlyPreferred = true;
+      }
+      // optionalAttrs (iface.routerLifetimeSec != null) {
+        RouterLifetimeSec = iface.routerLifetimeSec;
       };
     extraConfig =
       let
