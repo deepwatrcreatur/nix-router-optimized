@@ -39,6 +39,11 @@ The authority split is:
 
 ## Current Ranked Queue
 
+- [95-hardware-optimization-safety-matrix-and-lro-removal](./95-hardware-optimization-safety-matrix-and-lro-removal.md) — `ready` (P0 Blocker)
+- [96-multi-node-nixos-vm-test-harness](./96-multi-node-nixos-vm-test-harness.md) — `ready` (P0 Blocker)
+- [97-routerctl-cli-diagnostics-and-firewall-explainer](./97-routerctl-cli-diagnostics-and-firewall-explainer.md) — `ready` (P1 High)
+- [98-subnet-overlap-and-topology-eval-assertions](./98-subnet-overlap-and-topology-eval-assertions.md) — `ready` (P1 High)
+- [99-systemd-slice-isolation-and-framework-rebranding](./99-systemd-slice-isolation-and-framework-rebranding.md) — `ready` (P2 Medium)
 - [91-router-ha-lab-nspawn-phase-1-harness](./91-router-ha-lab-nspawn-phase-1-harness.md) — `ready`
 
 ## Recently Completed
