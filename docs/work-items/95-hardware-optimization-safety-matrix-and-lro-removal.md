@@ -27,7 +27,7 @@ Enabling LRO (Large Receive Offload) on a forwarding router is a critical networ
 
 ## Acceptance Criteria
 
-- [ ] `lro on` completely eliminated from codebase; `ethtool -K <iface> lro off` explicitly verified.
+- [ ] `lro on` completely eliminated from NixOS modules (`modules/`); `ethtool -K <iface> lro off` explicitly verified.
 - [ ] Safe GRO and offload negotiation script implemented without blind `|| true` suppressions.
 - [ ] Operational state file `/run/router/nic-offload-status.json` generated on activation.
 - [ ] Existing eval tests pass without regression.
