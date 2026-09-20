@@ -1,6 +1,6 @@
 # Work Item 102: Upstream Kea DHCPv4 Hardening, Pool Exhaustion Protection, and Carrier Readiness
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P0 (Blocker)  
 **Created:** 2026-09-19  
 

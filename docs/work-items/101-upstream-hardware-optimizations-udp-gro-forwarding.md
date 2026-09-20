@@ -1,6 +1,6 @@
-# Work Item 101: Upstream UDP GRO Forwarding Offload Configuration
+# Work Item 101: Upstream Hardware Offload UDP GRO Forwarding & Remove LRO
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P1 (High)  
 **Created:** 2026-09-19  
 

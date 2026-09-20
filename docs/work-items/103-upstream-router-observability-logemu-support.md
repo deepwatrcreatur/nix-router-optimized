@@ -1,6 +1,6 @@
 # Work Item 103: Upstream Ulogd LOGEMU Output Support in Router Observability
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P1 (High)  
 **Created:** 2026-09-19  
 

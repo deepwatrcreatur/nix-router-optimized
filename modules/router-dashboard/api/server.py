@@ -88,8 +88,19 @@ CADDY_DNS_CACHE = {
 TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
 TECHNITIUM_RUNTIME_API_KEY_FILE = os.environ.get('TECHNITIUM_RUNTIME_API_KEY_FILE', '')
 TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
-TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
+CLOUDFLARE_TOKEN_FILE = os.environ.get('DASHBOARD_CLOUDFLARE_TOKEN_FILE', '')
+if CLOUDFLARE_TOKEN_FILE and os.path.exists(CLOUDFLARE_TOKEN_FILE):
+    try:
+        with open(CLOUDFLARE_TOKEN_FILE, 'r', encoding='utf-8') as handle:
+            _cf_token = handle.read().strip()
+            if _cf_token:
+                os.environ['CLOUDFLARE_API_TOKEN'] = _cf_token
+    except Exception:
+        pass
+FAIL2BAN_STATUS_FILE = os.environ.get('DASHBOARD_FAIL2BAN_STATUS_FILE', '/run/router-dashboard/fail2ban-status.json')
+KEA_SNAPSHOT_FILE = os.environ.get('DASHBOARD_KEA_LEASES_FILE', '/run/router-dashboard/kea-dhcp4.leases')
 KEA_LEASE_FILES = [
+    Path(KEA_SNAPSHOT_FILE),
     Path('/var/lib/private/kea/dhcp4.leases.2'),
     Path('/var/lib/private/kea/dhcp4.leases'),
     Path('/var/lib/kea/dhcp4.leases.2'),
@@ -358,8 +369,23 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 if not stats_path.exists():
                     continue
 
-                rx_bytes = int(self.read_file(stats_path / 'rx_bytes') or 0)
-                tx_bytes = int(self.read_file(stats_path / 'tx_bytes') or 0)
+                def read_int(path):
+                    raw = self.read_file(path)
+                    if not raw:
+                        return 0
+                    try:
+                        return int(str(raw).strip())
+                    except ValueError:
+                        return 0
+
+                def read_state(path):
+                    raw = self.read_file(path)
+                    if not raw:
+                        return 'UNKNOWN'
+                    return str(raw).strip().upper() or 'UNKNOWN'
+
+                rx_bytes = read_int(stats_path / 'rx_bytes')
+                tx_bytes = read_int(stats_path / 'tx_bytes')
 
                 # Calculate rates
                 rx_rate, tx_rate = self.calculate_rates(name, rx_bytes, tx_bytes)
@@ -370,17 +396,17 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
                 stats = {
                     'device': name,
-                    'state': self.read_file(iface_path / 'operstate').strip().upper() or 'UNKNOWN',
+                    'state': read_state(iface_path / 'operstate'),
                     'ipv4': ipv4,
                     'ipv6': ipv6_list,
                     'rx_bytes': rx_bytes,
                     'tx_bytes': tx_bytes,
                     'rx_rate': rx_rate,
                     'tx_rate': tx_rate,
-                    'rx_packets': int(self.read_file(stats_path / 'rx_packets') or 0),
-                    'tx_packets': int(self.read_file(stats_path / 'tx_packets') or 0),
-                    'rx_errors': int(self.read_file(stats_path / 'rx_errors') or 0),
-                    'tx_errors': int(self.read_file(stats_path / 'tx_errors') or 0)
+                    'rx_packets': read_int(stats_path / 'rx_packets'),
+                    'tx_packets': read_int(stats_path / 'tx_packets'),
+                    'rx_errors': read_int(stats_path / 'rx_errors'),
+                    'tx_errors': read_int(stats_path / 'tx_errors')
                 }
 
                 interfaces[name] = stats
@@ -814,13 +840,15 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             'caddy'
         ], [ 'version' ]) or self.extract_exec_path(properties.get('ExecStart', ''))
         env_file = '/run/caddy/caddy.env'
-        token_file = '/run/agenix/cloudflare-api-key'
+        token_file = CLOUDFLARE_TOKEN_FILE or os.environ.get('DASHBOARD_CLOUDFLARE_TOKEN_FILE', '') or '/run/agenix/cloudflare-api-key'
         env_configured = '/run/caddy/caddy.env' in properties.get('EnvironmentFiles', '')
         env_present = env_configured or os.path.exists(env_file)
         token_exists = os.path.exists(token_file)
         token_value = ''
         if token_exists:
             token_value = self.read_file(token_file).strip()
+        elif os.environ.get('CLOUDFLARE_API_TOKEN'):
+            token_value = os.environ.get('CLOUDFLARE_API_TOKEN', '').strip()
         live_config = None
 
         config_valid = False
@@ -1237,6 +1265,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             for item in data.get('nftables', []):
                 if 'rule' in item:
                     rules_count += 1
+                    exprs = item.get('rule', {}).get('expr', [])
+                    for expr in exprs:
+                        if 'flow' in expr:
+                            flowtable_active = True
                 if 'flowtable' in item:
                     flowtable_active = True
                 if 'chain' in item:
@@ -1291,6 +1323,17 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             except:
                 pass
 
+            if not flowtable_active:
+                try:
+                    raw_result = subprocess.run(
+                        ['nft', 'list', 'ruleset'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if raw_result.returncode == 0 and 'flowtable' in raw_result.stdout:
+                        flowtable_active = True
+                except Exception:
+                    pass
+
             # Get packet counters from interfaces
             packets_in = 0
             packets_out = 0
@@ -1305,9 +1348,15 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                     rx = self.read_file(f'/sys/class/net/{iface}/statistics/rx_packets')
                     tx = self.read_file(f'/sys/class/net/{iface}/statistics/tx_packets')
                     if rx:
-                        packets_in += int(rx)
+                        try:
+                            packets_in += int(rx)
+                        except ValueError:
+                            pass
                     if tx:
-                        packets_out += int(tx)
+                        try:
+                            packets_out += int(tx)
+                        except ValueError:
+                            pass
             except:
                 pass
 
@@ -2390,42 +2439,72 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 continue
 
             try:
-                with lease_file.open(newline='') as handle:
-                    reader = csv.DictReader(handle)
+                with lease_file.open(newline='', encoding='utf-8', errors='replace') as handle:
+                    lines = [line for line in handle if line.strip() and not line.startswith('#')]
+                    if not lines:
+                        continue
+
+                    reader = csv.reader(lines)
+                    header_map = {}
+                    first_row = True
+
                     for row in reader:
                         if not row:
                             continue
 
-                        address = (row.get('address') or '').strip()
-                        if not address:
+                        # Check if first line is CSV header
+                        if first_row:
+                            first_row = False
+                            col0 = row[0].strip().lower()
+                            if col0 == 'address':
+                                header_map = {col.strip().lower(): idx for idx, col in enumerate(row)}
+                                continue
+
+                        def get_col(name, idx, default=''):
+                            if name in header_map:
+                                col_idx = header_map[name]
+                                return row[col_idx].strip() if col_idx < len(row) else default
+                            return row[idx].strip() if idx < len(row) else default
+
+                        address = get_col('address', 0)
+                        if not address or address.lower() == 'address':
                             continue
 
+                        hwaddr = get_col('hwaddr', 1)
+                        raw_expire = get_col('expire', 4, '0')
+                        hostname = get_col('hostname', 8)
+                        state_str = get_col('state', 9, '0')
+
                         try:
-                            state = int((row.get('state') or '0').strip() or '0')
+                            state = int(state_str)
                         except ValueError:
                             state = 0
 
                         try:
-                            expire_epoch = int((row.get('expire') or '0').strip() or '0')
+                            expire_epoch = int(raw_expire)
                         except ValueError:
                             expire_epoch = 0
 
-                        if state != 0 or expire_epoch <= now:
+                        if state != 0:
+                            continue
+
+                        if expire_epoch > 0 and expire_epoch <= now:
                             continue
 
                         existing = leases_by_address.get(address)
                         if existing and existing['expire_epoch'] >= expire_epoch:
                             continue
 
-                        hostname = (row.get('hostname') or '').strip()
                         if hostname.endswith('.'):
                             hostname = hostname[:-1]
+
+                        lease_expires = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(expire_epoch)) if expire_epoch > 0 else ''
 
                         leases_by_address[address] = {
                             'address': address,
                             'hostname': hostname,
-                            'hardwareAddress': (row.get('hwaddr') or '').strip(),
-                            'leaseExpires': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(expire_epoch)),
+                            'hardwareAddress': hwaddr,
+                            'leaseExpires': lease_expires,
                             'expire_epoch': expire_epoch,
                             'scope': 'LAN',
                             'interface': 'Kea DHCP',
@@ -2433,9 +2512,15 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             except OSError:
                 continue
 
+        def ip_sort_key(value):
+            try:
+                return (0, ipaddress.ip_address(value))
+            except ValueError:
+                return (1, value)
+
         return sorted(
             leases_by_address.values(),
-            key=lambda lease: lease['address']
+            key=lambda lease: ip_sort_key(lease['address'])
         )
 
     def get_kea_metrics_data(self):
@@ -2502,6 +2587,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def get_fail2ban_status_data(self):
         """Get Fail2ban jail status and banned IPs"""
+        if FAIL2BAN_STATUS_FILE and os.path.exists(FAIL2BAN_STATUS_FILE):
+            try:
+                with open(FAIL2BAN_STATUS_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+
         try:
             # Find fail2ban-client
             f2b_client = None

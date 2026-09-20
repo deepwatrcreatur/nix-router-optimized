@@ -12,6 +12,8 @@ with lib;
 
 let
   cfg = config.services.router-dashboard;
+  fail2banSnapshotFile = "/run/router-dashboard/fail2ban-status.json";
+  keaLeaseSnapshotFile = "/run/router-dashboard/kea-dhcp4.leases";
   technitiumRuntimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
   normalizedServiceControlServices = map (
     entry:
@@ -741,6 +743,7 @@ let
 
   # API server script
   apiServer = ./router-dashboard/api/server.py;
+  fail2banSnapshotScript = ./router-dashboard/scripts/router-dashboard-fail2ban-snapshot.py;
 
 in {
   options.services.router-dashboard = {
@@ -928,6 +931,16 @@ in {
       ];
       description = "Devices exposed in the dashboard Wake-on-LAN widget.";
     };
+
+    cloudflareTokenFile = mkOption {
+      type = types.nullOr types.str;
+      default =
+        if config ? age && config.age ? secrets && config.age.secrets ? cloudflare-api-key then
+          config.age.secrets.cloudflare-api-key.path
+        else
+          null;
+      description = "Path to optional Cloudflare API token file for Caddy DNS validation.";
+    };
   };
 
   config = mkMerge [
@@ -971,6 +984,9 @@ in {
           DASHBOARD_NAT64_PREFIX = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv6Prefix else "";
           DASHBOARD_NAT64_POOL = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv4Pool else "";
           DASHBOARD_CLAT_STATUS_FILE = if config.services.router-clat.enable or false then "/run/router-clat/status.json" else "";
+          DASHBOARD_FAIL2BAN_STATUS_FILE = fail2banSnapshotFile;
+          DASHBOARD_KEA_LEASES_FILE = keaLeaseSnapshotFile;
+          DASHBOARD_CLOUDFLARE_TOKEN_FILE = if cfg.cloudflareTokenFile != null then cfg.cloudflareTokenFile else "";
           TECHNITIUM_URL = "http://localhost:5380";
           TECHNITIUM_RUNTIME_API_KEY_FILE = technitiumRuntimeApiTokenPath;
           TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
@@ -1008,10 +1024,12 @@ in {
             "/sys/class/net"
             "/var/log/journal"
             "/run/agenix"
+            "/run/router-dashboard"
           ]
           ++ lib.optional (config.services.router-clat.enable or false) "/run/router-clat"
           ++ lib.optional (config.services.router-technitium.enable or false) technitiumRuntimeApiTokenPath
-          ++ lib.optional (dashboardMutationAuthTokenFile != null) dashboardMutationAuthTokenFile;
+          ++ lib.optional (dashboardMutationAuthTokenFile != null) dashboardMutationAuthTokenFile
+          ++ lib.optional (cfg.cloudflareTokenFile != null) cfg.cloudflareTokenFile;
         };
 
         path = with pkgs; [
@@ -1046,6 +1064,131 @@ in {
       # NOTE: when router-firewall is enabled instead, add the dashboard port via:
       #   services.router-firewall.trustedTcpPorts = [ cfg.port ];
       networking.firewall.allowedTCPPorts = mkIf config.networking.firewall.enable [ cfg.port ];
+
+      systemd.tmpfiles.rules = [
+        "d /run/router-dashboard 0750 root router-dashboard -"
+      ];
+
+      systemd.services.router-dashboard-fail2ban-snapshot = mkIf (config.services.fail2ban.enable or false) {
+        description = "Refresh router dashboard fail2ban status snapshot";
+        after = [ "fail2ban.service" ];
+        requires = [ "fail2ban.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${pkgs.python3}/bin/python3 ${fail2banSnapshotScript}";
+          User = "root";
+          Group = "root";
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          ReadWritePaths = [ "/run/router-dashboard" ];
+          ProtectClock = true;
+          ProtectHostname = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RestrictNamespaces = true;
+          RestrictSUIDSGID = true;
+          SystemCallArchitectures = "native";
+        };
+        environment = {
+          DASHBOARD_FAIL2BAN_CLIENT = "${pkgs.fail2ban}/bin/fail2ban-client";
+          DASHBOARD_FAIL2BAN_STATUS_FILE = fail2banSnapshotFile;
+          DASHBOARD_FAIL2BAN_STATUS_GROUP = "router-dashboard";
+        };
+        wantedBy = [ "multi-user.target" ];
+      };
+
+      systemd.timers.router-dashboard-fail2ban-snapshot = mkIf (config.services.fail2ban.enable or false) {
+        description = "Refresh router dashboard fail2ban status snapshot periodically";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnBootSec = "30s";
+          OnUnitActiveSec = "30s";
+          Unit = "router-dashboard-fail2ban-snapshot.service";
+        };
+      };
+
+      systemd.services.router-dashboard-kea-lease-snapshot = mkIf (
+        (config.services.router-kea.enable or false) || (config.services.kea.dhcp4.enable or false)
+      ) {
+        description = "Refresh router dashboard Kea lease snapshot";
+        serviceConfig = {
+          Type = "oneshot";
+          User = "root";
+          Group = "root";
+          UMask = "0027";
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          ReadWritePaths = [ "/run/router-dashboard" ];
+          ProtectClock = true;
+          ProtectHostname = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RestrictNamespaces = true;
+          RestrictSUIDSGID = true;
+          SystemCallArchitectures = "native";
+        };
+        script = ''
+          set -euo pipefail
+          tmp="$(${pkgs.coreutils}/bin/mktemp /run/router-dashboard/kea-dhcp4.leases.XXXXXX)"
+          trap 'rm -f "$tmp"' EXIT
+
+          header=""
+          found_source=0
+
+          for candidate in \
+            /var/lib/private/kea/dhcp4.leases.2 \
+            /var/lib/private/kea/dhcp4.leases \
+            /var/lib/kea/dhcp4.leases.2 \
+            /var/lib/kea/dhcp4.leases
+          do
+            if [ ! -f "$candidate" ]; then
+              continue
+            fi
+
+            found_source=1
+
+            if [ -z "$header" ]; then
+              header="$(${pkgs.coreutils}/bin/head -n 1 "$candidate" || true)"
+              if [ -n "$header" ]; then
+                printf '%s\n' "$header" > "$tmp"
+              fi
+            fi
+
+            ${pkgs.coreutils}/bin/tail -n +2 "$candidate" | ${pkgs.gnused}/bin/sed '/^$/d;/^#/d' >> "$tmp"
+          done
+
+          if [ "$found_source" -eq 0 ] || [ -z "$header" ]; then
+            exit 0
+          fi
+
+          ${pkgs.coreutils}/bin/install -m 0640 -o root -g router-dashboard "$tmp" "${keaLeaseSnapshotFile}"
+        '';
+        wantedBy = [ "multi-user.target" ];
+      };
+
+      systemd.timers.router-dashboard-kea-lease-snapshot = mkIf (
+        (config.services.router-kea.enable or false) || (config.services.kea.dhcp4.enable or false)
+      ) {
+        description = "Refresh router dashboard Kea lease snapshot periodically";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnBootSec = "30s";
+          OnUnitActiveSec = "30s";
+          Unit = "router-dashboard-kea-lease-snapshot.service";
+        };
+      };
     })
 
     # Auto-open dashboard port in router-firewall when both are enabled

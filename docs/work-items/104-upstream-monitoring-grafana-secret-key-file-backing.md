@@ -1,6 +1,6 @@
 # Work Item 104: Upstream File-Backed Grafana Secret Key for NixOS 26.05+ Compatibility
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P2 (Medium)  
 **Created:** 2026-09-19  
 

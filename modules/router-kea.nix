@@ -184,6 +184,59 @@ let
     ${pkgs.coreutils}/bin/chmod 640 /run/kea/dhcp-ddns-runtime.conf
     ${pkgs.coreutils}/bin/chown root:kea /run/kea/dhcp-ddns-runtime.conf
   '';
+
+  keaDhcp4LeaseHeader =
+    "address,hwaddr,client_id,valid_lifetime,expire,subnet_id,fqdn_fwd,fqdn_rev,hostname,state,user_context,pool_id";
+
+  ensureKeaLeaseStateScript = pkgs.writeShellScript "router-kea-ensure-state" ''
+    set -euo pipefail
+
+    install -d -m 0750 -o kea -g kea /var/lib/private/kea /var/lib/kea
+
+    expected_header='${keaDhcp4LeaseHeader}'
+
+    for lease_file in /var/lib/private/kea/dhcp4.leases /var/lib/private/kea/dhcp4.leases.2 /var/lib/kea/dhcp4.leases /var/lib/kea/dhcp4.leases.2; do
+      if [ ! -e "$lease_file" ]; then
+        continue
+      fi
+
+      if [ -s "$lease_file" ]; then
+        header="$(head -n 1 "$lease_file" || true)"
+        if [ "$header" != "$expected_header" ]; then
+          backup="$lease_file.incompatible.$(date +%s)"
+          cp -a "$lease_file" "$backup"
+          : > "$lease_file"
+          echo "router-kea-ensure-state: reset incompatible lease file header in $lease_file (backup: $backup)" >&2
+        fi
+
+        if ${pkgs.gawk}/bin/gawk -F, '$10 == "1" { exit 0 } END { exit 1 }' "$lease_file" 2>/dev/null; then
+          temp_clean="$lease_file.clean.$(date +%s)"
+          ${pkgs.gawk}/bin/gawk -F, 'NR==1 || $10 != "1"' "$lease_file" > "$temp_clean" || true
+          cat "$temp_clean" > "$lease_file"
+          rm -f "$temp_clean"
+          echo "router-kea-ensure-state: purged declined leases from $lease_file" >&2
+        fi
+      fi
+
+      chown kea:kea "$lease_file" 2>/dev/null || true
+      chmod 0640 "$lease_file" 2>/dev/null || true
+    done
+
+    ${pkgs.findutils}/bin/find /var/lib/private/kea /var/lib/kea -name "dhcp4.leases.incompatible.*" -mtime +1 -delete 2>/dev/null || true
+  '';
+
+  waitForLanReadyScript = pkgs.writeShellScript "router-kea-wait-for-lan-ready" ''
+    set -euo pipefail
+    SECONDS=0
+    ${concatMapStringsSep "\n" (iface: ''
+      while [ "$SECONDS" -lt 30 ]; do
+        if ${pkgs.iproute2}/bin/ip -o link show dev ${escapeShellArg iface} 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q "LOWER_UP"; then
+          break
+        fi
+        ${pkgs.coreutils}/bin/sleep 1
+      done
+    '') effectiveInterfaces}
+  '';
 in
 {
   options.services.router-kea = {
@@ -274,6 +327,64 @@ in
         type = types.int;
         default = 172800;
         description = "Maximum lease time in seconds.";
+      };
+
+      matchClientId = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Whether Kea matches clients by DHCP client-identifier option (DUID) before falling back to MAC address.
+          Default false matches strictly by physical MAC address, preventing DUID churn from exhausting the IP pool.
+        '';
+      };
+
+      declineProbationPeriodSec = mkOption {
+        type = types.int;
+        default = 300;
+        description = ''
+          Time in seconds a declined lease remains in the declined state before returning to the available pool.
+          Kea default is 86400 (24 hours). 300 seconds allows swift recovery from transient IP collision conflicts.
+        '';
+      };
+
+      expiredLeasesProcessing = {
+        reclaimTimerWaitTime = mkOption {
+          type = types.int;
+          default = 10;
+          description = "Time in seconds between lease reclamation cycles.";
+        };
+        flushReclaimedTimerWaitTime = mkOption {
+          type = types.int;
+          default = 25;
+          description = "Time in seconds between flushing reclaimed leases to database.";
+        };
+        holdReclaimedTime = mkOption {
+          type = types.int;
+          default = 300;
+          description = "Time in seconds reclaimed leases are held before re-entering free pool.";
+        };
+        maxReclaimLeases = mkOption {
+          type = types.int;
+          default = 100;
+          description = "Maximum number of leases processed in a single reclaim cycle.";
+        };
+        maxReclaimTime = mkOption {
+          type = types.int;
+          default = 250;
+          description = "Maximum time in milliseconds a reclaim cycle is allowed to take.";
+        };
+      };
+
+      waitForCarrier = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Wait up to 30 seconds for served LAN interface(s) to achieve carrier before starting Kea.";
+      };
+
+      ensureLeaseState = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Validate Kea lease CSV header format and purge declined leases on service startup.";
       };
 
       reservations = mkOption {
@@ -505,6 +616,16 @@ in
           max-valid-lifetime = cfg.dhcp4.maxLeaseTimeSec;
           renew-timer = cfg.dhcp4.defaultLeaseTimeSec / 4;
           rebind-timer = (cfg.dhcp4.defaultLeaseTimeSec * 3) / 4;
+          decline-probation-period = cfg.dhcp4.declineProbationPeriodSec;
+          match-client-id = cfg.dhcp4.matchClientId;
+          host-reservation-identifiers = [ "hw-address" ];
+          expired-leases-processing = {
+            reclaim-timer-wait-time = cfg.dhcp4.expiredLeasesProcessing.reclaimTimerWaitTime;
+            flush-reclaimed-timer-wait-time = cfg.dhcp4.expiredLeasesProcessing.flushReclaimedTimerWaitTime;
+            hold-reclaimed-time = cfg.dhcp4.expiredLeasesProcessing.holdReclaimedTime;
+            max-reclaim-leases = cfg.dhcp4.expiredLeasesProcessing.maxReclaimLeases;
+            max-reclaim-time = cfg.dhcp4.expiredLeasesProcessing.maxReclaimTime;
+          };
 
           lease-database = {
             type = "memfile";
@@ -645,6 +766,13 @@ in
             "-c"
             "/run/kea/dhcp-ddns-runtime.conf"
           ]
+        );
+      };
+
+      systemd.services.kea-dhcp4-server = {
+        serviceConfig.ExecStartPre = mkBefore (
+          optional cfg.dhcp4.ensureLeaseState "+${ensureKeaLeaseStateScript}"
+          ++ optional cfg.dhcp4.waitForCarrier "+${waitForLanReadyScript}"
         );
       };
 

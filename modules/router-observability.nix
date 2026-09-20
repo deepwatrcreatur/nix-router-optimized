@@ -27,6 +27,16 @@ in
       description = "Netfilter NFLOG group for ulogd.";
     };
 
+    ulogdOutputPlugin = mkOption {
+      type = types.enum [ "logemu" "json" ];
+      default = "logemu";
+      description = ''
+        Output plugin for ulogd netfilter flow logging.
+        "logemu" (default) is shipped in standard pkgs.ulogd and outputs text logs to /var/log/ulogd/flow.log.
+        "json" requires an overlay providing ulogd_output_JSON.so and outputs to /var/log/ulogd/flow.json.
+      '';
+    };
+
     exportMetrics = {
       enable = mkEnableOption "remote writing metrics to an external store";
       remoteWriteUrl = mkOption {
@@ -54,27 +64,42 @@ in
       settings = {
         global = {
           logfile = "/var/log/ulogd/ulogd.log";
-          # Notice: plugin names must match exact .so filenames in pkgs.ulogd
-          # BASE matches ulogd_raw2packet_BASE.so
-          # JSON matches ulogd_output_JSON.so (available via overlay in this flake)
           plugin = [
             "${pkgs.ulogd}/lib/ulogd/ulogd_inppkt_NFLOG.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_raw2packet_BASE.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_IFINDEX.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_IP2STR.so"
             "${pkgs.ulogd}/lib/ulogd/ulogd_filter_PRINTPKT.so"
-            "${pkgs.ulogd}/lib/ulogd/ulogd_output_JSON.so"
-          ];
-          stack = "log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,json1:JSON";
+          ] ++ (
+            if cfg.ulogdOutputPlugin == "json" then [
+              "${pkgs.ulogd}/lib/ulogd/ulogd_output_JSON.so"
+            ] else [
+              "${pkgs.ulogd}/lib/ulogd/ulogd_output_LOGEMU.so"
+            ]
+          );
+          stack =
+            if cfg.ulogdOutputPlugin == "json" then
+              "log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,json1:JSON"
+            else
+              "log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,print1:PRINTPKT,emu1:LOGEMU";
         };
         log1 = {
           group = cfg.ulogdGroup;
         };
-        json1 = {
-          file = "/var/log/ulogd/flow.json";
-          sync = 1;
-        };
-      };
+      }
+      // (
+        if cfg.ulogdOutputPlugin == "json" then {
+          json1 = {
+            file = "/var/log/ulogd/flow.json";
+            sync = 1;
+          };
+        } else {
+          emu1 = {
+            file = "/var/log/ulogd/flow.log";
+            sync = 1;
+          };
+        }
+      );
     };
 
     # Ensure log directory exists
@@ -94,7 +119,7 @@ in
       ];
     };
 
-    services.vector = mkIf cfg.enableVector {
+    services.vector = mkIf (cfg.enableVector && cfg.ulogdOutputPlugin == "json") {
       enable = true;
       journaldAccess = true;
       settings = {

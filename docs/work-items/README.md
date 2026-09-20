@@ -39,12 +39,6 @@ The authority split is:
 
 ## Current Ranked Queue
 
-- [102-upstream-router-kea-dhcp-hardening-and-invariants](./102-upstream-router-kea-dhcp-hardening-and-invariants.md) — `ready` (P0 Blocker)
-- [100-upstream-router-pangolin-service-hardening](./100-upstream-router-pangolin-service-hardening.md) — `ready` (P1 High)
-- [101-upstream-hardware-optimizations-udp-gro-forwarding](./101-upstream-hardware-optimizations-udp-gro-forwarding.md) — `ready` (P1 High)
-- [103-upstream-router-observability-logemu-support](./103-upstream-router-observability-logemu-support.md) — `ready` (P1 High)
-- [105-upstream-router-dashboard-api-fixes](./105-upstream-router-dashboard-api-fixes.md) — `ready` (P1 High)
-- [104-upstream-monitoring-grafana-secret-key-file-backing](./104-upstream-monitoring-grafana-secret-key-file-backing.md) — `ready` (P2 Medium)
 - [95-hardware-optimization-safety-matrix-and-lro-removal](./95-hardware-optimization-safety-matrix-and-lro-removal.md) — `ready` (P0 Blocker)
 - [96-multi-node-nixos-vm-test-harness](./96-multi-node-nixos-vm-test-harness.md) — `ready` (P0 Blocker)
 - [97-routerctl-cli-diagnostics-and-firewall-explainer](./97-routerctl-cli-diagnostics-and-firewall-explainer.md) — `ready` (P1 High)
@@ -54,6 +48,12 @@ The authority split is:
 
 ## Recently Completed
 
+- [102-upstream-router-kea-dhcp-hardening-and-invariants](./102-upstream-router-kea-dhcp-hardening-and-invariants.md) — `done`
+- [100-upstream-router-pangolin-service-hardening](./100-upstream-router-pangolin-service-hardening.md) — `done`
+- [101-upstream-hardware-optimizations-udp-gro-forwarding](./101-upstream-hardware-optimizations-udp-gro-forwarding.md) — `done`
+- [103-upstream-router-observability-logemu-support](./103-upstream-router-observability-logemu-support.md) — `done`
+- [105-upstream-router-dashboard-api-fixes](./105-upstream-router-dashboard-api-fixes.md) — `done`
+- [104-upstream-monitoring-grafana-secret-key-file-backing](./104-upstream-monitoring-grafana-secret-key-file-backing.md) — `done`
 - [91-ula-rfc9686-prefix-delegation-and-address-selection](./91-ula-rfc9686-prefix-delegation-and-address-selection.md) — `done`
 - [93-option108-464xlat-opt-in-guardrails-and-docs](./93-option108-464xlat-opt-in-guardrails-and-docs.md) — `done`
 

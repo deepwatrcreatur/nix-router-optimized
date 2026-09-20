@@ -199,11 +199,12 @@ in {
             return
           fi
           
-          # Enable hardware offloads
+          # Enable safe hardware offloads and UDP GRO forwarding
           ${pkgs.ethtool}/bin/ethtool -K $iface tso on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface gso on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface gro on 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface lro on 2>/dev/null || true
+          ${pkgs.ethtool}/bin/ethtool -K $iface lro off 2>/dev/null || true
+          ${pkgs.ethtool}/bin/ethtool -K $iface rx-udp-gro-forwarding on rx-gro-list off 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface sg on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface tx on 2>/dev/null || true
           ${pkgs.ethtool}/bin/ethtool -K $iface rx on 2>/dev/null || true

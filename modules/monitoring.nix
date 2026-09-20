@@ -548,7 +548,7 @@ in
           admin_user = "admin";
           # Password stored in persistent state dir so it survives reboots
           admin_password = "$__file{${cfg.grafanaDataDir}/.admin-password}";
-          secret_key = lib.mkDefault "SW2YcwTIb9zpOOhoPsMm";
+          secret_key = lib.mkDefault "$__file{${cfg.grafanaDataDir}/.secret-key}";
         };
         analytics.reporting_enabled = false;
       };
@@ -579,6 +579,14 @@ in
         ${pkgs.openssl}/bin/openssl rand -base64 24 > "${cfg.grafanaDataDir}/.admin-password"
         chmod 600 "${cfg.grafanaDataDir}/.admin-password"
         echo "Generated new Grafana admin password in ${cfg.grafanaDataDir}/.admin-password"
+      fi
+
+      if [ -f "/etc/grafana/secret_key" ] && [ ! -f "${cfg.grafanaDataDir}/.secret-key" ]; then
+        cp "/etc/grafana/secret_key" "${cfg.grafanaDataDir}/.secret-key"
+        chmod 600 "${cfg.grafanaDataDir}/.secret-key"
+      elif [ ! -f "${cfg.grafanaDataDir}/.secret-key" ]; then
+        echo "SW2YcwTIb9zpOOhoPsMm" > "${cfg.grafanaDataDir}/.secret-key"
+        chmod 600 "${cfg.grafanaDataDir}/.secret-key"
       fi
     '' + optionalString (cfg.waitForListenAddress && cfg.listenAddress != "0.0.0.0") ''
       ${waitForListenAddressScript} ${escapeShellArg cfg.listenAddress}

@@ -1,6 +1,6 @@
 # Work Item 105: Upstream Router Dashboard API Hardening & Snapshot Handlers
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P1 (High)  
 **Created:** 2026-09-19  
 

@@ -1,6 +1,6 @@
 # Work Item 100: Upstream Router Pangolin Service Hardening & Port Configuration
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P1 (High)  
 **Created:** 2026-09-19  
 
