@@ -98,6 +98,10 @@ let
   routerHaLabChecks = import ./router-ha-lab.nix {
     inherit self lib eval pkgs;
   };
+
+  routerOptimizationsChecks = import ./router-optimizations.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -157,6 +161,7 @@ in
 // routerHaBoundaryChecks
 // routerHaLabChecks
 // routerNdppdChecks
+// routerOptimizationsChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (

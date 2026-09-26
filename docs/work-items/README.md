@@ -15,7 +15,6 @@ The authority split is:
 
 ## Current Ranked Queue
 
-- [95-hardware-optimization-safety-matrix-and-lro-removal](./95-hardware-optimization-safety-matrix-and-lro-removal.md) — `ready` (P0 Blocker, `router-inl`)
 - [96-multi-node-nixos-vm-test-harness](./96-multi-node-nixos-vm-test-harness.md) — `ready` (P0 Blocker, `router-osv`)
 - [97-routerctl-cli-diagnostics-and-firewall-explainer](./97-routerctl-cli-diagnostics-and-firewall-explainer.md) — `ready` (P1 High, `router-tat`)
 - [98-subnet-overlap-and-topology-eval-assertions](./98-subnet-overlap-and-topology-eval-assertions.md) — `ready` (P1 High, `router-a2z`)
@@ -23,6 +22,7 @@ The authority split is:
 
 ## Recently Completed
 
+- [95-hardware-optimization-safety-matrix-and-lro-removal](./95-hardware-optimization-safety-matrix-and-lro-removal.md) — `done` (`router-inl`)
 - [91-router-ha-lab-nspawn-phase-1-harness](./91-router-ha-lab-nspawn-phase-1-harness.md) — `done` (`router-vg4`)
 - [102-upstream-router-kea-dhcp-hardening-and-invariants](./102-upstream-router-kea-dhcp-hardening-and-invariants.md) — `done`
 - [100-upstream-router-pangolin-service-hardening](./100-upstream-router-pangolin-service-hardening.md) — `done`

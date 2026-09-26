@@ -6,9 +6,341 @@ with lib;
 
 let
   cfg = config.services.router-optimizations;
+
+  offloadConfig = builtins.toJSON {
+    profile = cfg.profile;
+    interfaces = mapAttrsToList (name: iface: {
+      device = iface.device;
+      role = iface.role;
+      label = iface.label;
+      bandwidth = iface.bandwidth;
+      profile = if iface.offloadProfile != null then iface.offloadProfile else cfg.profile;
+    }) cfg.interfaces;
+  };
+
+  offloadConfigFile = pkgs.writeText "router-offload-config.json" offloadConfig;
+
+  offloadScript = pkgs.writeScriptBin "router-offload-negotiate" ''
+    #!${pkgs.python3}/bin/python3
+    import json
+    import os
+    import re
+    import subprocess
+    import sys
+    from datetime import datetime, timezone
+
+    with open("${offloadConfigFile}") as f:
+        CONFIG = json.load(f)
+
+    ETHTOOL = "${pkgs.ethtool}/bin/ethtool"
+    IP = "${pkgs.iproute2}/bin/ip"
+    TC = "${pkgs.iproute2}/bin/tc"
+
+    def run_cmd(cmd):
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+            return res.returncode, res.stdout, res.stderr
+        except Exception as e:
+            return -1, "", str(e)
+
+    FEATURE_MAP = {
+        "rx": "rx-checksumming",
+        "tx": "tx-checksumming",
+        "sg": "scatter-gather",
+        "tso": "tcp-segmentation-offload",
+        "gso": "generic-segmentation-offload",
+        "gro": "generic-receive-offload",
+        "lro": "large-receive-offload",
+        "rx-udp-gro-forwarding": "rx-udp-gro-forwarding",
+        "rx-gro-list": "rx-gro-list",
+    }
+
+    def parse_ethtool_features(output):
+        features = {}
+        for line in output.splitlines():
+            line = line.strip()
+            if not line or ":" not in line:
+                continue
+            parts = line.split(":", 1)
+            feat_name = parts[0].strip()
+            val_part = parts[1].strip()
+            val_tokens = val_part.split()
+            if not val_tokens:
+                continue
+            state = val_tokens[0].lower()
+            is_fixed = "[fixed]" in val_part
+            features[feat_name] = {
+                "state": state,
+                "fixed": is_fixed
+            }
+        return features
+
+    def parse_ring_buffer(output):
+        rx_max, tx_max = None, None
+        rx_cur, tx_cur = None, None
+        in_preset = False
+        in_current = False
+        for line in output.splitlines():
+            line = line.strip()
+            if "Pre-set maximums:" in line:
+                in_preset = True
+                in_current = False
+                continue
+            elif "Current hardware settings:" in line:
+                in_preset = False
+                in_current = True
+                continue
+            
+            m_rx = re.match(r"^RX:\s*(\d+)", line)
+            m_tx = re.match(r"^TX:\s*(\d+)", line)
+            if in_preset:
+                if m_rx: rx_max = int(m_rx.group(1))
+                if m_tx: tx_max = int(m_tx.group(1))
+            elif in_current:
+                if m_rx: rx_cur = int(m_rx.group(1))
+                if m_tx: tx_cur = int(m_tx.group(1))
+                
+        return {
+            "rx_max": rx_max,
+            "tx_max": tx_max,
+            "rx_current": rx_cur,
+            "tx_current": tx_cur,
+        }
+
+    def parse_coalesce(output):
+        adaptive_rx = False
+        adaptive_tx = False
+        m = re.search(r"Adaptive RX:\s*(on|off)\s+TX:\s*(on|off)", output, re.IGNORECASE)
+        if m:
+            adaptive_rx = (m.group(1).lower() == "on")
+            adaptive_tx = (m.group(2).lower() == "on")
+        return {
+            "adaptive_rx": adaptive_rx,
+            "adaptive_tx": adaptive_tx,
+        }
+
+    def get_driver(iface):
+        rc, out, _ = run_cmd([ETHTOOL, "-i", iface])
+        if rc == 0:
+            for line in out.splitlines():
+                if line.startswith("driver:"):
+                    return line.split(":", 1)[1].strip()
+        return "unknown"
+
+    def configure_interface(if_cfg):
+        dev = if_cfg["device"]
+        role = if_cfg.get("role", "opt")
+        bandwidth = if_cfg.get("bandwidth")
+        prof = if_cfg.get("profile", CONFIG.get("profile", "generic"))
+        
+        rc, _, _ = run_cmd([IP, "link", "show", dev])
+        if rc != 0:
+            print(f"Interface {dev} not found, skipping...")
+            return None
+
+        driver = get_driver(dev)
+        print(f"Configuring {dev} (Driver: {driver}, Role: {role}, Profile: {prof})...")
+
+        # Invariant: LRO is ALWAYS OFF for a routing interface
+        if prof == "intel-baremetal":
+            targets = {
+                "lro": "off",
+                "gro": "on",
+                "rx-udp-gro-forwarding": "on",
+                "rx-gro-list": "off",
+                "tso": "on",
+                "gso": "on",
+                "sg": "on",
+                "tx": "on",
+                "rx": "on",
+            }
+            target_ring = 4096
+            want_adaptive = True
+        elif prof == "realtek-baremetal":
+            targets = {
+                "lro": "off",
+                "gro": "on",
+                "rx-udp-gro-forwarding": "off",
+                "rx-gro-list": "off",
+                "tso": "off",
+                "gso": "off",
+                "sg": "on",
+                "tx": "on",
+                "rx": "on",
+            }
+            target_ring = None
+            want_adaptive = True
+        elif prof == "virtio-vm":
+            targets = {
+                "lro": "off",
+                "gro": "on",
+                "rx-udp-gro-forwarding": "on",
+                "rx-gro-list": "off",
+            }
+            target_ring = None
+            want_adaptive = False
+        else:
+            targets = {
+                "lro": "off",
+                "gro": "on",
+                "rx-udp-gro-forwarding": "on",
+                "rx-gro-list": "off",
+                "tso": "on",
+                "gso": "on",
+                "sg": "on",
+                "tx": "on",
+                "rx": "on",
+            }
+            target_ring = 4096
+            want_adaptive = True
+
+        rc, out, _ = run_cmd([ETHTOOL, "-k", dev])
+        current_features = parse_ethtool_features(out) if rc == 0 else {}
+
+        offload_status = {}
+
+        for short_name, req_state in targets.items():
+            ethtool_name = FEATURE_MAP.get(short_name, short_name)
+            feat_info = current_features.get(ethtool_name)
+
+            if not feat_info:
+                rc_set, _, err = run_cmd([ETHTOOL, "-K", dev, short_name, req_state])
+                if rc_set == 0:
+                    offload_status[short_name] = {
+                        "requested": req_state,
+                        "supported": True,
+                        "enabled": (req_state == "on"),
+                        "effective": req_state,
+                        "reason_disabled": None if req_state == "on" else "disabled by policy"
+                    }
+                else:
+                    offload_status[short_name] = {
+                        "requested": req_state,
+                        "supported": False,
+                        "enabled": False,
+                        "effective": "unknown",
+                        "reason_disabled": f"rejected by driver: {err.strip()}"
+                    }
+                continue
+
+            cur_state = feat_info["state"]
+            is_fixed = feat_info["fixed"]
+
+            if cur_state == req_state:
+                offload_status[short_name] = {
+                    "requested": req_state,
+                    "supported": True,
+                    "enabled": (cur_state == "on"),
+                    "effective": cur_state,
+                    "reason_disabled": None if cur_state == "on" else "disabled by policy"
+                }
+            else:
+                if is_fixed:
+                    offload_status[short_name] = {
+                        "requested": req_state,
+                        "supported": False,
+                        "enabled": (cur_state == "on"),
+                        "effective": cur_state,
+                        "reason_disabled": "fixed by driver"
+                    }
+                else:
+                    rc_set, _, err = run_cmd([ETHTOOL, "-K", dev, short_name, req_state])
+                    if rc_set == 0:
+                        offload_status[short_name] = {
+                            "requested": req_state,
+                            "supported": True,
+                            "enabled": (req_state == "on"),
+                            "effective": req_state,
+                            "reason_disabled": None if req_state == "on" else "disabled by policy"
+                        }
+                    else:
+                        offload_status[short_name] = {
+                            "requested": req_state,
+                            "supported": False,
+                            "enabled": (cur_state == "on"),
+                            "effective": cur_state,
+                            "reason_disabled": f"rejected by driver: {err.strip()}"
+                        }
+
+        rc_g, out_g, _ = run_cmd([ETHTOOL, "-g", dev])
+        ring_info = parse_ring_buffer(out_g) if rc_g == 0 else {"rx_max": None, "tx_max": None, "rx_current": None, "tx_current": None}
+
+        if target_ring and ring_info["rx_max"] and ring_info["tx_max"]:
+            new_rx = min(target_ring, ring_info["rx_max"])
+            new_tx = min(target_ring, ring_info["tx_max"])
+            if new_rx != ring_info["rx_current"] or new_tx != ring_info["tx_current"]:
+                rc_set, _, _ = run_cmd([ETHTOOL, "-G", dev, "rx", str(new_rx), "tx", str(new_tx)])
+                if rc_set == 0:
+                    ring_info["rx_current"] = new_rx
+                    ring_info["tx_current"] = new_tx
+
+        rc_c, out_c, _ = run_cmd([ETHTOOL, "-c", dev])
+        coalesce_info = parse_coalesce(out_c) if rc_c == 0 else {"adaptive_rx": False, "adaptive_tx": False}
+
+        if want_adaptive:
+            rc_set, _, _ = run_cmd([ETHTOOL, "-C", dev, "adaptive-rx", "on", "adaptive-tx", "on"])
+            if rc_set == 0:
+                coalesce_info["adaptive_rx"] = True
+                coalesce_info["adaptive_tx"] = True
+
+        if role == "wan" and bandwidth:
+            qdisc_cmd = [TC, "qdisc", "replace", "dev", dev, "root", "cake", "bandwidth", bandwidth]
+            qdisc_name = f"cake bandwidth {bandwidth}"
+        else:
+            qdisc_cmd = [TC, "qdisc", "replace", "dev", dev, "root", "fq_codel"]
+            qdisc_name = "fq_codel"
+
+        run_cmd(qdisc_cmd)
+
+        return {
+            "role": role,
+            "driver": driver,
+            "effective_profile": prof,
+            "offloads": offload_status,
+            "ring_buffer": ring_info,
+            "coalescing": coalesce_info,
+            "qdisc": qdisc_name,
+        }
+
+    def main():
+        os.makedirs("/run/router", exist_ok=True)
+        report = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "global_profile": CONFIG.get("profile", "generic"),
+            "interfaces": {}
+        }
+
+        for if_cfg in CONFIG.get("interfaces", []):
+            dev = if_cfg["device"]
+            res = configure_interface(if_cfg)
+            if res is not None:
+                report["interfaces"][dev] = res
+
+        tmp_path = "/run/router/nic-offload-status.json.tmp"
+        final_path = "/run/router/nic-offload-status.json"
+        with open(tmp_path, "w") as f:
+            json.dump(report, f, indent=2)
+        os.replace(tmp_path, final_path)
+        print("Router hardware offload configuration complete. Saved status to /run/router/nic-offload-status.json")
+
+    if __name__ == "__main__":
+        main()
+  '';
 in {
   options.services.router-optimizations = {
     enable = mkEnableOption "router performance optimizations";
+
+    profile = mkOption {
+      type = types.enum [ "intel-baremetal" "realtek-baremetal" "virtio-vm" "generic" ];
+      default = "generic";
+      description = ''
+        Hardware optimization preset profile.
+        - intel-baremetal: Aggressive hardware offloads (TSO/GSO/GRO, ring buffer 4096, adaptive coalescing).
+        - realtek-baremetal: Conservative offloads (GRO on, LRO off, TSO/GSO disabled to prevent r8169 TX hangs).
+        - virtio-vm: Virtualized guest profile (GRO on, LRO off, hypervisor-managed ring buffers and segmentation).
+        - generic: Standard balanced offloads for general hardware.
+      '';
+    };
     
     interfaces = mkOption {
       type = types.attrsOf (types.submodule {
@@ -33,6 +365,12 @@ in {
             type = types.nullOr types.str;
             default = null;
             description = "Bandwidth limit for CAKE QoS (e.g., '100Mbit', '1Gbit'). Only applies to WAN interfaces.";
+          };
+
+          offloadProfile = mkOption {
+            type = types.nullOr (types.enum [ "intel-baremetal" "realtek-baremetal" "virtio-vm" "generic" ]);
+            default = null;
+            description = "Per-interface hardware offload profile override. If null, inherits global profile.";
           };
         };
       });
@@ -169,6 +507,7 @@ in {
       numactl              # NUMA control
       irqbalance           # IRQ balancing for multi-core
       cfg.package          # Operational diagnostics CLI
+      offloadScript        # Driver-aware offload negotiation and status tracker
     ];
 
     # Enable IRQ balancing for better multi-core performance
@@ -184,57 +523,8 @@ in {
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        ExecStart = "${offloadScript}/bin/router-offload-negotiate";
       };
-      
-      script = ''
-        # Function to configure interface
-        configure_interface() {
-          local iface=$1
-          local role=$2
-          local bandwidth=$3
-          
-          # Check if interface exists
-          if ! ${pkgs.iproute2}/bin/ip link show $iface &>/dev/null; then
-            echo "Interface $iface not found, skipping..."
-            return
-          fi
-          
-          # Enable safe hardware offloads and UDP GRO forwarding
-          ${pkgs.ethtool}/bin/ethtool -K $iface tso on 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface gso on 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface gro on 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface lro off 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface rx-udp-gro-forwarding on rx-gro-list off 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface sg on 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface tx on 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -K $iface rx on 2>/dev/null || true
-          
-          # Increase ring buffer sizes for better performance
-          ${pkgs.ethtool}/bin/ethtool -G $iface rx 4096 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -G $iface tx 4096 2>/dev/null || true
-          
-          # Enable interrupt coalescing
-          ${pkgs.ethtool}/bin/ethtool -C $iface adaptive-rx on 2>/dev/null || true
-          ${pkgs.ethtool}/bin/ethtool -C $iface adaptive-tx on 2>/dev/null || true
-          
-          # Configure queue discipline
-          if [ "$role" = "wan" ] && [ -n "$bandwidth" ]; then
-            # WAN interface: use CAKE for better bufferbloat control
-            ${pkgs.iproute2}/bin/tc qdisc replace dev $iface root cake bandwidth $bandwidth
-          else
-            # Non-WAN interfaces: use fq_codel for internal traffic
-            ${pkgs.iproute2}/bin/tc qdisc replace dev $iface root fq_codel
-          fi
-          
-          echo "Configured $iface (Role: $role)"
-        }
-        
-        ${concatStringsSep "\n" (mapAttrsToList (name: iface: ''
-          configure_interface ${iface.device} ${iface.role} ${if iface.bandwidth != null then iface.bandwidth else ""}
-        '') cfg.interfaces)}
-        
-        echo "Router hardware offload configuration complete"
-      '';
     };
 
   };

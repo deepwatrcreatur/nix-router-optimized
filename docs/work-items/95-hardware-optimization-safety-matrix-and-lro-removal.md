@@ -1,6 +1,6 @@
 # Work Item 95: Hardware Optimization Safety Matrix & LRO Removal
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P0 (Blocker)  
 **Created:** 2026-09-16  
 
@@ -27,7 +27,7 @@ Enabling LRO (Large Receive Offload) on a forwarding router is a critical networ
 
 ## Acceptance Criteria
 
-- [ ] `lro on` completely eliminated from NixOS modules (`modules/`); `ethtool -K <iface> lro off` explicitly verified.
-- [ ] Safe GRO and offload negotiation script implemented without blind `|| true` suppressions.
-- [ ] Operational state file `/run/router/nic-offload-status.json` generated on activation.
-- [ ] Existing eval tests pass without regression.
+- [x] `lro on` completely eliminated from NixOS modules (`modules/`); `ethtool -K <iface> lro off` explicitly verified.
+- [x] Safe GRO and offload negotiation script implemented without blind `|| true` suppressions.
+- [x] Operational state file `/run/router/nic-offload-status.json` generated on activation.
+- [x] Existing eval tests pass without regression.
