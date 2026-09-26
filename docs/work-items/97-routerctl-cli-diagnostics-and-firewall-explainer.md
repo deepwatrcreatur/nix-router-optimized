@@ -1,6 +1,6 @@
 # Work Item 97: `routerctl` CLI Diagnostics & Static Firewall Explainer
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P1 (High)  
 **Created:** 2026-09-16  
 
@@ -24,7 +24,7 @@ The current diagnostic script `pkgs/router-diag/router-diag.sh` is an informal 1
 
 ## Acceptance Criteria
 
-- [ ] `routerctl status --json` and `routerctl health --json` output valid, machine-parseable JSON.
-- [ ] `/etc/router/policy-manifest.json` exported deterministically at build time.
-- [ ] `routerctl firewall explain` successfully prints zone mappings and policy resolution without generating network traffic.
-- [ ] Backwards-compatible `router-diag` symlink retained.
+- [x] `routerctl status --json` and `routerctl health --json` output valid, machine-parseable JSON.
+- [x] `/etc/router/policy-manifest.json` exported deterministically at build time.
+- [x] `routerctl firewall explain` successfully prints zone mappings and policy resolution without generating network traffic.
+- [x] Backwards-compatible `router-diag` symlink retained.

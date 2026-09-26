@@ -40,6 +40,10 @@
           assertion = lib.hasInfix ''oifname { "wan0" } accept comment "router-zones lan->wan"'' config.networking.nftables.ruleset;
           message = "router-zones should render the explicit LAN-to-WAN policy.";
         }
+        {
+          assertion = builtins.hasAttr "router/policy-manifest.json" config.environment.etc;
+          message = "router-zones should export /etc/router/policy-manifest.json.";
+        }
       ];
     })
   ];

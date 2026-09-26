@@ -82,6 +82,20 @@ let
         oifname { ${renderInterfaceSet destinationZone.interfaces} } ${policy.action} comment "router-zones ${policy.fromZone}->${policy.toZone}"
       ''
     ) cfg.policies;
+
+  policyManifest = {
+    version = "1.0";
+    zones = mapAttrs (name: zone: {
+      interfaces = zone.interfaces;
+      defaultForwardAction = zone.defaultForwardAction;
+      chain = "zone_${sanitize name}_forward";
+    }) cfg.zones;
+    policies = cfg.policies;
+    interfaceToZone = foldl' (acc: zoneName:
+      let zone = cfg.zones.${zoneName};
+      in acc // listToAttrs (map (iface: nameValuePair iface zoneName) zone.interfaces)
+    ) { } (attrNames cfg.zones);
+  };
 in
 {
   options.services.router-zones = {
@@ -161,6 +175,8 @@ in
           assertion = hasAttr policy.toZone cfg.zones;
           message = "router-zones: policy destination zone '${policy.toZone}' does not exist.";
         }) cfg.policies;
+
+      environment.etc."router/policy-manifest.json".text = builtins.toJSON policyManifest;
     })
 
     (if hasRouterFirewall then

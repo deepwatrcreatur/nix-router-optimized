@@ -50,8 +50,9 @@
         let
           pkgs = nixpkgsFor.${system};
         in
-        {
-          router-diag = pkgs.callPackage ./pkgs/router-diag { };
+        rec {
+          routerctl = pkgs.callPackage ./pkgs/router-diag { };
+          router-diag = routerctl;
           ulogd = ulogdWithJson pkgs;
         }
       );
