@@ -1,5 +1,5 @@
 {
-  description = "NixOS Router Optimizations - RouterOS-like performance features";
+  description = "A typed, topology-driven declarative router framework for NixOS: Deterministic edge networking, zone security, and resilient protocol orchestration.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -112,10 +112,13 @@
             self.nixosModules.router-security-hardened
             self.nixosModules.router-network-security
             self.nixosModules.router-zones
+            self.nixosModules.router-slices
             self.nixosModules.router-pangolin
             self.nixosModules.router-twingate
           ];
         };
+
+        router-slices = import ./modules/router-slices.nix;
 
         router-networking = import ./modules/router-networking.nix;
         router-dhcp = import ./modules/router-dhcp.nix;

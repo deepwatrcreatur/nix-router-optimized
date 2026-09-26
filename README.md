@@ -1,6 +1,25 @@
-# NixOS Router Optimizations
+# NixOS Router Framework
 
-A NixOS flake providing RouterOS-like performance optimizations for home/small business routers.
+A typed, topology-driven declarative router framework for NixOS: Deterministic edge networking, zone security, and resilient protocol orchestration.
+
+## Architectural Philosophy: The 4-Stage Pipeline
+
+Rather than functioning as a black-box appliance or imperative shell, this framework operates on a deterministic 4-stage declarative pipeline:
+
+```
+Typed Topology  ──▶  Derived Config  ──▶  Reproducible Deploy  ──▶  Measurable Perf
+  (Nix types &          (nftables, DHCP,       (Bit-identical            (Zero-regression
+   eval assertions)      DNS, QoS rules)        nixos-rebuild)            benchmarks & telemetry)
+```
+
+1. **Typed Topology**: Zones, interfaces, links, prefixes, and pools are defined as strict Nix types. Evaluation-time assertions catch prefix overlaps, DHCP boundary violations, and MTU mismatches before system generation.
+2. **Derived Config**: Firewall rule trees (nftables), DHCP subnets and pools (Kea), DNS resolvers (Unbound/Technitium), and QoS configurations (CAKE/fq_codel) are derived deterministically from the single source of truth topology.
+3. **Reproducible Deploy**: System configurations evaluate into bit-identical NixOS systems deployable with atomic rollbacks, declarative systemd slice isolation, and verifiable reproducibility.
+4. **Measurable Performance**: Hardware-aware driver negotiation, FastTrack/FastPath flowtables, and safe NIC offloads deliver line-rate forwarding with structured diagnostic validation (`routerctl`).
+
+## Platform Compatibility
+
+See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for the verified platform and driver validation matrices across Core (Tier 1), SBC (Tier 2), and Budget (Tier 3) tiers.
 
 ## Agent Work Queue
 
@@ -31,8 +50,9 @@ branches.
 - **Router WireGuard**: Optional router-aware WireGuard wrapper for site-to-site and remote-access tunnels
 - **Router OpenVPN**: Optional router-aware wrapper for declarative OpenVPN instances
 - **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
-- **Technitium DHCP Reservations**: Declarative reserved leases for DHCP-managed hosts
-- **Hardware Offload**: TSO, GSO, GRO, LRO optimizations
+- **Hardware Offload**: Driver-aware TSO, GSO, and GRO optimizations with router-safe LRO suppression
+- **Resource Slice Isolation**: Systemd resource hierarchy (`router-core`, `router-observability`, `router-applications`) preventing telemetry and application leaks from starving forwarding paths
+- **routerctl CLI Diagnostics**: Structured JSON and table inspection of routing state, NIC capabilities, and static firewall policy resolution
 - **Advanced Queuing**: fq_codel, CAKE, BQL for optimal latency
 - **XDP/eBPF**: Early packet filtering at driver level
 - **nftables Fasttrack**: Flow offloading in netfilter

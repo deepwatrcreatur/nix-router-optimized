@@ -1,6 +1,6 @@
 # Work Item 99: Systemd Slice Isolation & Framework Rebranding
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P2 (Medium)  
 **Created:** 2026-09-16  
 
@@ -25,6 +25,6 @@ Telemetry and observability daemons (`ulogd`, `ntopng`, `netdata`, `prometheus`)
 
 ## Acceptance Criteria
 
-- [ ] Systemd slices configured with memory and OOM guardrails.
-- [ ] Framework documentation and flake description updated to reflect the topology-driven identity.
-- [ ] `docs/COMPATIBILITY.md` published and cross-referenced.
+- [x] Systemd slices configured with memory and OOM guardrails.
+- [x] Framework documentation and flake description updated to reflect the topology-driven identity.
+- [x] `docs/COMPATIBILITY.md` published and cross-referenced.

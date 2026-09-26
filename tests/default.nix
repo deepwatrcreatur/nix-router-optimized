@@ -106,6 +106,10 @@ let
   routerAssertionsChecks = import ./router-assertions.nix {
     inherit self lib eval;
   };
+
+  routerSlicesChecks = import ./router-slices.nix {
+    inherit self lib eval;
+  };
 in
 {
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
@@ -141,6 +145,10 @@ in
           assertion = builtins.elem "router-network-security" exportedModuleNames;
           message = "nixosModules.router-network-security must stay exported.";
         }
+        {
+          assertion = builtins.elem "router-slices" exportedModuleNames;
+          message = "nixosModules.router-slices must stay exported.";
+        }
       ];
     }
   ];
@@ -167,6 +175,7 @@ in
 // routerNdppdChecks
 // routerOptimizationsChecks
 // routerAssertionsChecks
+// routerSlicesChecks
 // lib.mapAttrs' (
   name: module:
   lib.nameValuePair "module-${name}-import-eval" (
