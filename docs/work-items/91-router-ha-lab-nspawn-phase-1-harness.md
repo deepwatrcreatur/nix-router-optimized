@@ -1,6 +1,6 @@
 # 91 - Router HA Lab `systemd-nspawn` Phase-1 Harness
 
-## Status: `in-progress`
+## Status: `done`
 
 ## Objective
 

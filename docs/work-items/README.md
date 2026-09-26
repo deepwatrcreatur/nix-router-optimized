@@ -10,44 +10,20 @@ tracked separately from the dashboard planning docs.
 The authority split is:
 
 - [`START-HERE.md`](./START-HERE.md) for onboarding and claiming rules
-- this file for the active ranked queue
-
-## How To Use
-
-- Treat each file in this folder as one PR-sized work stream.
-- Prefer one agent per file/branch.
-- Claim work by filename/title, not just number, because new queue insertions can
-  renumber later items.
-- Mark the file as `in-progress` in its header once an agent starts it.
-- When work is fully merged, either delete the file or keep it briefly as
-  `done` if it records useful outcome notes for follow-up agents.
-- `done` items must not remain in the active ranking.
-
-## Worktree Hygiene
-
-- Keep the shared
-  `/home/deepwatrcreatur/flakes-worktrees/nix-router-optimized/main` checkout on
-  branch `main`.
-- Do feature work in dedicated linked worktrees rather than repurposing the
-  shared `main` checkout.
-- If a suggested branch/worktree already exists, verify whether it is genuinely
-  active before reusing or replacing it.
-- If stale worktrees accumulate, prune or retire them deliberately instead of
-  letting them become implicit ownership signals.
-- If queue numbers and existing branch names disagree, trust the current file
-  path/title first and reconcile numbering second.
+- `beads-rust` (`.beads/issues.jsonl`) as the authoritative state and prioritization tracker
+- this file and markdown documents as design and implementation specs
 
 ## Current Ranked Queue
 
-- [95-hardware-optimization-safety-matrix-and-lro-removal](./95-hardware-optimization-safety-matrix-and-lro-removal.md) — `ready` (P0 Blocker)
-- [96-multi-node-nixos-vm-test-harness](./96-multi-node-nixos-vm-test-harness.md) — `ready` (P0 Blocker)
-- [97-routerctl-cli-diagnostics-and-firewall-explainer](./97-routerctl-cli-diagnostics-and-firewall-explainer.md) — `ready` (P1 High)
-- [98-subnet-overlap-and-topology-eval-assertions](./98-subnet-overlap-and-topology-eval-assertions.md) — `ready` (P1 High)
-- [99-systemd-slice-isolation-and-framework-rebranding](./99-systemd-slice-isolation-and-framework-rebranding.md) — `ready` (P2 Medium)
-- [91-router-ha-lab-nspawn-phase-1-harness](./91-router-ha-lab-nspawn-phase-1-harness.md) — `ready`
+- [95-hardware-optimization-safety-matrix-and-lro-removal](./95-hardware-optimization-safety-matrix-and-lro-removal.md) — `ready` (P0 Blocker, `router-inl`)
+- [96-multi-node-nixos-vm-test-harness](./96-multi-node-nixos-vm-test-harness.md) — `ready` (P0 Blocker, `router-osv`)
+- [97-routerctl-cli-diagnostics-and-firewall-explainer](./97-routerctl-cli-diagnostics-and-firewall-explainer.md) — `ready` (P1 High, `router-tat`)
+- [98-subnet-overlap-and-topology-eval-assertions](./98-subnet-overlap-and-topology-eval-assertions.md) — `ready` (P1 High, `router-a2z`)
+- [99-systemd-slice-isolation-and-framework-rebranding](./99-systemd-slice-isolation-and-framework-rebranding.md) — `ready` (P2 Medium, `router-qmu`)
 
 ## Recently Completed
 
+- [91-router-ha-lab-nspawn-phase-1-harness](./91-router-ha-lab-nspawn-phase-1-harness.md) — `done` (`router-vg4`)
 - [102-upstream-router-kea-dhcp-hardening-and-invariants](./102-upstream-router-kea-dhcp-hardening-and-invariants.md) — `done`
 - [100-upstream-router-pangolin-service-hardening](./100-upstream-router-pangolin-service-hardening.md) — `done`
 - [101-upstream-hardware-optimizations-udp-gro-forwarding](./101-upstream-hardware-optimizations-udp-gro-forwarding.md) — `done`
