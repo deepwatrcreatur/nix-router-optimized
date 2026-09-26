@@ -192,6 +192,37 @@ in
 
   config = mkIf cfg.enable (mkMerge [
     {
+      assertions = [
+        {
+          assertion =
+            let
+              vipIp = head (splitString "/" cfg.virtualIp);
+              routedIfaces = config.services.router-networking.routedInterfaces or { };
+              wanIfaces = config.services.router-networking.wanInterfaces or { };
+              allStaticIps =
+                (map (i: head (splitString "/" i.ipv4Address)) (attrValues routedIfaces))
+                ++ (map (i: head (splitString "/" i.ipv4Address)) (filter (w: w.mode == "static" && w.ipv4Address != null) (attrValues wanIfaces)));
+            in
+              !elem vipIp allStaticIps;
+          message = "services.router-ha: VRRP virtual IP (${cfg.virtualIp}) collides with a static interface IP address.";
+        }
+        {
+          assertion =
+            let
+              routedIfaces = config.services.router-networking.routedInterfaces or { };
+              matching = filter (i: i.device == cfg.vrrpInterface) (attrValues routedIfaces);
+            in
+              if matching == [ ] then true
+              else
+                let
+                  targetIface = head matching;
+                  ipLib = import ./lib/ip.nix { inherit lib; };
+                in
+                  ipLib.cidrContains targetIface.ipv4Address cfg.virtualIp;
+          message = "services.router-ha: VRRP virtual IP (${cfg.virtualIp}) must be in the same subnet as vrrpInterface ${cfg.vrrpInterface}.";
+        }
+      ];
+
       boot.kernel.sysctl = {
         "net.ipv4.ip_nonlocal_bind" = mkIf (!virtualIpIsIpv6) 1;
         "net.ipv6.ip_nonlocal_bind" = mkIf virtualIpIsIpv6 1;

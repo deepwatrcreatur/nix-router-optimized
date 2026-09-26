@@ -595,7 +595,23 @@ in
             message = "router-kea pool ${poolLabel} must end on a usable host address, not the subnet network or broadcast address.";
           }
         ]
-      ) cfg.dhcp4.poolRanges;
+      ) cfg.dhcp4.poolRanges
+      ++ (flatten (map (ifaceName:
+        let
+          matchingRouted = filterAttrs (_n: i: i.device == ifaceName) routedIfaces;
+        in
+          if matchingRouted != { } then
+            let
+              rIface = head (attrValues matchingRouted);
+              ipLib = import ./lib/ip.nix { inherit lib; };
+            in [
+              {
+                assertion = ipLib.cidrContains rIface.ipv4Address cfg.dhcp4.subnet;
+                message = "router-kea: dhcp4.subnet (${cfg.dhcp4.subnet}) is not contained within the subnet of bound interface ${rIface.device} (${rIface.ipv4Address}).";
+              }
+            ]
+          else [ ]
+      ) effectiveInterfaces));
 
       # ── DHCPv4 ────────────────────────────────────────────────────────────────
 

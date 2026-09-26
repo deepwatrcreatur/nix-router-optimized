@@ -4,6 +4,7 @@ with lib;
 
 let
   cfg = config.services.router-networking;
+  ipLib = import ./lib/ip.nix { inherit lib; };
   sanitizeName = name: builtins.replaceStrings [ "." ":" "@" "/" ] [ "-" "-" "-" "-" ] name;
 
   routeModule = types.submodule {
@@ -456,6 +457,28 @@ let
 
   effectiveWans = { primary = cfg.wan; } // cfg.wans;
 
+  routedPrefixes = flatten (mapAttrsToList (name: iface:
+    [
+      { id = "routedInterfaces.${name} (ipv4Address)"; cidr = iface.ipv4Address; interface = name; }
+    ]
+    ++ (map (r: { id = "routedInterfaces.${name}.extraRoute (${r.destination})"; cidr = r.destination; interface = name; }) iface.extraRoutes)
+    ++ (optional (iface.ulaAddress != null) { id = "routedInterfaces.${name} (ulaAddress)"; cidr = iface.ulaAddress; interface = name; })
+    ++ (optional (iface.ulaPrefix != null && iface.ulaAddress == null) { id = "routedInterfaces.${name} (ulaPrefix)"; cidr = iface.ulaPrefix; interface = name; })
+  ) cfg.routedInterfaces);
+
+  staticWanPrefixes = flatten (mapAttrsToList (name: wan:
+    (optional (wan.mode == "static" && wan.ipv4Address != null) {
+      id = "wanInterfaces.${name} (ipv4Address)";
+      cidr = wan.ipv4Address;
+      interface = "wan-${name}";
+    })
+    ++ (map (r: { id = "wanInterfaces.${name}.extraRoute (${r.destination})"; cidr = r.destination; interface = "wan-${name}"; }) wan.extraRoutes)
+  ) effectiveWans);
+
+  allRoutedPrefixes = routedPrefixes ++ staticWanPrefixes;
+  rawCollisions = ipLib.findOverlaps allRoutedPrefixes;
+  subnetCollisions = filter (c: c.a.interface != c.b.interface) rawCollisions;
+
   mkWanNetwork = name: wanCfg: {
     matchConfig.Name = wanCfg.device;
     address =
@@ -657,12 +680,34 @@ in
           message = "router-networking.wan.ipv4Address and wan.gateway4 must be set when wan.mode = static.";
         }
       ]
+      ++ (map (c: {
+        assertion = false;
+        message = "Subnet overlap detected between ${c.a.id} [${c.a.cidr}] and ${c.b.id} [${c.b.cidr}]. Routed and static WAN prefixes must be pairwise non-overlapping.";
+      }) subnetCollisions)
       ++ mapAttrsToList
         (name: iface: {
           assertion = iface.vlanId == null || iface.parentDevice != null;
           message = "router-networking.routedInterfaces.${name}.parentDevice must be set when vlanId is used.";
         })
-        cfg.routedInterfaces;
+        cfg.routedInterfaces
+      ++ (flatten (mapAttrsToList (name: iface:
+        if iface.parentDevice != null && iface.mtu != null then
+          let
+            matchingRouted = filterAttrs (_n: p: p.device == iface.parentDevice) cfg.routedInterfaces;
+            matchingWans = filterAttrs (_n: p: p.device == iface.parentDevice) effectiveWans;
+            parentMtu =
+              if matchingRouted != { } then (head (attrValues matchingRouted)).mtu
+              else if matchingWans != { } then (head (attrValues matchingWans)).mtu
+              else null;
+          in
+            if parentMtu != null then [
+              {
+                assertion = iface.mtu <= parentMtu;
+                message = "VLAN MTU invariant violated: ${name} MTU (${toString iface.mtu}) exceeds parent device ${iface.parentDevice} MTU (${toString parentMtu}).";
+              }
+            ] else [ ]
+        else [ ]
+      ) cfg.routedInterfaces));
 
     networking.useNetworkd = mkIf cfg.useNetworkd true;
     networking.useDHCP = mkIf cfg.useNetworkd false;

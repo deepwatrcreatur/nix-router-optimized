@@ -4,6 +4,7 @@ with lib;
 
 let
   cfg = config.services.router-dhcp;
+  ipLib = import ./lib/ip.nix { inherit lib; };
   routedIfaces = config.services.router-networking.routedInterfaces or { };
 
   leaseModule = types.submodule {
@@ -259,7 +260,27 @@ in
             && (ifaceCfg.pxe.bootFilename == null || ifaceCfg.pxe.bootFilename == "")
           );
         message = "services.router-dhcp.interfaces.${name}.pxe.bootFilename must be set when PXE is enabled.";
-      }) cfg.interfaces);
+      }) cfg.interfaces)
+      ++ (flatten (mapAttrsToList (name: ifaceCfg:
+        if hasAttr name routedIfaces then
+          let
+            routedIface = routedIfaces.${name};
+            subnet = ipLib.parseCIDR routedIface.ipv4Address;
+            poolStartInt = subnet.networkInt + ifaceCfg.poolOffset;
+            poolEndInt = poolStartInt + ifaceCfg.poolSize - 1;
+            poolContained = poolStartInt > subnet.networkInt && poolEndInt < subnet.broadcastInt;
+            leaseAssertions = map (lease: {
+              assertion = ipLib.cidrContainsIP routedIface.ipv4Address lease.address;
+              message = "services.router-dhcp.interfaces.${name}.staticLeases: address ${lease.address} is outside subnet ${routedIface.ipv4Address}.";
+            }) ifaceCfg.staticLeases;
+          in [
+            {
+              assertion = poolContained;
+              message = "services.router-dhcp.interfaces.${name}: DHCP pool (offset ${toString ifaceCfg.poolOffset}, size ${toString ifaceCfg.poolSize}) exceeds boundaries of subnet ${routedIface.ipv4Address}.";
+            }
+          ] ++ leaseAssertions
+        else [ ]
+      ) cfg.interfaces));
 
     systemd.network.networks = mapAttrs' (
       name: ifaceCfg: nameValuePair "20-router-${name}" (mkDhcpNetwork name ifaceCfg)

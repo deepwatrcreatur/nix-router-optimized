@@ -1,6 +1,6 @@
 # Work Item 98: Subnet Overlap, MTU & Topology Invariant Assertions
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P1 (High)  
 **Created:** 2026-09-16  
 
@@ -24,7 +24,7 @@ Nix evaluation is exceptionally capable of catching misconfigurations before sys
 
 ## Acceptance Criteria
 
-- [ ] Pure Nix IP CIDR utility tests pass.
-- [ ] Overlapping routed subnets trigger build-time assertion failure.
-- [ ] Out-of-bounds DHCP pools trigger build-time assertion failure.
-- [ ] Negative test suite verifies assertion messages.
+- [x] Pure Nix IP CIDR utility tests pass.
+- [x] Overlapping routed subnets trigger build-time assertion failure.
+- [x] Out-of-bounds DHCP pools trigger build-time assertion failure.
+- [x] Negative test suite verifies assertion messages.
