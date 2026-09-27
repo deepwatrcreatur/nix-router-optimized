@@ -267,8 +267,8 @@ def cmd_firewall_explain(args):
 
     src_iface = getattr(args, "src_iface", None)
     dst_iface = getattr(args, "dst_iface", None)
-    src_zone = getattr(args, "src_zone", None)
-    dst_zone = getattr(args, "dst_zone", None)
+    src_zone = getattr(args, "src_zone", None) or getattr(args, "src_zone_pos", None)
+    dst_zone = getattr(args, "dst_zone", None) or getattr(args, "dst_zone_pos", None)
     proto = getattr(args, "proto", "tcp") or "tcp"
     dport = getattr(args, "dport", "any") or "any"
 
@@ -566,6 +566,12 @@ def build_parser():
         "explain",
         parents=[common_parser],
         help="Explain zone policy resolution for a flow",
+    )
+    explain_parser.add_argument(
+        "src_zone_pos", nargs="?", help="Positional source zone (e.g. lan)"
+    )
+    explain_parser.add_argument(
+        "dst_zone_pos", nargs="?", help="Positional destination zone (e.g. wan)"
     )
     explain_parser.add_argument(
         "--src-iface", help="Source interface name (e.g. eth1)"

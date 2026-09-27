@@ -1,6 +1,6 @@
 # Work Item 96: Multi-Node NixOS VM Test Harness
 
-**Status:** ready  
+**Status:** done  
 **Priority:** P0 (Blocker)  
 **Created:** 2026-09-16  
 
@@ -28,6 +28,6 @@ Currently, all 22 tests in `nix-router-optimized` are pure evaluation tests (`mk
 
 ## Acceptance Criteria
 
-- [ ] `tests/vm/router-basic-smoke.nix` successfully runs and passes in headless QEMU.
-- [ ] Invariants for DHCP, NAT, DNS, and Zone isolation are asserted via python `testScript`.
-- [ ] `nix flake check` or `nix build .#checks.x86_64-linux.vm-smoke` evaluates and executes cleanly.
+- [x] `tests/vm/router-basic-smoke.nix` successfully runs and passes in headless QEMU.
+- [x] Invariants for DHCP, NAT, DNS, and Zone isolation are asserted via python `testScript`.
+- [x] `nix flake check` or `nix build .#checks.x86_64-linux.vm-smoke` evaluates and executes cleanly.

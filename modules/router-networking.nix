@@ -714,6 +714,11 @@ in
     systemd.network.enable = mkIf cfg.useNetworkd true;
     systemd.network.wait-online.enable = cfg.waitOnline;
 
+    boot.kernel.sysctl = {
+      "net.ipv4.ip_forward" = mkDefault 1;
+      "net.ipv6.conf.all.forwarding" = mkDefault 1;
+    };
+
     systemd.network.netdevs =
       listToAttrs (
         map (item: nameValuePair item.key (mkVlanNetdev item)) vlanDefinitions

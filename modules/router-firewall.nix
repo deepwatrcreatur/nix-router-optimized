@@ -554,24 +554,23 @@ in
           ${
             let
               dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
-            in
-            optionalString
-              (elem "lan" (
+              isLan = optimizationInterfaces == { } || elem "lan" (
                 mapAttrsToList (_name: iface: iface.role) (
                   filterAttrs (n: v: elem v.device lanInterfaces) optimizationInterfaces
                 )
-              ))
-              (
-                optionalString (cfg.dnsUdpPorts != [ ]) ''
-                  udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
-                ''
-                + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
-                  udp sport {67, 68} accept
-                ''
-                + optionalString (cfg.dnsTcpPorts != [ ]) ''
-                  tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
-                ''
-              )
+              );
+            in
+            optionalString isLan (
+              optionalString (cfg.dnsUdpPorts != [ ]) ''
+                udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
+              ''
+              + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
+                udp sport {67, 68} accept
+              ''
+              + optionalString (cfg.dnsTcpPorts != [ ]) ''
+                tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
+              ''
+            )
           }
           ${optionalString (cfg.trustedTcpPorts != [ ]) ''
             tcp dport {${tcpPortSet cfg.trustedTcpPorts}} accept
@@ -589,24 +588,23 @@ in
           ${
             let
               dnsIfaces = if cfg.dnsInterfaces != [ ] then cfg.dnsInterfaces else trustedInterfaces;
-            in
-            optionalString
-              (elem "management" (
+              isMgmt = optimizationInterfaces == { } || elem "management" (
                 mapAttrsToList (_name: iface: iface.role) (
                   filterAttrs (n: v: elem v.device managementInterfaces) optimizationInterfaces
                 )
-              ))
-              (
-                optionalString (cfg.dnsUdpPorts != [ ]) ''
-                  udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
-                ''
-                + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
-                  udp sport {67, 68} accept
-                ''
-                + optionalString (cfg.dnsTcpPorts != [ ]) ''
-                  tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
-                ''
-              )
+              );
+            in
+            optionalString isMgmt (
+              optionalString (cfg.dnsUdpPorts != [ ]) ''
+                udp dport {${tcpPortSet cfg.dnsUdpPorts}} accept
+              ''
+              + optionalString (elem 67 cfg.dnsUdpPorts && elem 68 cfg.dnsUdpPorts) ''
+                udp sport {67, 68} accept
+              ''
+              + optionalString (cfg.dnsTcpPorts != [ ]) ''
+                tcp dport {${tcpPortSet cfg.dnsTcpPorts}} accept
+              ''
+            )
           }
           ${optionalString (cfg.trustedTcpPorts != [ ]) ''
             tcp dport {${tcpPortSet cfg.trustedTcpPorts}} accept

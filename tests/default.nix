@@ -110,8 +110,14 @@ let
   routerSlicesChecks = import ./router-slices.nix {
     inherit self lib eval;
   };
+
+  vmSmokeCheck = import ./vm/router-basic-smoke.nix {
+    inherit self lib pkgs;
+  };
 in
 {
+  vm-smoke = vmSmokeCheck;
+
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
     self.nixosModules.default
   ];
