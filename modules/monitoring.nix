@@ -284,6 +284,232 @@ let
       ];
     };
   };
+
+  caddyIngressDashboard = {
+    dashboard = {
+      title = "Caddy Ingress & Access";
+      timezone = "browser";
+      schemaVersion = 16;
+      version = 1;
+      refresh = "5s";
+
+      panels = [
+        {
+          id = 21;
+          title = "Total Ingress Request Rate";
+          type = "stat";
+          gridPos = { x = 0; y = 0; w = 6; h = 4; };
+          targets = [{
+            expr = "sum(rate(caddy_http_requests_total[1m])) or 0";
+            legendFormat = "Req/s";
+          }];
+          fieldConfig = {
+            defaults = {
+              unit = "reqps";
+            };
+          };
+        }
+        {
+          id = 22;
+          title = "p95 Ingress Latency";
+          type = "gauge";
+          gridPos = { x = 6; y = 0; w = 6; h = 4; };
+          targets = [{
+            expr = "histogram_quantile(0.95, sum by (le) (rate(caddy_http_request_duration_seconds_bucket[5m]))) * 1000 or 0";
+            legendFormat = "p95";
+          }];
+          fieldConfig = {
+            defaults = {
+              unit = "ms";
+            };
+          };
+        }
+        {
+          id = 23;
+          title = "Handled HTTP Status Codes";
+          type = "graph";
+          gridPos = { x = 12; y = 0; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "sum by (code) (rate(caddy_http_responses_total[1m])) or sum by (status) (rate(caddy_http_requests_total[1m]))";
+              legendFormat = "{{code}}{{status}}";
+            }
+          ];
+        }
+        {
+          id = 24;
+          title = "Ingress & Egress Bandwidth";
+          type = "graph";
+          gridPos = { x = 0; y = 4; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "sum(rate(caddy_http_response_size_bytes_sum[1m])) * 8 or 0";
+              legendFormat = "Outbound (Served)";
+            }
+            {
+              expr = "sum(rate(caddy_http_request_size_bytes_sum[1m])) * 8 or 0";
+              legendFormat = "Inbound (Received)";
+            }
+          ];
+          yaxes = [
+            { format = "bps"; }
+            { format = "short"; }
+          ];
+        }
+        {
+          id = 25;
+          title = "Requests by Virtual Host";
+          type = "graph";
+          gridPos = { x = 0; y = 12; w = 14; h = 8; };
+          targets = [
+            {
+              expr = "sum by (server_name) (rate(caddy_http_requests_total[1m]))";
+              legendFormat = "{{server_name}}";
+            }
+          ];
+        }
+        {
+          id = 26;
+          title = "Upstream Backend Health";
+          type = "stat";
+          gridPos = { x = 14; y = 12; w = 10; h = 8; };
+          targets = [
+            {
+              expr = "caddy_reverse_proxy_upstreams_healthy";
+              legendFormat = "{{upstream}}";
+            }
+          ];
+        }
+      ];
+    };
+  };
+
+  networkTelemetryDashboard = {
+    dashboard = {
+      title = "Network Telemetry & WAN Quality";
+      timezone = "browser";
+      schemaVersion = 16;
+      version = 1;
+      refresh = "5s";
+
+      panels = [
+        {
+          id = 31;
+          title = "Conntrack Table Saturation";
+          type = "gauge";
+          gridPos = { x = 0; y = 0; w = 6; h = 5; };
+          targets = [{
+            expr = "100 * (node_nf_conntrack_entries / node_nf_conntrack_entries_limit)";
+            legendFormat = "Table %";
+          }];
+          fieldConfig = {
+            defaults = {
+              unit = "percent";
+              thresholds = {
+                mode = "absolute";
+                steps = [
+                  { color = "green"; value = null; }
+                  { color = "yellow"; value = 70; }
+                  { color = "red"; value = 85; }
+                ];
+              };
+            };
+          };
+        }
+        {
+          id = 32;
+          title = "Connection Churn (New Conn/s)";
+          type = "graph";
+          gridPos = { x = 6; y = 0; w = 9; h = 5; };
+          targets = [
+            {
+              expr = "rate(node_netstat_Tcp_ActiveOpens[1m])";
+              legendFormat = "Outbound TCP Opens/s";
+            }
+            {
+              expr = "rate(node_netstat_Tcp_PassiveOpens[1m])";
+              legendFormat = "Inbound TCP Opens/s";
+            }
+          ];
+        }
+        {
+          id = 33;
+          title = "TCP Retransmission Rate (%)";
+          type = "gauge";
+          gridPos = { x = 15; y = 0; w = 9; h = 5; };
+          targets = [{
+            expr = "(rate(node_netstat_Tcp_RetransSegs[1m]) / clamp_min(rate(node_netstat_Tcp_OutSegs[1m]), 1)) * 100";
+            legendFormat = "Retransmit %";
+          }];
+          fieldConfig = {
+            defaults = {
+              unit = "percent";
+            };
+          };
+        }
+        {
+          id = 34;
+          title = "Interface Buffer FIFO Overruns & Carrier Errors";
+          type = "graph";
+          gridPos = { x = 0; y = 5; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "rate(node_network_receive_fifo_total{device=~\"${interfaceRegex}\"}[1m])";
+              legendFormat = "{{device}} RX FIFO overruns";
+            }
+            {
+              expr = "rate(node_network_transmit_fifo_total{device=~\"${interfaceRegex}\"}[1m])";
+              legendFormat = "{{device}} TX FIFO overruns";
+            }
+            {
+              expr = "rate(node_network_carrier_changes_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} Carrier state changes";
+            }
+          ];
+        }
+        {
+          id = 35;
+          title = "Hardware Temperature & SFP Sensor Telemetry";
+          type = "graph";
+          gridPos = { x = 12; y = 5; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "node_hwmon_temp_celsius";
+              legendFormat = "{{chip}} - {{sensor}} (°C)";
+            }
+          ];
+          yaxes = [
+            { format = "celsius"; }
+            { format = "short"; }
+          ];
+        }
+        {
+          id = 36;
+          title = "ICMP & Network Control Traffic";
+          type = "graph";
+          gridPos = { x = 0; y = 13; w = 24; h = 7; };
+          targets = [
+            {
+              expr = "rate(node_netstat_Icmp_InMsgs[1m])";
+              legendFormat = "ICMP In msgs/s";
+            }
+            {
+              expr = "rate(node_netstat_Icmp_OutMsgs[1m])";
+              legendFormat = "ICMP Out msgs/s";
+            }
+            {
+              expr = "rate(node_netstat_Icmp6_InMsgs[1m])";
+              legendFormat = "ICMPv6 In msgs/s";
+            }
+            {
+              expr = "rate(node_netstat_Icmp6_OutMsgs[1m])";
+              legendFormat = "ICMPv6 Out msgs/s";
+            }
+          ];
+        }
+      ];
+    };
+  };
 in
 {
   options.router.monitoring = {
@@ -613,6 +839,16 @@ in
     environment.etc."grafana-dashboards/router-interfaces.json" = {
       mode = "0644";
       text = builtins.toJSON interfaceDashboard;
+    };
+
+    environment.etc."grafana-dashboards/router-caddy-ingress.json" = {
+      mode = "0644";
+      text = builtins.toJSON caddyIngressDashboard;
+    };
+
+    environment.etc."grafana-dashboards/router-network-telemetry.json" = {
+      mode = "0644";
+      text = builtins.toJSON networkTelemetryDashboard;
     };
 
   };
