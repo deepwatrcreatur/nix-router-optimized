@@ -432,6 +432,14 @@ in
       router.monitoring = {
         enable = true;
         alerting.enable = true;
+        blackbox = {
+          enable = true;
+          targets = [
+            { name = "AP25 Ruqayya"; target = "10.10.18.20"; }
+            { name = "AP22 Nosheen Living"; target = "10.10.18.21"; }
+            { name = "AP11 Nosheen Bedroom"; target = "10.10.18.22"; }
+          ];
+        };
       };
     }
     ({ config, ... }: {
@@ -449,6 +457,18 @@ in
           message = "Prometheus scrapeConfigs should include the kea scrape job.";
         }
         {
+          assertion = builtins.any (job: job.job_name == "blackbox-icmp") config.services.prometheus.scrapeConfigs;
+          message = "Prometheus scrapeConfigs should include the blackbox-icmp scrape job.";
+        }
+        {
+          assertion = config.services.prometheus.exporters.blackbox.enable;
+          message = "Prometheus blackbox exporter should be enabled.";
+        }
+        {
+          assertion = config.environment.etc ? "grafana-dashboards/router-site-connectivity.json";
+          message = "Grafana dashboard router-site-connectivity.json should be provisioned.";
+        }
+        {
           assertion =
             let
               rulesJson = builtins.fromJSON (builtins.head config.services.prometheus.rules);
@@ -458,8 +478,9 @@ in
             builtins.elem "KeaDhcpPoolUtilizationWarning" alertNames
             && builtins.elem "KeaDhcpPoolUtilizationCritical" alertNames
             && builtins.elem "KeaDhcpDeclinedAddressesWarning" alertNames
-            && builtins.elem "KeaDhcpNakRateCritical" alertNames;
-          message = "Prometheus alert rules should include Kea DHCP utilization, declined, and NAK alerts.";
+            && builtins.elem "KeaDhcpNakRateCritical" alertNames
+            && builtins.elem "AccessPointDown" alertNames;
+          message = "Prometheus alert rules should include Kea DHCP utilization, declined, NAK alerts, and AccessPointDown.";
         }
       ];
     })

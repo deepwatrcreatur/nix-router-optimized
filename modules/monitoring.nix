@@ -510,6 +510,220 @@ let
       ];
     };
   };
+
+  siteConnectivityDashboard = {
+    dashboard = {
+      title = "Site Connectivity & Access Points";
+      timezone = "browser";
+      schemaVersion = 16;
+      version = 1;
+      refresh = "5s";
+      tags = [ "router" "wifi" "access-points" "dhcp" "connectivity" ];
+
+      panels = [
+        {
+          id = 40;
+          title = "Access Point & Uplink Status";
+          type = "stat";
+          gridPos = { x = 0; y = 0; w = 12; h = 4; };
+          targets = [
+            {
+              expr = "probe_success{job=\"blackbox-icmp\"}";
+              legendFormat = "{{friendly_name}}";
+            }
+          ];
+          fieldConfig = {
+            defaults = {
+              mappings = [
+                {
+                  type = "value";
+                  options = {
+                    "0" = { text = "OFFLINE"; color = "red"; };
+                    "1" = { text = "ONLINE"; color = "green"; };
+                  };
+                }
+              ];
+              thresholds = {
+                mode = "absolute";
+                steps = [
+                  { color = "red"; value = null; }
+                  { color = "green"; value = 1; }
+                ];
+              };
+            };
+          };
+        }
+        {
+          id = 41;
+          title = "Active DHCP Clients";
+          type = "stat";
+          gridPos = { x = 12; y = 0; w = 4; h = 4; };
+          targets = [
+            {
+              expr = "kea_dhcp4_assigned_addresses";
+              legendFormat = "Active Leases";
+            }
+          ];
+        }
+        {
+          id = 42;
+          title = "DHCP Pool Utilization";
+          type = "gauge";
+          gridPos = { x = 16; y = 0; w = 4; h = 4; };
+          targets = [
+            {
+              expr = "kea_dhcp4_pool_utilization_percent";
+              legendFormat = "Utilization %";
+            }
+          ];
+          fieldConfig = {
+            defaults = {
+              unit = "percent";
+              min = 0;
+              max = 100;
+              thresholds = {
+                mode = "absolute";
+                steps = [
+                  { color = "green"; value = null; }
+                  { color = "yellow"; value = 75; }
+                  { color = "red"; value = 90; }
+                ];
+              };
+            };
+          };
+        }
+        {
+          id = 43;
+          title = "DHCP Server Status";
+          type = "stat";
+          gridPos = { x = 20; y = 0; w = 4; h = 4; };
+          targets = [
+            {
+              expr = "kea_dhcp4_up";
+              legendFormat = "Kea Daemon";
+            }
+          ];
+          fieldConfig = {
+            defaults = {
+              mappings = [
+                {
+                  type = "value";
+                  options = {
+                    "0" = { text = "DOWN"; color = "red"; };
+                    "1" = { text = "RUNNING"; color = "green"; };
+                  };
+                }
+              ];
+            };
+          };
+        }
+        {
+          id = 44;
+          title = "Access Point & Uplink Latency (RTT)";
+          type = "graph";
+          gridPos = { x = 0; y = 4; w = 24; h = 8; };
+          targets = [
+            {
+              expr = "probe_duration_seconds{job=\"blackbox-icmp\"} * 1000";
+              legendFormat = "{{friendly_name}} ({{instance}})";
+            }
+          ];
+          yaxes = [
+            { format = "ms"; }
+            { format = "short"; }
+          ];
+        }
+        {
+          id = 45;
+          title = "DHCP Lease Activity & Requests";
+          type = "graph";
+          gridPos = { x = 0; y = 12; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "rate(kea_dhcp4_pkt4_ack_received[5m]) * 60";
+              legendFormat = "DHCP ACK Rate (req/min)";
+            }
+            {
+              expr = "rate(kea_dhcp4_pkt4_nak_sent[5m]) * 60";
+              legendFormat = "DHCP NAK Rate (naks/min)";
+            }
+            {
+              expr = "rate(kea_dhcp4_cumulative_assigned_addresses[5m]) * 60";
+              legendFormat = "New Allocations Rate (leases/min)";
+            }
+          ];
+        }
+        {
+          id = 46;
+          title = "DHCP Address Capacity & Conflict Status";
+          type = "stat";
+          gridPos = { x = 12; y = 12; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "kea_dhcp4_total_addresses";
+              legendFormat = "Total Pool Capacity";
+            }
+            {
+              expr = "kea_dhcp4_assigned_addresses";
+              legendFormat = "Currently Assigned";
+            }
+            {
+              expr = "kea_dhcp4_total_addresses - kea_dhcp4_assigned_addresses";
+              legendFormat = "Available Remaining";
+            }
+            {
+              expr = "kea_dhcp4_declined_addresses";
+              legendFormat = "Declined (IP Conflicts)";
+            }
+          ];
+        }
+        {
+          id = 47;
+          title = "LAN Network Throughput";
+          type = "graph";
+          gridPos = { x = 0; y = 20; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "rate(node_network_receive_bytes_total{device=~\"${interfaceRegex}\"}[1m]) * 8";
+              legendFormat = "{{device}} RX";
+            }
+            {
+              expr = "rate(node_network_transmit_bytes_total{device=~\"${interfaceRegex}\"}[1m]) * 8";
+              legendFormat = "{{device}} TX";
+            }
+          ];
+          yaxes = [
+            { format = "bps"; }
+            { format = "short"; }
+          ];
+        }
+        {
+          id = 48;
+          title = "LAN Packet Drops & Errors";
+          type = "graph";
+          gridPos = { x = 12; y = 20; w = 12; h = 8; };
+          targets = [
+            {
+              expr = "rate(node_network_receive_errs_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} RX errors";
+            }
+            {
+              expr = "rate(node_network_transmit_errs_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} TX errors";
+            }
+            {
+              expr = "rate(node_network_receive_drop_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} RX drops";
+            }
+            {
+              expr = "rate(node_network_transmit_drop_total{device=~\"${interfaceRegex}\"}[5m])";
+              legendFormat = "{{device}} TX drops";
+            }
+          ];
+        }
+      ];
+    };
+  };
 in
 {
   options.router.monitoring = {
@@ -643,6 +857,37 @@ in
         description = "Memory utilization fraction (0.0–1.0) above which an alert fires.";
       };
     };
+
+    blackbox = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable Prometheus Blackbox Exporter for ICMP ping probing of APs and uplinks.";
+      };
+
+      port = mkOption {
+        type = types.port;
+        default = 9115;
+        description = "Port for Blackbox Exporter.";
+      };
+
+      targets = mkOption {
+        type = types.listOf (types.submodule {
+          options = {
+            name = mkOption {
+              type = types.str;
+              description = "Human-readable label for the target.";
+            };
+            target = mkOption {
+              type = types.str;
+              description = "IP address or hostname to probe.";
+            };
+          };
+        });
+        default = [];
+        description = "List of targets to probe via ICMP.";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -659,6 +904,22 @@ in
           enabledCollectors = [ "systemd" "processes" "network_route" "conntrack" ];
           port = 9100;
         };
+        blackbox = mkIf cfg.blackbox.enable {
+          enable = true;
+          port = cfg.blackbox.port;
+          enableConfigCheck = false;
+          configFile = pkgs.writeText "blackbox.json" (builtins.toJSON {
+            modules = {
+              icmp = {
+                prober = "icmp";
+                timeout = "3s";
+                icmp = {
+                  preferred_ip_protocol = "ip4";
+                };
+              };
+            };
+          });
+        };
       };
 
       scrapeConfigs = [
@@ -673,6 +934,32 @@ in
         static_configs = [{
           targets = [ "localhost:${toString (config.services.router-kea.exporter.port or 9547)}" ];
         }];
+      } ++ optional (cfg.blackbox.enable && cfg.blackbox.targets != [ ]) {
+        job_name = "blackbox-icmp";
+        metrics_path = "/probe";
+        params = {
+          module = [ "icmp" ];
+        };
+        static_configs = map (t: {
+          targets = [ t.target ];
+          labels = {
+            friendly_name = t.name;
+          };
+        }) cfg.blackbox.targets;
+        relabel_configs = [
+          {
+            source_labels = [ "__address__" ];
+            target_label = "__param_target";
+          }
+          {
+            source_labels = [ "__param_target" ];
+            target_label = "instance";
+          }
+          {
+            target_label = "__address__";
+            replacement = "localhost:${toString cfg.blackbox.port}";
+          }
+        ];
       };
 
       # Retention settings
@@ -752,6 +1039,16 @@ in
                 annotations = {
                   summary = "Kea DHCP NAK rate critical (>10/min)";
                   description = "Kea DHCP pkt4-nak-sent rate is {{ $value }} NAKs/min (threshold: 10/min).";
+                };
+              }
+              {
+                alert = "AccessPointDown";
+                expr = "probe_success{job=\"blackbox-icmp\"} == 0";
+                for = "2m";
+                labels.severity = "critical";
+                annotations = {
+                  summary = "Access point or critical target unreachable";
+                  description = "{{ $labels.friendly_name }} ({{ $labels.instance }}) is unreachable via ICMP ping.";
                 };
               }
             ];
@@ -849,6 +1146,11 @@ in
     environment.etc."grafana-dashboards/router-network-telemetry.json" = {
       mode = "0644";
       text = builtins.toJSON networkTelemetryDashboard;
+    };
+
+    environment.etc."grafana-dashboards/router-site-connectivity.json" = {
+      mode = "0644";
+      text = builtins.toJSON siteConnectivityDashboard;
     };
 
   };
