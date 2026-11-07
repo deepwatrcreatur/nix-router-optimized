@@ -703,7 +703,7 @@ let
     wait_for_technitium
 
     TOKEN="$(read_api_token)"
-    VALUE="${if cfg.dnssec.enableValidation then "Enable" else "Disable"}"
+    VALUE="${if cfg.dnssec.enableValidation then "true" else "false"}"
 
     technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
       -H "Content-Type: application/x-www-form-urlencoded" \
