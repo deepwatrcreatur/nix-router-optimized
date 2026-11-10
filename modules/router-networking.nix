@@ -257,6 +257,12 @@ let
         description = "Whether to broadcast IPv6 Router Advertisements on this interface.";
       };
 
+      ipv6AcceptRA = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether to accept IPv6 router advertisements on this routed interface. Defaults to false to prevent rogue default routes and routing loops.";
+      };
+
       dhcpPrefixDelegation = mkOption {
         type = types.bool;
         default = true;
@@ -556,6 +562,7 @@ let
         DHCPServer = mkDefault false;
         IPv6SendRA = iface.ipv6SendRA;
         DHCPPrefixDelegation = iface.dhcpPrefixDelegation;
+        IPv6AcceptRA = iface.ipv6AcceptRA;
         IPv6PrivacyExtensions = if iface.privacyExtensions then "kernel" else "no";
       }
       // optionalAttrs (iface.dns != [ ]) { DNS = iface.dns; }
