@@ -731,6 +731,7 @@ let
           broadcastAddress = device.broadcastAddress;
           port = device.port;
         }) cfg.wakeOnLan.devices)},
+        nat64Enabled: ${builtins.toJSON (config.services.router-nat64.enable or false)},
         refreshInterval: ${toString cfg.refreshInterval},
         theme: ${builtins.toJSON cfg.theme}
       };
