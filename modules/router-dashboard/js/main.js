@@ -177,13 +177,15 @@ class Dashboard {
     });
     this.renderWidget('network', dhcp);
 
-    // NAT64 Widget
-    const nat64 = new NAT64Widget({
-      id: 'nat64',
-      grid: { w: 6, h: 4 },
-      refreshInterval: 10000
-    });
-    this.renderWidget('network', nat64);
+    // NAT64 Widget (only when NAT64 or DNS64 is configured on this router)
+    if (this.config.nat64Enabled) {
+      const nat64 = new NAT64Widget({
+        id: 'nat64',
+        grid: { w: 6, h: 4 },
+        refreshInterval: 10000
+      });
+      this.renderWidget('network', nat64);
+    }
 
     // Fail2ban widget
     const fail2ban = new Fail2banWidget({
