@@ -177,7 +177,8 @@ class Dashboard {
     });
     this.renderWidget('network', dhcp);
 
-    // NAT64 Widget (only when NAT64 or DNS64 is configured on this router)
+    // NAT64 Widget (only when NAT64 is configured; the widget reports Tayga/NAT64 state,
+    // and DNS64 on its own is non-functional without a NAT64 translator)
     if (this.config.nat64Enabled) {
       const nat64 = new NAT64Widget({
         id: 'nat64',
