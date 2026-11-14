@@ -1127,14 +1127,28 @@ in
     {
       assertion =
         config.systemd.services.router-dashboard.environment.TECHNITIUM_RUNTIME_API_KEY_FILE
-        == "/var/lib/private/technitium-dns-server/nix-router-api-token";
-      message = "router-dashboard should export the runtime-first Technitium token path.";
+        == "/run/router-dashboard/technitium-api-token";
+      message = "router-dashboard should read the root-published copy of the Technitium runtime token.";
     }
     {
       assertion =
-        lib.elem "/var/lib/private/technitium-dns-server/nix-router-api-token"
-          config.systemd.services.router-dashboard.serviceConfig.ReadOnlyPaths;
-      message = "router-dashboard should be allowed to read the Technitium runtime token path.";
+        !(lib.elem "/var/lib/private/technitium-dns-server/nix-router-api-token"
+          config.systemd.services.router-dashboard.serviceConfig.ReadOnlyPaths);
+      message = "router-dashboard must not depend on the root-only Technitium state path (it cannot read it).";
+    }
+    {
+      assertion =
+        config.systemd.services ? router-dashboard-technitium-token
+        && lib.elem "router-dashboard.service" config.systemd.services.router-dashboard-technitium-token.before
+        && lib.hasInfix "/var/lib/private/technitium-dns-server/nix-router-api-token"
+          config.systemd.services.router-dashboard-technitium-token.script
+        && lib.hasInfix "/run/router-dashboard/technitium-api-token"
+          config.systemd.services.router-dashboard-technitium-token.script;
+      message = "router-dashboard-technitium-token should publish the runtime token into /run/router-dashboard before the dashboard starts.";
+    }
+    {
+      assertion = config.systemd.timers ? router-dashboard-technitium-token;
+      message = "router-dashboard-technitium-token should be refreshed by a timer so re-minted tokens propagate.";
     }
   ]);
 }
