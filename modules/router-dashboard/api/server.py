@@ -8,6 +8,7 @@ import http.server
 import socketserver
 import subprocess
 import json
+import logging
 import os
 import csv
 import re
@@ -23,6 +24,8 @@ import select
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from urllib.parse import urlparse, parse_qs, urlencode
+
+logger = logging.getLogger('router-dashboard')
 
 # Configuration from environment
 PORT = int(os.environ.get('DASHBOARD_PORT', 8888))
@@ -88,6 +91,7 @@ CADDY_DNS_CACHE = {
 TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
 TECHNITIUM_RUNTIME_API_KEY_FILE = os.environ.get('TECHNITIUM_RUNTIME_API_KEY_FILE', '')
 TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
+TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
 CLOUDFLARE_TOKEN_FILE = os.environ.get('DASHBOARD_CLOUDFLARE_TOKEN_FILE', '')
 if CLOUDFLARE_TOKEN_FILE and os.path.exists(CLOUDFLARE_TOKEN_FILE):
     try:
@@ -3031,7 +3035,14 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'RouterDashboard/1.0'})
             with urllib.request.urlopen(req, timeout=5) as response:
-                return json.loads(response.read().decode())
+                data = json.loads(response.read().decode())
+            if isinstance(data, dict) and data.get('status') == 'invalid-token':
+                # The cached token was rotated or is stale (e.g. a concurrent
+                # cache fill raced a re-mint). Drop it so the next request
+                # re-reads the token file instead of failing for the full TTL.
+                TECHNITIUM_TOKEN_CACHE['token'] = None
+                TECHNITIUM_TOKEN_CACHE['expires'] = 0
+            return data
         except urllib.error.HTTPError as e:
             return {'status': 'error', 'errorMessage': f'HTTP {e.code}'}
         except urllib.error.URLError as e:
