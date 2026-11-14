@@ -8,6 +8,7 @@ import http.server
 import socketserver
 import subprocess
 import json
+import logging
 import os
 import csv
 import re
@@ -23,6 +24,8 @@ import select
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from urllib.parse import urlparse, parse_qs, urlencode
+
+logger = logging.getLogger('router-dashboard')
 
 # Configuration from environment
 PORT = int(os.environ.get('DASHBOARD_PORT', 8888))
@@ -88,6 +91,7 @@ CADDY_DNS_CACHE = {
 TECHNITIUM_URL = os.environ.get('TECHNITIUM_URL', 'http://localhost:5380')
 TECHNITIUM_RUNTIME_API_KEY_FILE = os.environ.get('TECHNITIUM_RUNTIME_API_KEY_FILE', '')
 TECHNITIUM_API_KEY_FILE = os.environ.get('TECHNITIUM_API_KEY_FILE', '')
+TECHNITIUM_TOKEN_CACHE = {'token': None, 'expires': 0}
 CLOUDFLARE_TOKEN_FILE = os.environ.get('DASHBOARD_CLOUDFLARE_TOKEN_FILE', '')
 if CLOUDFLARE_TOKEN_FILE and os.path.exists(CLOUDFLARE_TOKEN_FILE):
     try:
