@@ -2435,7 +2435,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         now = int(time.time())
 
         for lease_file in KEA_LEASE_FILES:
-            if not lease_file.exists():
+            # The raw Kea files usually live under /var/lib/private (mode 0700),
+            # where even stat() fails with EACCES for the dashboard user and
+            # Path.exists() re-raises it. Treat unreadable candidates as absent.
+            try:
+                if not lease_file.is_file():
+                    continue
+            except OSError:
                 continue
 
             try:
