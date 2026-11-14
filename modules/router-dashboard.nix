@@ -14,6 +14,11 @@ let
   cfg = config.services.router-dashboard;
   fail2banSnapshotFile = "/run/router-dashboard/fail2ban-status.json";
   keaLeaseSnapshotFile = "/run/router-dashboard/kea-dhcp4.leases";
+  # Root-published, group-readable copy of the Technitium runtime automation
+  # token. The source lives in Technitium's DynamicUser state directory
+  # (/var/lib/private, 0700) as a root-only 0400 file, which the unprivileged
+  # dashboard user cannot read.
+  technitiumTokenSnapshotFile = "/run/router-dashboard/technitium-api-token";
   technitiumRuntimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
   normalizedServiceControlServices = map (
     entry:
@@ -989,7 +994,8 @@ in {
           DASHBOARD_KEA_LEASES_FILE = keaLeaseSnapshotFile;
           DASHBOARD_CLOUDFLARE_TOKEN_FILE = if cfg.cloudflareTokenFile != null then cfg.cloudflareTokenFile else "";
           TECHNITIUM_URL = "http://localhost:5380";
-          TECHNITIUM_RUNTIME_API_KEY_FILE = technitiumRuntimeApiTokenPath;
+          TECHNITIUM_RUNTIME_API_KEY_FILE =
+            if config.services.router-technitium.enable or false then technitiumTokenSnapshotFile else "";
           TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
             then config.age.secrets.technitium-api-key.path
             else "";
@@ -1028,7 +1034,6 @@ in {
             "/run/router-dashboard"
           ]
           ++ lib.optional (config.services.router-clat.enable or false) "/run/router-clat"
-          ++ lib.optional (config.services.router-technitium.enable or false) technitiumRuntimeApiTokenPath
           ++ lib.optional (dashboardMutationAuthTokenFile != null) dashboardMutationAuthTokenFile
           ++ lib.optional (cfg.cloudflareTokenFile != null) cfg.cloudflareTokenFile;
         };
@@ -1188,6 +1193,65 @@ in {
           OnBootSec = "30s";
           OnUnitActiveSec = "30s";
           Unit = "router-dashboard-kea-lease-snapshot.service";
+        };
+      };
+
+      systemd.services.router-dashboard-technitium-token = mkIf (config.services.router-technitium.enable or false) {
+        description = "Publish Technitium automation token for the router dashboard";
+        after = [ "technitium-dns-server.service" ]
+          ++ lib.optional (config.systemd.services ? technitium-bootstrap-api-token) "technitium-bootstrap-api-token.service";
+        wants = lib.optional (config.systemd.services ? technitium-bootstrap-api-token) "technitium-bootstrap-api-token.service";
+        before = [ "router-dashboard.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = "root";
+          Group = "root";
+          UMask = "0077";
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateNetwork = true;
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          ReadWritePaths = [ "/run/router-dashboard" ];
+          ProtectClock = true;
+          ProtectHostname = true;
+          ProtectKernelLogs = true;
+          ProtectKernelModules = true;
+          ProtectKernelTunables = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RestrictNamespaces = true;
+          RestrictSUIDSGID = true;
+          SystemCallArchitectures = "native";
+        };
+        script = ''
+          set -euo pipefail
+          src=${lib.escapeShellArg technitiumRuntimeApiTokenPath}
+          dst=${lib.escapeShellArg technitiumTokenSnapshotFile}
+
+          if [ ! -s "$src" ]; then
+            # No runtime token (yet); leave any previous copy alone so the
+            # dashboard can still fall back to TECHNITIUM_API_KEY_FILE.
+            exit 0
+          fi
+
+          if [ -f "$dst" ] && ${pkgs.diffutils}/bin/cmp -s "$src" "$dst"; then
+            exit 0
+          fi
+
+          ${pkgs.coreutils}/bin/install -m 0640 -o root -g router-dashboard "$src" "$dst"
+        '';
+        wantedBy = [ "multi-user.target" ];
+      };
+
+      systemd.timers.router-dashboard-technitium-token = mkIf (config.services.router-technitium.enable or false) {
+        description = "Refresh the router dashboard copy of the Technitium automation token";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnBootSec = "1min";
+          OnUnitActiveSec = "5min";
+          Unit = "router-dashboard-technitium-token.service";
         };
       };
     })
