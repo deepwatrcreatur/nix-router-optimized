@@ -201,6 +201,13 @@ let
       ${aliasText}
     '';
 
+  fqdn = zoneName: name: if name == "@" then zoneName else "${name}.${zoneName}";
+
+  # Shell line that records a successfully synchronized record as managed.
+  markManaged = zone: domain: type: value: ''
+    printf '%s\n' ${escapeShellArg (builtins.toJSON { inherit zone domain type value; })} >> "$ADDED_FILE"
+  '';
+
   zoneSyncScript =
     concatStringsSep "\n" (
       mapAttrsToList (
@@ -217,6 +224,7 @@ let
                 -d "ipAddress=${value.ipAddress}" \
                 -d "overwrite=true" \
                 >/dev/null
+              ${markManaged zoneName (fqdn zoneName name) "A" value.ipAddress}
 
               ${concatMapStringsSep "\n" (alias: ''
                 echo "Adding alias: ${alias}.${zoneName} -> ${name}.${zoneName}"
@@ -228,6 +236,7 @@ let
                   -d "cname=${if name == "@" then zoneName else "${name}.${zoneName}"}" \
                   -d "overwrite=true" \
                   >/dev/null
+                ${markManaged zoneName (fqdn zoneName alias) "CNAME" (fqdn zoneName name)}
               '') value.aliases}
             '') zone.staticHosts
           );
@@ -243,6 +252,7 @@ let
                 -d "cname=${if target == "@" then zoneName else "${target}.${zoneName}"}" \
                 -d "overwrite=true" \
                 >/dev/null
+              ${markManaged zoneName (fqdn zoneName alias) "CNAME" (fqdn zoneName target)}
             '') zone.aliases
           );
         in
@@ -260,6 +270,43 @@ let
         ''
       ) allZones
     );
+
+  # Every record the sync service owns. Persisted after each successful run so
+  # the next run can delete records that were removed from the configuration.
+  managedRecords = flatten (
+    mapAttrsToList (
+      zoneName: zone:
+      (flatten (
+        mapAttrsToList (
+          name: value:
+          [
+            {
+              zone = zoneName;
+              domain = fqdn zoneName name;
+              type = "A";
+              value = value.ipAddress;
+            }
+          ]
+          ++ map (alias: {
+            zone = zoneName;
+            domain = fqdn zoneName alias;
+            type = "CNAME";
+            value = fqdn zoneName name;
+          }) value.aliases
+        ) zone.staticHosts
+      ))
+      ++ mapAttrsToList (alias: target: {
+        zone = zoneName;
+        domain = fqdn zoneName alias;
+        type = "CNAME";
+        value = fqdn zoneName target;
+      }) zone.aliases
+    ) allZones
+  );
+
+  managedRecordsFile = pkgs.writeText "technitium-managed-records.json" (builtins.toJSON managedRecords);
+
+  managedRecordsStateDir = "/var/lib/technitium-sync-static-hosts";
 
   sshHostEntries =
     concatStringsSep "\n\n" (
@@ -403,6 +450,7 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        StateDirectory = "technitium-sync-static-hosts";
       };
 
       script = let
@@ -467,7 +515,99 @@ in
           ' >/dev/null
         }
 
+        STATE_FILE="${managedRecordsStateDir}/managed-records.json"
+        PREV_FILE="$(mktemp)"
+        RETAINED_FILE="$(mktemp)"
+        ADDED_FILE="$(mktemp)"
+        HAVE_PREV=0
+        if [ -f "$STATE_FILE" ]; then
+          cp "$STATE_FILE" "$PREV_FILE"
+          HAVE_PREV=1
+        else
+          echo '[]' > "$PREV_FILE"
+        fi
+
+        write_state() {
+          ${pkgs.jq}/bin/jq -s 'add | unique' "$@" > "$STATE_FILE.tmp"
+          chmod 0644 "$STATE_FILE.tmp"
+          mv "$STATE_FILE.tmp" "$STATE_FILE"
+        }
+
+        # If the sync fails partway, keep ownership of the records that were
+        # already written (plus everything owned before), but never claim
+        # configured records that were not reached.
+        on_exit() {
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            added_array="$(mktemp)"
+            ${pkgs.jq}/bin/jq -s '.' "$ADDED_FILE" > "$added_array" \
+              && write_state "$PREV_FILE" "$added_array" \
+              || echo "Warning: could not record partially synced DNS records" >&2
+            rm -f "$added_array"
+          fi
+          rm -f "$PREV_FILE" "$RETAINED_FILE" "$ADDED_FILE"
+          exit "$rc"
+        }
+        trap on_exit EXIT
+
         ${zoneSyncScript}
+
+        # Prune records this service created on a previous run that are no
+        # longer configured. Records created by hand or by DHCP are never in
+        # the state file, so they are never touched. DNS names are compared
+        # case-insensitively, matching how Technitium stores them.
+        if [ "$HAVE_PREV" = 1 ]; then
+          ${pkgs.jq}/bin/jq -c --slurpfile current ${managedRecordsFile} '
+            def key: {zone: (.zone | ascii_downcase), domain: (.domain | ascii_downcase), type};
+            ($current[0] | map(key)) as $keep
+            | .[] | select(key as $k | ($keep | any(.[]; . == $k)) | not)
+          ' "$PREV_FILE" | while IFS= read -r record; do
+            zone="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .zone)"
+            domain="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .domain)"
+            type="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .type)"
+            value="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .value)"
+            # Look the record up first and only delete an exact match.
+            # Technitium's delete endpoint ignores the target for CNAMEs, so
+            # without this check an alias that was retargeted by hand would
+            # be removed too. If the lookup fails, keep the entry and retry.
+            if ! existing="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/get?token=$TOKEN" \
+                --data-urlencode "zone=$zone" \
+                --data-urlencode "domain=$domain")"; then
+              echo "Warning: could not look up $domain; will retry pruning on next run" >&2
+              printf '%s\n' "$record" >> "$RETAINED_FILE"
+              continue
+            fi
+            if ! printf '%s' "$existing" | ${pkgs.jq}/bin/jq -e --arg type "$type" --arg value "$value" '
+                (.response.records // [])
+                | any(.type == $type and (((.rData.ipAddress // .rData.cname // "") | ascii_downcase | rtrimstr(".")) == ($value | ascii_downcase | rtrimstr("."))))
+              ' >/dev/null; then
+              echo "Stale record $domain $type $value is already gone or was changed by hand; leaving it alone"
+              continue
+            fi
+
+            echo "Removing stale DNS record: $domain $type $value"
+            value_arg="ipAddress=$value"
+            if [ "$type" = "CNAME" ]; then
+              value_arg="cname=$value"
+            fi
+            if ! technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/delete?token=$TOKEN" \
+              --data-urlencode "zone=$zone" \
+              --data-urlencode "domain=$domain" \
+              --data-urlencode "type=$type" \
+              --data-urlencode "$value_arg" \
+              >/dev/null; then
+              echo "Warning: could not remove $domain $type $value; will retry on next run" >&2
+              printf '%s\n' "$record" >> "$RETAINED_FILE"
+            fi
+          done
+        fi
+
+        # New state: everything configured now, plus stale records that could
+        # not be removed yet.
+        jq_retained="$(mktemp)"
+        ${pkgs.jq}/bin/jq -s '.' "$RETAINED_FILE" > "$jq_retained"
+        write_state ${managedRecordsFile} "$jq_retained"
+        rm -f "$jq_retained"
 
         echo "Static DNS records synchronized"
       '';
