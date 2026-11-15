@@ -314,5 +314,99 @@ class InventoryRuntimeTests(unittest.TestCase):
         self.assertEqual(routes[3]["destination"], "2001:db8:200::/64")
 
 
+    def write_inventory(self, payload):
+        import tempfile
+        handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump(payload, handle)
+        handle.close()
+        self.addCleanup(pathlib.Path(handle.name).unlink)
+        return handle.name
+
+    KEA_INVENTORY = {
+        "subnets": [
+            {
+                "cidr": "10.10.0.0/16",
+                "dhcpBackend": "kea",
+                "dynamicPools": [{"start": "10.10.200.1", "end": "10.10.222.254"}],
+            },
+            {"cidr": "10.10.0.0/16", "dhcpBackend": None, "dynamicPools": []},
+        ]
+    }
+
+    def test_get_kea_scope_from_inventory_uses_declared_pool(self):
+        handler = self.make_handler()
+        path = self.write_inventory(self.KEA_INVENTORY)
+        with mock.patch.object(server, "INVENTORY_FILE", path):
+            scope = handler.get_kea_scope_from_inventory()
+        self.assertEqual(scope["name"], "10.10.0.0/16")
+        self.assertEqual(scope["startingAddress"], "10.10.200.1")
+        self.assertEqual(scope["endingAddress"], "10.10.222.254")
+        self.assertTrue(scope["enabled"])
+
+    def test_get_kea_scope_from_inventory_without_kea_subnet(self):
+        handler = self.make_handler()
+        path = self.write_inventory({"subnets": [{"cidr": "10.0.0.0/24", "dhcpBackend": None}]})
+        with mock.patch.object(server, "INVENTORY_FILE", path):
+            self.assertIsNone(handler.get_kea_scope_from_inventory())
+        with mock.patch.object(server, "INVENTORY_FILE", ""):
+            self.assertIsNone(handler.get_kea_scope_from_inventory())
+
+    def test_kea_dhcp_leases_ignore_technitium_default_scope(self):
+        handler = self.make_handler()
+        path = self.write_inventory(self.KEA_INVENTORY)
+        handler.get_kea_dhcp_leases = lambda: [
+            {"address": "10.10.200.20", "hostname": "printer", "hardwareAddress": "11:22:33:44:55:66"}
+        ]
+        handler.get_technitium_token = lambda: "token"
+        handler.get_kea_metrics_data = lambda: {}
+
+        def fake_fetch(url):
+            if "/api/dhcp/scopes/list" in url:
+                return {"status": "ok", "response": {"scopes": [{
+                    "name": "Default", "enabled": False,
+                    "startingAddress": "192.168.1.1", "endingAddress": "192.168.1.254",
+                }]}}
+            return {"status": "ok", "response": {"leases": []}}
+
+        handler.fetch_technitium_api = fake_fetch
+        sent = []
+        handler.send_json = lambda payload, status=200: sent.append(payload)
+
+        with mock.patch.object(server, "INVENTORY_FILE", path):
+            handler.handle_dhcp_leases()
+
+        payload = sent[-1]
+        self.assertEqual(payload["provider"], "kea")
+        section = payload["sections"][0]
+        self.assertEqual(section["startAddress"], "10.10.200.1")
+        self.assertEqual(section["endAddress"], "10.10.222.254")
+        self.assertTrue(section["enabled"])
+        self.assertNotIn("192.168.1.1", json.dumps(payload))
+
+    def test_technitium_dhcp_leases_skip_disabled_empty_scopes(self):
+        handler = self.make_handler()
+        handler.get_kea_dhcp_leases = lambda: []
+        handler.get_technitium_token = lambda: "token"
+
+        def fake_fetch(url):
+            if "/api/dhcp/scopes/list" in url:
+                return {"status": "ok", "response": {"scopes": [
+                    {"name": "Default", "enabled": False,
+                     "startingAddress": "192.168.1.1", "endingAddress": "192.168.1.254"},
+                    {"name": "LAN", "enabled": True,
+                     "startingAddress": "10.10.200.1", "endingAddress": "10.10.222.254"},
+                ]}}
+            return {"status": "ok", "response": {"leases": [
+                {"address": "10.10.200.20", "scope": "LAN", "hostName": "printer"}
+            ]}}
+
+        handler.fetch_technitium_api = fake_fetch
+        sent = []
+        handler.send_json = lambda payload, status=200: sent.append(payload)
+        handler.handle_dhcp_leases()
+
+        names = [section["scope"] for section in sent[-1]["sections"]]
+        self.assertEqual(names, ["LAN"])
+
 if __name__ == "__main__":
     unittest.main()
