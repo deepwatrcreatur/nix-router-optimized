@@ -1738,6 +1738,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         """Get DHCP lease information from Technitium or local Kea lease state"""
         try:
             kea_leases = self.get_kea_dhcp_leases()
+            # A declared Kea subnet means Kea serves DHCP even before it has
+            # handed out any leases, so don't key Kea mode off lease count.
+            kea_scope = self.get_kea_scope_from_inventory()
+            kea_active = bool(kea_leases) or kea_scope is not None
             token = self.get_technitium_token()
             scopes = []
 
@@ -1748,13 +1752,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
                 if self.technitium_response_ok(scopes_data):
                     scopes = scopes_data.get('response', {}).get('scopes', [])
-                elif not kea_leases:
+                elif not kea_active:
                     self.send_json({
                         'available': False,
                         'message': self.technitium_error_message(scopes_data, 'Failed to get DHCP scopes')
                     })
                     return
-            elif not kea_leases:
+            elif not kea_active:
                 self.send_json({
                     'available': False,
                     'message': 'Technitium DNS not configured or unavailable'
@@ -1772,11 +1776,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 if self.technitium_response_ok(leases_data):
                     all_raw_leases = leases_data.get('response', {}).get('leases', [])
 
-            if kea_leases and not all_raw_leases:
+            if kea_active and not all_raw_leases:
                 # Kea is the active DHCP server. Technitium's scope list (often
                 # just its built-in, disabled "Default" 192.168.1.0/24 scope)
                 # says nothing about Kea, so describe Kea's own declared pools.
-                kea_scope = self.get_kea_scope_from_inventory()
                 self.send_kea_dhcp_leases(kea_leases, [kea_scope] if kea_scope else [])
                 return
 

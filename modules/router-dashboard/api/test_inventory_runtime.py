@@ -408,5 +408,24 @@ class InventoryRuntimeTests(unittest.TestCase):
         names = [section["scope"] for section in sent[-1]["sections"]]
         self.assertEqual(names, ["LAN"])
 
+    def test_kea_dhcp_leases_show_declared_pool_with_zero_leases(self):
+        handler = self.make_handler()
+        path = self.write_inventory(self.KEA_INVENTORY)
+        handler.get_kea_dhcp_leases = lambda: []
+        handler.get_technitium_token = lambda: None
+        handler.get_kea_metrics_data = lambda: {}
+        sent = []
+        handler.send_json = lambda payload, status=200: sent.append(payload)
+
+        with mock.patch.object(server, "INVENTORY_FILE", path):
+            handler.handle_dhcp_leases()
+
+        payload = sent[-1]
+        self.assertTrue(payload["available"])
+        self.assertEqual(payload["provider"], "kea")
+        self.assertEqual(payload["totalLeases"], 0)
+        self.assertEqual(payload["sections"][0]["startAddress"], "10.10.200.1")
+        self.assertEqual(payload["sections"][0]["endAddress"], "10.10.222.254")
+
 if __name__ == "__main__":
     unittest.main()
