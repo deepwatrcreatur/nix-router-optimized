@@ -511,12 +511,16 @@ in
 
         # Prune records this service created on a previous run that are no
         # longer configured. Records created by hand or by DHCP are never in
-        # the state file, so they are never touched.
+        # the state file, so they are never touched. DNS names are compared
+        # case-insensitively, matching how Technitium stores them.
         STATE_FILE="${managedRecordsStateDir}/managed-records.json"
+        RETAINED_FILE="$(mktemp)"
+        trap 'rm -f "$RETAINED_FILE"' EXIT
         if [ -f "$STATE_FILE" ]; then
           ${pkgs.jq}/bin/jq -c --slurpfile current ${managedRecordsFile} '
-            ($current[0] | map({zone, domain, type})) as $keep
-            | .[] | select(({zone, domain, type}) as $k | ($keep | index([$k])) | not)
+            def key: {zone: (.zone | ascii_downcase), domain: (.domain | ascii_downcase), type};
+            ($current[0] | map(key)) as $keep
+            | .[] | select(key as $k | ($keep | index([$k])) | not)
           ' "$STATE_FILE" | while IFS= read -r record; do
             zone="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .zone)"
             domain="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .domain)"
@@ -527,17 +531,38 @@ in
             if [ "$type" = "CNAME" ]; then
               value_arg="cname=$value"
             fi
-            if ! technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/delete?token=$TOKEN" \
+            if technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/delete?token=$TOKEN" \
               --data-urlencode "zone=$zone" \
               --data-urlencode "domain=$domain" \
               --data-urlencode "type=$type" \
               --data-urlencode "$value_arg" \
               >/dev/null; then
-              echo "Warning: could not remove $domain $type $value (already gone?)" >&2
+              continue
+            fi
+
+            # Deletion failed. If the record is verifiably gone there is
+            # nothing left to do; otherwise keep it in the state so the next
+            # run retries instead of forgetting it.
+            if existing="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/get?token=$TOKEN" \
+                --data-urlencode "zone=$zone" \
+                --data-urlencode "domain=$domain")" \
+              && ! printf '%s' "$existing" | ${pkgs.jq}/bin/jq -e --arg type "$type" --arg value "$value" '
+                (.response.records // [])
+                | any(.type == $type and (((.rData.ipAddress // .rData.cname // "") | ascii_downcase) == ($value | ascii_downcase)))
+              ' >/dev/null; then
+              echo "Record $domain $type $value is already gone"
+            else
+              echo "Warning: could not remove $domain $type $value; will retry on next run" >&2
+              printf '%s\n' "$record" >> "$RETAINED_FILE"
             fi
           done
         fi
-        install -m 0644 ${managedRecordsFile} "$STATE_FILE"
+
+        # New state: everything configured now, plus stale records that could
+        # not be removed yet.
+        ${pkgs.jq}/bin/jq -s '.[0] + .[1:]' ${managedRecordsFile} "$RETAINED_FILE" > "$STATE_FILE.tmp"
+        chmod 0644 "$STATE_FILE.tmp"
+        mv "$STATE_FILE.tmp" "$STATE_FILE"
 
         echo "Static DNS records synchronized"
       '';
