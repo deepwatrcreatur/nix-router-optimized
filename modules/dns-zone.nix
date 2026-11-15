@@ -201,6 +201,13 @@ let
       ${aliasText}
     '';
 
+  fqdn = zoneName: name: if name == "@" then zoneName else "${name}.${zoneName}";
+
+  # Shell line that records a successfully synchronized record as managed.
+  markManaged = zone: domain: type: value: ''
+    printf '%s\n' ${escapeShellArg (builtins.toJSON { inherit zone domain type value; })} >> "$ADDED_FILE"
+  '';
+
   zoneSyncScript =
     concatStringsSep "\n" (
       mapAttrsToList (
@@ -217,6 +224,7 @@ let
                 -d "ipAddress=${value.ipAddress}" \
                 -d "overwrite=true" \
                 >/dev/null
+              ${markManaged zoneName (fqdn zoneName name) "A" value.ipAddress}
 
               ${concatMapStringsSep "\n" (alias: ''
                 echo "Adding alias: ${alias}.${zoneName} -> ${name}.${zoneName}"
@@ -228,6 +236,7 @@ let
                   -d "cname=${if name == "@" then zoneName else "${name}.${zoneName}"}" \
                   -d "overwrite=true" \
                   >/dev/null
+                ${markManaged zoneName (fqdn zoneName alias) "CNAME" (fqdn zoneName name)}
               '') value.aliases}
             '') zone.staticHosts
           );
@@ -243,6 +252,7 @@ let
                 -d "cname=${if target == "@" then zoneName else "${target}.${zoneName}"}" \
                 -d "overwrite=true" \
                 >/dev/null
+              ${markManaged zoneName (fqdn zoneName alias) "CNAME" (fqdn zoneName target)}
             '') zone.aliases
           );
         in
@@ -260,8 +270,6 @@ let
         ''
       ) allZones
     );
-
-  fqdn = zoneName: name: if name == "@" then zoneName else "${name}.${zoneName}";
 
   # Every record the sync service owns. Persisted after each successful run so
   # the next run can delete records that were removed from the configuration.
@@ -510,7 +518,7 @@ in
         STATE_FILE="${managedRecordsStateDir}/managed-records.json"
         PREV_FILE="$(mktemp)"
         RETAINED_FILE="$(mktemp)"
-        trap 'rm -f "$PREV_FILE" "$RETAINED_FILE"' EXIT
+        ADDED_FILE="$(mktemp)"
         HAVE_PREV=0
         if [ -f "$STATE_FILE" ]; then
           cp "$STATE_FILE" "$PREV_FILE"
@@ -525,10 +533,22 @@ in
           mv "$STATE_FILE.tmp" "$STATE_FILE"
         }
 
-        # Record ownership before touching Technitium: if the sync fails
-        # partway, records it already added are still known to be managed
-        # and can be pruned once they leave the configuration.
-        write_state "$PREV_FILE" ${managedRecordsFile}
+        # If the sync fails partway, keep ownership of the records that were
+        # already written (plus everything owned before), but never claim
+        # configured records that were not reached.
+        on_exit() {
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            added_array="$(mktemp)"
+            ${pkgs.jq}/bin/jq -s '.' "$ADDED_FILE" > "$added_array" \
+              && write_state "$PREV_FILE" "$added_array" \
+              || echo "Warning: could not record partially synced DNS records" >&2
+            rm -f "$added_array"
+          fi
+          rm -f "$PREV_FILE" "$RETAINED_FILE" "$ADDED_FILE"
+          exit "$rc"
+        }
+        trap on_exit EXIT
 
         ${zoneSyncScript}
 
