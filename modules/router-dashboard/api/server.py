@@ -1738,6 +1738,10 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         """Get DHCP lease information from Technitium or local Kea lease state"""
         try:
             kea_leases = self.get_kea_dhcp_leases()
+            # A declared Kea subnet means Kea serves DHCP even before it has
+            # handed out any leases, so don't key Kea mode off lease count.
+            kea_scope = self.get_kea_scope_from_inventory()
+            kea_active = bool(kea_leases) or kea_scope is not None
             token = self.get_technitium_token()
             scopes = []
 
@@ -1748,13 +1752,13 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
                 if self.technitium_response_ok(scopes_data):
                     scopes = scopes_data.get('response', {}).get('scopes', [])
-                elif not kea_leases:
+                elif not kea_active:
                     self.send_json({
                         'available': False,
                         'message': self.technitium_error_message(scopes_data, 'Failed to get DHCP scopes')
                     })
                     return
-            elif not kea_leases:
+            elif not kea_active:
                 self.send_json({
                     'available': False,
                     'message': 'Technitium DNS not configured or unavailable'
@@ -1772,8 +1776,11 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
                 if self.technitium_response_ok(leases_data):
                     all_raw_leases = leases_data.get('response', {}).get('leases', [])
 
-            if kea_leases and not all_raw_leases:
-                self.send_kea_dhcp_leases(kea_leases, scopes)
+            if kea_active and not all_raw_leases:
+                # Kea is the active DHCP server. Technitium's scope list (often
+                # just its built-in, disabled "Default" 192.168.1.0/24 scope)
+                # says nothing about Kea, so describe Kea's own declared pools.
+                self.send_kea_dhcp_leases(kea_leases, [kea_scope] if kea_scope else [])
                 return
 
             for scope in scopes:
@@ -1788,6 +1795,11 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
                 # Filter leases for this scope
                 leases = [l for l in all_raw_leases if l.get('scope') == scope_name]
+
+                # Skip disabled scopes with no leases (e.g. Technitium's
+                # built-in "Default" scope) so they don't masquerade as live.
+                if not scope.get('enabled', False) and not leases:
+                    continue
 
                 # Add scope info
                 scope_stats.append({
@@ -2542,6 +2554,45 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
             except Exception:
                 pass
         return {}
+
+    def get_kea_scope_from_inventory(self):
+        """Describe the Kea DHCPv4 scope from the declarative inventory export.
+
+        Returns a Technitium-shaped scope dict (name/interface/enabled/
+        startingAddress/endingAddress) or None when no Kea subnet is declared.
+        """
+        if not INVENTORY_FILE:
+            return None
+        try:
+            inventory = json.loads(Path(INVENTORY_FILE).read_text())
+        except (OSError, ValueError):
+            return None
+
+        kea_subnets = [
+            subnet for subnet in inventory.get('subnets', []) or []
+            if isinstance(subnet, dict) and subnet.get('dhcpBackend') == 'kea'
+        ]
+        if not kea_subnets:
+            return None
+
+        pools = []
+        for subnet in kea_subnets:
+            for pool in subnet.get('dynamicPools', []) or []:
+                start = self.parse_ipv4_address(pool.get('start', ''))
+                end = self.parse_ipv4_address(pool.get('end', ''))
+                if start is not None and end is not None and start <= end:
+                    pools.append((start, end, pool.get('start'), pool.get('end')))
+
+        subnet = kea_subnets[0]
+        scope = {
+            'name': subnet.get('cidr') or 'LAN',
+            'interface': 'Kea DHCP',
+            'enabled': True,
+        }
+        if pools:
+            scope['startingAddress'] = min(pools)[2]
+            scope['endingAddress'] = max(pools, key=lambda pool: pool[1])[3]
+        return scope
 
     def send_kea_dhcp_leases(self, leases, scopes):
         scope = scopes[0] if scopes else {}
