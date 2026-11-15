@@ -526,32 +526,36 @@ in
             domain="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .domain)"
             type="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .type)"
             value="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .value)"
+            # Look the record up first and only delete an exact match.
+            # Technitium's delete endpoint ignores the target for CNAMEs, so
+            # without this check an alias that was retargeted by hand would
+            # be removed too. If the lookup fails, keep the entry and retry.
+            if ! existing="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/get?token=$TOKEN" \
+                --data-urlencode "zone=$zone" \
+                --data-urlencode "domain=$domain")"; then
+              echo "Warning: could not look up $domain; will retry pruning on next run" >&2
+              printf '%s\n' "$record" >> "$RETAINED_FILE"
+              continue
+            fi
+            if ! printf '%s' "$existing" | ${pkgs.jq}/bin/jq -e --arg type "$type" --arg value "$value" '
+                (.response.records // [])
+                | any(.type == $type and (((.rData.ipAddress // .rData.cname // "") | ascii_downcase | rtrimstr(".")) == ($value | ascii_downcase | rtrimstr("."))))
+              ' >/dev/null; then
+              echo "Stale record $domain $type $value is already gone or was changed by hand; leaving it alone"
+              continue
+            fi
+
             echo "Removing stale DNS record: $domain $type $value"
             value_arg="ipAddress=$value"
             if [ "$type" = "CNAME" ]; then
               value_arg="cname=$value"
             fi
-            if technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/delete?token=$TOKEN" \
+            if ! technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/delete?token=$TOKEN" \
               --data-urlencode "zone=$zone" \
               --data-urlencode "domain=$domain" \
               --data-urlencode "type=$type" \
               --data-urlencode "$value_arg" \
               >/dev/null; then
-              continue
-            fi
-
-            # Deletion failed. If the record is verifiably gone there is
-            # nothing left to do; otherwise keep it in the state so the next
-            # run retries instead of forgetting it.
-            if existing="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/get?token=$TOKEN" \
-                --data-urlencode "zone=$zone" \
-                --data-urlencode "domain=$domain")" \
-              && ! printf '%s' "$existing" | ${pkgs.jq}/bin/jq -e --arg type "$type" --arg value "$value" '
-                (.response.records // [])
-                | any(.type == $type and (((.rData.ipAddress // .rData.cname // "") | ascii_downcase) == ($value | ascii_downcase)))
-              ' >/dev/null; then
-              echo "Record $domain $type $value is already gone"
-            else
               echo "Warning: could not remove $domain $type $value; will retry on next run" >&2
               printf '%s\n' "$record" >> "$RETAINED_FILE"
             fi
