@@ -507,21 +507,41 @@ in
           ' >/dev/null
         }
 
+        STATE_FILE="${managedRecordsStateDir}/managed-records.json"
+        PREV_FILE="$(mktemp)"
+        RETAINED_FILE="$(mktemp)"
+        trap 'rm -f "$PREV_FILE" "$RETAINED_FILE"' EXIT
+        HAVE_PREV=0
+        if [ -f "$STATE_FILE" ]; then
+          cp "$STATE_FILE" "$PREV_FILE"
+          HAVE_PREV=1
+        else
+          echo '[]' > "$PREV_FILE"
+        fi
+
+        write_state() {
+          ${pkgs.jq}/bin/jq -s 'add | unique' "$@" > "$STATE_FILE.tmp"
+          chmod 0644 "$STATE_FILE.tmp"
+          mv "$STATE_FILE.tmp" "$STATE_FILE"
+        }
+
+        # Record ownership before touching Technitium: if the sync fails
+        # partway, records it already added are still known to be managed
+        # and can be pruned once they leave the configuration.
+        write_state "$PREV_FILE" ${managedRecordsFile}
+
         ${zoneSyncScript}
 
         # Prune records this service created on a previous run that are no
         # longer configured. Records created by hand or by DHCP are never in
         # the state file, so they are never touched. DNS names are compared
         # case-insensitively, matching how Technitium stores them.
-        STATE_FILE="${managedRecordsStateDir}/managed-records.json"
-        RETAINED_FILE="$(mktemp)"
-        trap 'rm -f "$RETAINED_FILE"' EXIT
-        if [ -f "$STATE_FILE" ]; then
+        if [ "$HAVE_PREV" = 1 ]; then
           ${pkgs.jq}/bin/jq -c --slurpfile current ${managedRecordsFile} '
             def key: {zone: (.zone | ascii_downcase), domain: (.domain | ascii_downcase), type};
             ($current[0] | map(key)) as $keep
             | .[] | select(key as $k | ($keep | any(.[]; . == $k)) | not)
-          ' "$STATE_FILE" | while IFS= read -r record; do
+          ' "$PREV_FILE" | while IFS= read -r record; do
             zone="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .zone)"
             domain="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .domain)"
             type="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .type)"
@@ -564,9 +584,10 @@ in
 
         # New state: everything configured now, plus stale records that could
         # not be removed yet.
-        ${pkgs.jq}/bin/jq -s '.[0] + .[1:]' ${managedRecordsFile} "$RETAINED_FILE" > "$STATE_FILE.tmp"
-        chmod 0644 "$STATE_FILE.tmp"
-        mv "$STATE_FILE.tmp" "$STATE_FILE"
+        jq_retained="$(mktemp)"
+        ${pkgs.jq}/bin/jq -s '.' "$RETAINED_FILE" > "$jq_retained"
+        write_state ${managedRecordsFile} "$jq_retained"
+        rm -f "$jq_retained"
 
         echo "Static DNS records synchronized"
       '';
