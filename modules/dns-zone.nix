@@ -520,7 +520,7 @@ in
           ${pkgs.jq}/bin/jq -c --slurpfile current ${managedRecordsFile} '
             def key: {zone: (.zone | ascii_downcase), domain: (.domain | ascii_downcase), type};
             ($current[0] | map(key)) as $keep
-            | .[] | select(key as $k | ($keep | index([$k])) | not)
+            | .[] | select(key as $k | ($keep | any(.[]; . == $k)) | not)
           ' "$STATE_FILE" | while IFS= read -r record; do
             zone="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .zone)"
             domain="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .domain)"
