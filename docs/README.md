@@ -55,6 +55,9 @@ from module names alone.
   surface, including Geo-IP, WAN egress bogon blocking, and MAC controls
 - [`router-network-security.md`](./router-network-security.md) — bounded
   Suricata/Snort/Zeek sensor wrapper options for flake consumers
+- [`router-technitium-automation.md`](./router-technitium-automation.md) —
+  Technitium API token sources, sync units, record pruning, and how to verify
+  that automation actually applied
 - [`router-runtime-credential-discipline.md`](./router-runtime-credential-discipline.md) —
   credential-passing audit and runtime-file boundary
 - [`router-security-validation.md`](./router-security-validation.md) —

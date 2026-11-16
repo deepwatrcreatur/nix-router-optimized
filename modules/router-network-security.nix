@@ -482,6 +482,8 @@ in
             }
           ) effectiveInterfaces;
         }
+        # UPSTREAM: nixpkgs services.suricata defaults settings.outputs to null,
+        # which makes Suricata inspect traffic but record nothing.
         // optionalAttrs eveLogActive {
           outputs = [
             {
@@ -500,7 +502,7 @@ in
         // cfg.suricata.extraSettings;
     };
 
-    # Suricata never rotates its own logs; without this eve.json (which
+    # WHY: Suricata never rotates its own logs; without this eve.json (which
     # includes flow and DNS events) grows until the disk fills. copytruncate
     # keeps Suricata's open file handle valid, and EveBox follows truncation.
     services.logrotate.settings.router-suricata-eve = mkIf eveLogActive {
@@ -535,7 +537,7 @@ in
       extraGroups = [ "suricata" ];
     };
 
-    # Upstream only makes default-log-dir writable (ProtectSystem=strict);
+    # UPSTREAM: nixpkgs only makes default-log-dir writable (ProtectSystem=strict);
     # an EVE file elsewhere needs its directory created and allowed too.
     systemd.tmpfiles.rules = mkIf eveLogOutsideLogDir [
       "d ${eveLogDir} 0755 ${suricataSettings.run-as.user} ${suricataSettings.run-as.group}"

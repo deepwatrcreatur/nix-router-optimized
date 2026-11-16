@@ -73,6 +73,8 @@ services.router.dnsZone = {
    - Uses Technitium API to create/update zone
    - Adds each static host record
    - Creates CNAME aliases
+   - Removes records it created earlier that are no longer configured
+     (see "Removing hosts" below)
    - Does NOT interfere with DHCP dynamic updates
 
 3. **For Users**
@@ -109,6 +111,20 @@ Next time you add a new infrastructure host:
 3. Host is automatically in DNS and SSH config
 4. Changes are in git history
 
+## Removing hosts
+
+Removing a host or alias from the configuration removes its DNS record on the
+next rebuild. The sync records what it manages in
+`/var/lib/technitium-sync-static-hosts/managed-records.json` and only deletes
+records listed there whose live value still matches. Manual and DHCP records
+are never touched.
+
+The first run after upgrading to the pruning version has no state file and
+prunes nothing. Delete records for hosts removed before that by hand once.
+
+Details and verification commands:
+[`docs/router-technitium-automation.md`](docs/router-technitium-automation.md).
+
 ## Future Enhancements
 
 Potential additions:
@@ -122,5 +138,7 @@ Potential additions:
 
 - **Version**: Added in router flake commit 29eaa69
 - **Dependencies**: Technitium DNS Server, curl
-- **State**: `/var/lib/technitium-dns-server`
+- **State**: `/var/lib/technitium-dns-server` (Technitium),
+  `/var/lib/technitium-sync-static-hosts/managed-records.json` (records owned by the sync)
 - **Logs**: `journalctl -u technitium-sync-static-hosts`
+- **Token**: see [`docs/router-technitium-automation.md`](docs/router-technitium-automation.md)

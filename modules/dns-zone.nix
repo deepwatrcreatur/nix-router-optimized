@@ -271,7 +271,7 @@ let
       ) allZones
     );
 
-  # Every record the sync service owns. Persisted after each successful run so
+  # INVARIANT: every record the sync service owns. Persisted after each successful run so
   # the next run can delete records that were removed from the configuration.
   managedRecords = flatten (
     mapAttrsToList (
@@ -533,7 +533,7 @@ in
           mv "$STATE_FILE.tmp" "$STATE_FILE"
         }
 
-        # If the sync fails partway, keep ownership of the records that were
+        # INVARIANT: if the sync fails partway, keep ownership of the records that were
         # already written (plus everything owned before), but never claim
         # configured records that were not reached.
         on_exit() {
@@ -552,7 +552,7 @@ in
 
         ${zoneSyncScript}
 
-        # Prune records this service created on a previous run that are no
+        # INVARIANT: prune only records this service created on a previous run that are no
         # longer configured. Records created by hand or by DHCP are never in
         # the state file, so they are never touched. DNS names are compared
         # case-insensitively, matching how Technitium stores them.
@@ -566,7 +566,7 @@ in
             domain="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .domain)"
             type="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .type)"
             value="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .value)"
-            # Look the record up first and only delete an exact match.
+            # GOTCHA: look the record up first and only delete an exact match.
             # Technitium's delete endpoint ignores the target for CNAMEs, so
             # without this check an alias that was retargeted by hand would
             # be removed too. If the lookup fails, keep the entry and retry.

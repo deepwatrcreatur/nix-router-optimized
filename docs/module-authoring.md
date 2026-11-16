@@ -189,6 +189,69 @@ If the module participates in the overlay model, update `docs/overlay-vpn.md`.
 Add or update the relevant work item in `docs/work-items/` and remove completed
 items from the active queue in `docs/work-items/README.md`.
 
+## Code Comment Tags
+
+Most comments in this repo explain *what* code does, which the code already
+shows. The comments that save the next contributor (human or coding agent)
+time explain what the code cannot show: why a choice was made, and which
+external behaviour or invariant breaks if it is "simplified". Mark those with
+one of these tags so they can be found with a single grep:
+
+| Tag | Use it for | Example |
+| --- | --- | --- |
+| `# WHY:` | a non-obvious decision and the alternative that was rejected | `# WHY: copytruncate, because Suricata keeps eve.json open` |
+| `# GOTCHA:` | surprising behaviour of an external system the code depends on | `# GOTCHA: Technitium returns HTTP 200 for invalid-token` |
+| `# INVARIANT:` | a property that must keep holding; name the check that enforces it | `# INVARIANT: only records listed in the state file are pruned (tests/...)` |
+| `# SECURITY:` | a permission, trust or secret-handling boundary | `# SECURITY: token copy is 0640 root:router-dashboard` |
+| `# UPSTREAM:` | a workaround tied to nixpkgs/upstream behaviour, with when it can go | `# UPSTREAM: nixpkgs suricata defaults outputs to null` |
+| `# TODO(#123):` | deferred work, always with an issue number | |
+
+Guidelines:
+
+- One or two sentences. Link a doc for anything longer:
+  `# GOTCHA: ... See docs/router-technitium-automation.md.`
+- Put the tag on the line above the code it protects, not at the top of the file.
+- When a tagged comment stops being true, fix or delete it in the same change.
+- Before changing a module, read its tagged comments:
+
+  ```sh
+  rg -n '# (WHY|GOTCHA|INVARIANT|SECURITY|UPSTREAM|TODO)' modules/<file>.nix
+  ```
+
+## Lessons From Production
+
+Bugs that reached a live router, and the rule each one implies for new modules:
+
+- **Check the API's own status, not just the HTTP code.** Technitium answers
+  errors (including `invalid-token`) with HTTP 200. Scripts using only
+  `curl -f` reported success for weeks while block lists were never applied.
+  Parse the JSON status and fail when it is not `ok`.
+- **"active (exited)" proves nothing.** A oneshot unit can exit 0 without
+  applying anything. Document a command that checks the *result* in the
+  managed service (see `docs/router-technitium-automation.md`).
+- **Check the upstream module's defaults for anything you rely on.** The
+  nixpkgs Suricata module defaults `settings.outputs` to `null`, so the
+  wrapper ran a sensor that recorded nothing. When wrapping an upstream
+  module, list which upstream defaults the wrapper depends on and set them
+  explicitly.
+- **Sync units must also delete.** An add-only sync leaves state behind
+  forever (retired hosts kept resolving). If a module creates objects in an
+  external system, track what it created and remove what is no longer
+  declared, touching only objects it owns.
+- **Mind the sandbox.** Upstream units often use `ProtectSystem=strict`,
+  `DynamicUser`, or `/var/lib/private`. A new path needs `ReadWritePaths` or
+  `ReadOnlyPaths`, and `DynamicUser` state is not readable by other services.
+  Copy a narrowly permissioned snapshot instead.
+- **Prefer one recovering credential path over several static ones.** A
+  self-healing bootstrap token is better than an age secret that goes stale
+  silently. If an option has a legacy default (like
+  `apiKeySecretName = "technitium-api-key"`), say in its description and docs
+  which path is recommended.
+- **Expose it as an option so consumers do not hand-roll it.** A consumer
+  re-implemented `router-technitium.rfc2136` in their own unit, and that copy
+  was the one with the stale-token bug. Mention existing options in the README
+  module list so they are discoverable.
+
 ## Evaluation Tests
 
 Eval checks live under `tests/` and are exported by `tests/default.nix`.
