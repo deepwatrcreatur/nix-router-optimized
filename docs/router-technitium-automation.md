@@ -127,6 +127,10 @@ longer configured:
   deleted, but only if the live record still has the same type and value.
   Records created by DHCP/DDNS, and managed records edited by hand since, are
   left alone.
+- Declaring a name takes it over. Records are added with `overwrite=true`, so
+  an existing record at a configured name (hand-made or from DHCP) is replaced
+  by the configured one, recorded as managed, and deleted when the name later
+  leaves the config.
 - Matching is by name, type and value, not by record identity. If you delete a
   managed record and recreate an identical one by hand, the service still
   treats it as its own and removes it when the host leaves the config. To keep

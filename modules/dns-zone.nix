@@ -553,8 +553,8 @@ in
         ${zoneSyncScript}
 
         # INVARIANT: prune only state-file entries (zone, domain, type, value) that left
-        # the config. Matching is by value, not record identity: a hand-made record
-        # identical to a managed one is pruned too. Names compare case-insensitively.
+        # the config. Adds use overwrite=true, so a configured name takes over any
+        # record there, and matching is by value, not identity: those get pruned too.
         # WHY: docs/router-technitium-automation.md#static-host-records-and-pruning
         if [ "$HAVE_PREV" = 1 ]; then
           ${pkgs.jq}/bin/jq -c --slurpfile current ${managedRecordsFile} '
