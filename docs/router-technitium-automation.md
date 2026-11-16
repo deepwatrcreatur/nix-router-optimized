@@ -125,8 +125,13 @@ longer configured:
   `/var/lib/technitium-sync-static-hosts/managed-records.json`.
 - On the next run, a record in that file that has left the configuration is
   deleted, but only if the live record still has the same type and value.
-  Records created by hand, by DHCP/DDNS, or edited by hand since are left
-  alone.
+  Records created by DHCP/DDNS, and managed records edited by hand since, are
+  left alone.
+- Matching is by name, type and value, not by record identity. If you delete a
+  managed record and recreate an identical one by hand, the service still
+  treats it as its own and removes it when the host leaves the config. Give
+  hand-made records a different name or value, or keep them out of
+  `staticHosts` history.
 - Failed lookups or deletions stay in the file and are retried on the next run.
 
 Two consequences for operators:

@@ -552,9 +552,9 @@ in
 
         ${zoneSyncScript}
 
-        # INVARIANT: prune only records this service created on a previous run that are
-        # no longer configured; hand-made and DHCP records are never in the state
-        # file. Names compare case-insensitively, as Technitium stores them.
+        # INVARIANT: prune only state-file entries (zone, domain, type, value) that left
+        # the config. Matching is by value, not record identity: a hand-made record
+        # identical to a managed one is pruned too. Names compare case-insensitively.
         # WHY: docs/router-technitium-automation.md#static-host-records-and-pruning
         if [ "$HAVE_PREV" = 1 ]; then
           ${pkgs.jq}/bin/jq -c --slurpfile current ${managedRecordsFile} '
