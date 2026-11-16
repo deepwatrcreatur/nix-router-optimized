@@ -484,6 +484,7 @@ in
         }
         # UPSTREAM: nixpkgs services.suricata defaults settings.outputs to null,
         # which makes Suricata inspect traffic but record nothing.
+        # See docs/router-network-security.md#event-output-eve-json
         // optionalAttrs eveLogActive {
           outputs = [
             {

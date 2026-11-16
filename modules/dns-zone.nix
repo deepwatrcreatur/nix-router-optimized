@@ -552,10 +552,10 @@ in
 
         ${zoneSyncScript}
 
-        # INVARIANT: prune only records this service created on a previous run that are no
-        # longer configured. Records created by hand or by DHCP are never in
-        # the state file, so they are never touched. DNS names are compared
-        # case-insensitively, matching how Technitium stores them.
+        # INVARIANT: prune only state-file entries (zone, domain, type, value) that left
+        # the config. Adds use overwrite=true, so a configured name takes over any
+        # record there, and matching is by value, not identity: those get pruned too.
+        # WHY: docs/router-technitium-automation.md#static-host-records-and-pruning
         if [ "$HAVE_PREV" = 1 ]; then
           ${pkgs.jq}/bin/jq -c --slurpfile current ${managedRecordsFile} '
             def key: {zone: (.zone | ascii_downcase), domain: (.domain | ascii_downcase), type};

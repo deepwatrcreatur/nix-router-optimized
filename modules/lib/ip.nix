@@ -1,8 +1,31 @@
+/**
+  Pure-Nix IPv4/IPv6 address and CIDR helpers, used by module assertions
+  (subnet overlap, pool-in-subnet checks) and tests.
+
+  Import with `import ./lib/ip.nix { inherit lib; }`.
+
+  Inputs are plain strings such as `"10.0.0.1"`, `"10.0.0.0/24"` or
+  `"fd42::1/64"`. A CIDR without a prefix length is treated as a single host
+  (`/32` or `/128`).
+
+  # Limitations
+
+  - IPv4 octets must not have leading zeros: `"10.0.0.08"` fails to evaluate.
+  - IPv6 addresses with an embedded IPv4 tail (`"::ffff:1.2.3.4"`) are not
+    supported and fail to evaluate.
+*/
 { lib }:
 
 with lib;
 
 let
+  /**
+    Parse a decimal string into an integer.
+
+    # GOTCHA
+
+    Uses `builtins.fromJSON`, so a leading zero (`"08"`) is a parse error.
+  */
   parseInt = s: builtins.fromJSON s;
 
   pow2 = n: if n == 0 then 1 else 2 * pow2 (n - 1);
@@ -17,10 +40,22 @@ let
   hexToInt = s:
     builtins.foldl' (acc: c: acc * 16 + hexDigits.${c}) 0 (lib.stringToCharacters s);
 
-  # Check if an address or CIDR string is IPv6
+  /**
+    Whether an address or CIDR string is IPv6 (contains a `:`).
+  */
   isIPv6 = str: hasInfix ":" str;
 
-  # Parse an IPv4 string "192.168.1.1" into a 32-bit integer
+  /**
+    Parse a dotted-quad IPv4 address into a 32-bit integer.
+    Asserts four octets in `0..255`.
+
+    # Example
+
+    ```nix
+    parseIPv4 "10.0.0.8"
+    => 167772168
+    ```
+  */
   parseIPv4 = ip:
     let
       octets = splitString "." ip;
@@ -33,6 +68,9 @@ let
       + ((elemAt parsedOctets 2) * 256)
       + (elemAt parsedOctets 3);
 
+  /**
+    Inverse of `parseIPv4`: format a 32-bit integer as a dotted quad.
+  */
   intToIPv4 = intVal:
     let
       o1 = builtins.div intVal 16777216;
@@ -43,7 +81,10 @@ let
       o4 = rem2 - o3 * 256;
     in "${toString o1}.${toString o2}.${toString o3}.${toString o4}";
 
-  # Parse an IPv6 address string into a list of 8 16-bit word integers
+  /**
+    Parse an IPv6 address (with or without `::`) into a list of eight 16-bit
+    integers. Does not accept a prefix length or an embedded IPv4 tail.
+  */
   parseIPv6Words = ipStr:
     if hasInfix "::" ipStr then
       let
@@ -59,15 +100,17 @@ let
     else
       map hexToInt (splitString ":" ipStr);
 
-  # Lexicographical comparison of two 8-word lists
-  # Returns -1 if a < b, 0 if a == b, 1 if a > b
+  /**
+    Compare two word lists (as returned by `parseIPv6Words`) lexicographically.
+    Returns `-1`, `0` or `1`.
+  */
   compareWords = a: b:
     if a == [ ] then 0
     else if (head a) < (head b) then -1
     else if (head a) > (head b) then 1
     else compareWords (tail a) (tail b);
 
-  # Mask an 8-word IPv6 address with a prefix length (0..128)
+  # Mask an 8-word IPv6 address with a prefix length (0..128).
   # Returns { network = [w0..w7]; end = [w0..w7]; }
   maskIPv6 = words: prefixLen:
     let
@@ -91,8 +134,22 @@ let
       end = genList (i: genWord i true) 8;
     };
 
-  # Parse either an IPv4 or IPv6 CIDR string (e.g. "10.0.0.1/24" or "fd42::1/64")
-  # If no prefix length is given, defaults to /32 (IPv4) or /128 (IPv6)
+  /**
+    Parse an IPv4 or IPv6 CIDR. Without a prefix length the CIDR is a single
+    host (`/32` or `/128`).
+
+    Returns an attrset with `version`, `ip`, `prefixLen`, `network` and
+    either (IPv4) `broadcast`, `ipInt`, `hostCount`, `networkInt`,
+    `broadcastInt`, or (IPv6) `end`. IPv4 `network` and `broadcast` are
+    strings; IPv6 `network` and `end` are word lists.
+
+    # Example
+
+    ```nix
+    (parseCIDR "10.0.0.5/24").network
+    => "10.0.0.0"
+    ```
+  */
   parseCIDR = cidr:
     if isIPv6 cidr then
       let
@@ -125,7 +182,10 @@ let
         broadcast = intToIPv4 broadcastInt;
       };
 
-  # Determine if two CIDRs overlap
+  /**
+    Whether two CIDRs share any address. CIDRs of different IP versions never
+    overlap.
+  */
   cidrsOverlap = cidrA: cidrB:
     let
       pA = parseCIDR cidrA;
@@ -140,7 +200,17 @@ let
       else
         (compareWords pA.network pB.end <= 0) && (compareWords pB.network pA.end <= 0);
 
-  # Determine if cidrParent strictly contains cidrChild (or is identical)
+  /**
+    Whether `cidrParent` contains every address of `cidrChild`. A CIDR
+    contains itself.
+
+    # Example
+
+    ```nix
+    cidrContains "10.0.0.0/8" "10.1.0.0/16"
+    => true
+    ```
+  */
   cidrContains = cidrParent: cidrChild:
     let
       pParent = parseCIDR cidrParent;
@@ -152,7 +222,9 @@ let
       else
         (compareWords pParent.network pChild.network <= 0) && (compareWords pParent.end pChild.end >= 0);
 
-  # Determine if a CIDR contains a single IP address
+  /**
+    Whether a CIDR contains a single address (given without a prefix length).
+  */
   cidrContainsIP = cidr: ip:
     let
       p = parseCIDR cidr;
@@ -168,17 +240,23 @@ let
           let ipInt = parseIPv4 ip;
           in ipInt >= p.networkInt && ipInt <= p.broadcastInt;
 
-  # Strip CIDR prefix length (e.g. "10.0.0.1/24" -> "10.0.0.1")
+  /**
+    Strip the prefix length: `"10.0.0.1/24"` becomes `"10.0.0.1"`.
+  */
   ipOf = cidrOrIp: head (splitString "/" cidrOrIp);
 
-  # Extract prefix length integer
+  /**
+    The prefix length as an integer; `32` or `128` when none is given.
+  */
   prefixOf = cidrOrIp:
     let parts = splitString "/" cidrOrIp;
     in if length parts > 1 then parseInt (elemAt parts 1) else (if isIPv6 cidrOrIp then 128 else 32);
 
-  # Given a list of items with `{ id = "..."; cidr = "..."; }`,
-  # find all pairwise overlapping entries.
-  # Returns list of `{ a = itemA; b = itemB; }`
+  /**
+    Find every overlapping pair in a list of `{ cidr = "..."; ... }` items.
+    Returns a list of `{ a = item; b = item; }`, each pair once, in input order.
+    Used by assertions to report conflicting subnets by name.
+  */
   findOverlaps = items:
     let
       checkItem = item: rest:

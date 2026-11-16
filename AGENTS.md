@@ -16,7 +16,9 @@ consume it, so option names and defaults are a public interface.
    The tag meanings are in `docs/module-authoring.md#code-comment-tags`. Add
    tags for new non-obvious decisions, and fix or remove tags that your change
    makes untrue.
-2. Read the module's doc (`docs/router-<name>.md`, or `docs/README.md` to find
+2. For helpers in `modules/lib/`, read the `/** */` doc comments (RFC 145)
+   and keep them accurate. New exported helpers need one.
+3. Read the module's doc (`docs/router-<name>.md`, or `docs/README.md` to find
    it) and the "Lessons From Production" section of `docs/module-authoring.md`.
 
 ## Validating
