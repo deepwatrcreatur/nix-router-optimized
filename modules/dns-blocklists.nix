@@ -52,21 +52,26 @@ let
       config.services.router-technitium.apiKeySecretName
     else
       "technitium-api-key";
-  # Prefer the token maintained by technitium-bootstrap-api-token (validated
-  # and re-minted when it stops working); fall back to the age secret.
-  apiTokenPath =
-    if hasTokenBootstrap then
-      "/var/lib/private/technitium-dns-server/nix-router-api-token"
-    else if technitiumSecretName != null && ageSecrets ? ${technitiumSecretName} then
-      ageSecrets.${technitiumSecretName}.path
-    else
-      "";
+  # Candidate token files in order of preference: the token maintained by
+  # technitium-bootstrap-api-token (validated and re-minted when it stops
+  # working), then the configured age secret.
+  apiTokenPaths =
+    optional hasTokenBootstrap "/var/lib/private/technitium-dns-server/nix-router-api-token"
+    ++ optional (technitiumSecretName != null && ageSecrets ? ${technitiumSecretName})
+      ageSecrets.${technitiumSecretName}.path;
 
   blockListScript = pkgs.writeShellScript "technitium-sync-blocklists" ''
     set -euo pipefail
 
-    if [ -z "${apiTokenPath}" ] || [ ! -f "${apiTokenPath}" ]; then
-      echo "Technitium API token file not found; cannot sync block lists" >&2
+    API_TOKEN_FILE=""
+    for candidate in ${escapeShellArgs apiTokenPaths}; do
+      if [ -s "$candidate" ]; then
+        API_TOKEN_FILE="$candidate"
+        break
+      fi
+    done
+    if [ -z "$API_TOKEN_FILE" ]; then
+      echo "Technitium API token file not found (tried: ${concatStringsSep " " apiTokenPaths}); cannot sync block lists" >&2
       exit 1
     fi
 
@@ -78,7 +83,7 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "${apiTokenPath}")"
+    TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$API_TOKEN_FILE")"
 
     # Technitium reports API errors (including invalid-token) with HTTP 200,
     # so curl -f alone does not catch them.
@@ -203,9 +208,14 @@ in
       ] ++ optional hasTokenBootstrap "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
+      # Retry if the token or Technitium is not ready yet (e.g. the
+      # bootstrap token service failed transiently at boot).
+      startLimitIntervalSec = 0;
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        Restart = "on-failure";
+        RestartSec = "60s";
       };
 
       script = ''
