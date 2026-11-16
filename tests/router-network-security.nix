@@ -145,6 +145,18 @@ in
           assertion = config.systemd.services.router-evebox.serviceConfig.ReadOnlyPaths == [ "/var/log/suricata" ];
           message = "router-network-security should allow EveBox to read the configured Suricata EVE directory so log rotation does not break access.";
         }
+        {
+          assertion =
+            let
+              eve = (builtins.head config.services.suricata.settings.outputs).eve-log;
+            in
+            eve.enabled && eve.filename == "/var/log/suricata/eve.json" && builtins.elem { alert.tagged-packets = "yes"; } eve.types;
+          message = "router-network-security should configure an eve-log output at the file EveBox tails.";
+        }
+        {
+          assertion = config.services.logrotate.settings.router-suricata-eve.files == [ "/var/log/suricata/eve.json" ];
+          message = "router-network-security should rotate the EVE log.";
+        }
       ];
     })
   ];

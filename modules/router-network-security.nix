@@ -256,6 +256,37 @@ in
         description = "Rule IDs disabled through the upstream Suricata module.";
       };
 
+      eveLog = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = ''
+            Write Suricata events as EVE JSON. Without an `outputs` section
+            Suricata inspects traffic but records nothing, so this is on by
+            default. Ignored when `extraSettings.outputs` is set.
+          '';
+        };
+
+        file = mkOption {
+          type = types.str;
+          default = cfg.suricata.evebox.inputFile;
+          defaultText = literalExpression "config.services.router-network-security.suricata.evebox.inputFile";
+          description = "Absolute path of the EVE JSON log.";
+        };
+
+        types = mkOption {
+          type = types.listOf types.str;
+          default = [ "alert" "anomaly" "http" "dns" "tls" "ssh" "flow" ];
+          description = "EVE event types to log.";
+        };
+
+        retentionDays = mkOption {
+          type = types.ints.positive;
+          default = 7;
+          description = "Number of daily rotated EVE log files to keep.";
+        };
+      };
+
       extraSettings = mkOption {
         type = types.attrs;
         default = { };
@@ -443,7 +474,38 @@ in
             }
           ) effectiveInterfaces;
         }
+        // optionalAttrs cfg.suricata.eveLog.enable {
+          outputs = [
+            {
+              eve-log = {
+                enabled = true;
+                filetype = "regular";
+                filename = cfg.suricata.eveLog.file;
+                community-id = true;
+                types = map (
+                  type: if type == "alert" then { alert.tagged-packets = "yes"; } else type
+                ) cfg.suricata.eveLog.types;
+              };
+            }
+          ];
+        }
         // cfg.suricata.extraSettings;
+    };
+
+    # Suricata never rotates its own logs; without this eve.json (which
+    # includes flow and DNS events) grows until the disk fills. copytruncate
+    # keeps Suricata's open file handle valid, and EveBox follows truncation.
+    services.logrotate.settings.router-suricata-eve = mkIf (cfg.suricata.enable && cfg.suricata.eveLog.enable) {
+      files = [ cfg.suricata.eveLog.file ];
+      frequency = "daily";
+      rotate = cfg.suricata.eveLog.retentionDays;
+      compress = true;
+      delaycompress = true;
+      copytruncate = true;
+      missingok = true;
+      notifempty = true;
+      # /var/log/suricata is owned by the suricata user.
+      su = "suricata suricata";
     };
 
     users.groups.snort = mkIf cfg.snort.enable { };
