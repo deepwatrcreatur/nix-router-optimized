@@ -115,6 +115,46 @@ in
     })
   ];
 
+  router-network-security-suricata-custom-eve-eval = eval.mkNixosEvalCheck "router-network-security-suricata-custom-eve" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-networking
+    self.nixosModules.router-network-security
+    firewallBase
+    routerNetworkingBase
+    {
+      services.router-network-security = {
+        enable = true;
+        suricata = {
+          enable = true;
+          eveLog.file = "/var/log/router-ids/eve.json";
+          extraSettings.run-as = {
+            user = "ids";
+            group = "ids";
+          };
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = config.systemd.services.suricata.serviceConfig.ReadWritePaths == [
+            "/var/log/suricata"
+            "/var/log/router-ids"
+          ];
+          message = "router-network-security should make a custom EVE directory writable inside the Suricata sandbox.";
+        }
+        {
+          assertion = builtins.elem "d /var/log/router-ids 0755 ids ids" config.systemd.tmpfiles.rules;
+          message = "router-network-security should create a custom EVE directory owned by the Suricata run-as account.";
+        }
+        {
+          assertion = config.services.logrotate.settings.router-suricata-eve.su == "ids ids";
+          message = "router-network-security should rotate EVE logs as the Suricata run-as account.";
+        }
+      ];
+    })
+  ];
+
   router-network-security-suricata-evebox-eval = eval.mkNixosEvalCheck "router-network-security-suricata-evebox" [
     self.nixosModules.router-firewall
     self.nixosModules.router-networking

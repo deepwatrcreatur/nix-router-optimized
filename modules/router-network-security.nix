@@ -55,6 +55,10 @@ let
       [ "any" ];
   eveboxPackage = pkgs.callPackage ../pkgs/evebox-with-webapp.nix { };
   eveboxInputDir = dirOf cfg.suricata.evebox.inputFile;
+  suricataSettings = config.services.suricata.settings;
+  suricataLogDir = suricataSettings."default-log-dir";
+  eveLogDir = dirOf cfg.suricata.eveLog.file;
+  eveLogOutsideLogDir = cfg.suricata.enable && cfg.suricata.eveLog.enable && eveLogDir != suricataLogDir;
 
   snortHomeNet =
     if effectiveHomeNetworks == [ ] || effectiveHomeNetworks == [ "any" ] then
@@ -504,8 +508,8 @@ in
       copytruncate = true;
       missingok = true;
       notifempty = true;
-      # /var/log/suricata is owned by the suricata user.
-      su = "suricata suricata";
+      # The log directory is owned by Suricata's run-as account.
+      su = "${suricataSettings.run-as.user} ${suricataSettings.run-as.group}";
     };
 
     users.groups.snort = mkIf cfg.snort.enable { };
@@ -527,7 +531,19 @@ in
       extraGroups = [ "suricata" ];
     };
 
+    # Upstream only makes default-log-dir writable (ProtectSystem=strict);
+    # an EVE file elsewhere needs its directory created and allowed too.
+    systemd.tmpfiles.rules = mkIf eveLogOutsideLogDir [
+      "d ${eveLogDir} 0755 ${suricataSettings.run-as.user} ${suricataSettings.run-as.group}"
+    ];
+
     systemd.services = mkMerge [
+      (mkIf eveLogOutsideLogDir {
+        suricata.serviceConfig.ReadWritePaths = mkForce [
+          suricataLogDir
+          eveLogDir
+        ];
+      })
       (mkIf (cfg.suricata.enable && cfg.suricata.seedPackagedRules) {
         router-suricata-seed-rules = {
           description = "Seed baseline Suricata rules for offline-safe startup";
