@@ -208,8 +208,10 @@ one of these tags so they can be found with a single grep:
 
 Guidelines:
 
-- One or two sentences. Link a doc for anything longer:
-  `# GOTCHA: ... See docs/router-technitium-automation.md.`
+- One to three lines. When the full story is longer, put it in `docs/` and
+  point to the heading, so readers can find it without scrolling past it:
+  `# WHY: docs/router-technitium-automation.md#static-host-records-and-pruning`
+- Do not narrate what the next line does.
 - Put the tag on the line above the code it protects, not at the top of the file.
 - When a tagged comment stops being true, fix or delete it in the same change.
 - Before changing a module, read its tagged comments:
@@ -217,6 +219,33 @@ Guidelines:
   ```sh
   rg -n '# (WHY|GOTCHA|INVARIANT|SECURITY|UPSTREAM|TODO)' modules/<file>.nix
   ```
+
+### Doc comments for library functions
+
+Functions other files call (for example `modules/lib/ip.nix`) get
+[RFC 145](https://github.com/NixOS/rfcs/pull/145) doc comments: `/** ... */`
+directly above the binding, written in Markdown. They describe what the
+function takes and returns, with an `# Example` section when it helps, and
+known limits under a heading. nixfmt keeps them attached to their binding,
+and nixdoc, Noogle and `nix repl`'s `:doc` can read them.
+
+~~~nix
+/**
+  Whether `cidrParent` contains every address of `cidrChild`.
+
+  # Example
+
+  ```nix
+  cidrContains "10.0.0.0/8" "10.1.0.0/16"
+  => true
+  ```
+*/
+cidrContains = cidrParent: cidrChild: ...
+~~~
+
+Use `#` comments, not doc comments, for private helpers and for the tags
+above. Module options are documented by their `description`, not by
+comments.
 
 ## Lessons From Production
 

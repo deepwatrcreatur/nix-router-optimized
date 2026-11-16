@@ -87,6 +87,7 @@ let
 
     # GOTCHA: Technitium reports API errors (including invalid-token) with HTTP 200,
     # so curl -f alone does not catch them.
+    # See docs/router-technitium-automation.md#gotcha-technitium-reports-errors-with-http-200
     technitium_api() {
       local response status
       response="$(${pkgs.curl}/bin/curl -fsS "$@")"
