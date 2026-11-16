@@ -55,7 +55,7 @@ secret readable only by root (`mode = "0400"`), not `0444`.
 | Unit | Purpose | Token source (first that exists) |
 | --- | --- | --- |
 | `technitium-bootstrap-api-token` | mint/validate the automation token | admin password secret |
-| `technitium-sync-static-hosts` | `services.router.dnsZone(s)` records | bootstrapped token, else `apiKeySecretName` secret |
+| `technitium-sync-static-hosts` | `services.router.dnsZone(s)` records | bootstrapped token when the bootstrap service is configured (no fallback); otherwise the `apiKeySecretName` secret |
 | `technitium-sync-blocklists` | `services.router.dnsBlockLists` | bootstrapped token, else `apiKeySecretName` secret |
 | `technitium-enable-rfc2136` | `services.router-technitium.rfc2136` | bootstrapped token, else `apiKeySecretName` secret |
 | `router-dashboard-technitium-token` (timer) | copies the bootstrapped token to `/run/router-dashboard/` for the dashboard | bootstrapped token |
@@ -79,7 +79,9 @@ reports success while changing nothing. This is how a stale token once left a
 production router with block lists declared but never applied, and RFC2136
 settings that were never re-applied.
 
-The units in this flake check `.status == "ok"`. If you write your own
+The units in this flake check the JSON status: `technitium-sync-blocklists`
+and `technitium-enable-rfc2136` require `"ok"`, and
+`technitium-sync-static-hosts` fails on `"error"` or `"invalid-token"`. If you write your own
 Technitium automation in a consumer flake, do the same. Better, use the
 module option that already exists: for example, use
 `services.router-technitium.rfc2136` instead of a hand-written
