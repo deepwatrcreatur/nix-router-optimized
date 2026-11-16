@@ -151,6 +151,46 @@ in
           assertion = config.services.logrotate.settings.router-suricata-eve.su == "ids ids";
           message = "router-network-security should rotate EVE logs as the Suricata run-as account.";
         }
+        {
+          assertion = config.services.router-network-security.suricata.evebox.inputFile == "/var/log/router-ids/eve.json";
+          message = "router-network-security EveBox should follow a custom eveLog.file by default.";
+        }
+      ];
+    })
+  ];
+
+  router-network-security-suricata-custom-outputs-eval = eval.mkNixosEvalCheck "router-network-security-suricata-custom-outputs" [
+    self.nixosModules.router-firewall
+    self.nixosModules.router-networking
+    self.nixosModules.router-network-security
+    firewallBase
+    routerNetworkingBase
+    {
+      services.router-network-security = {
+        enable = true;
+        suricata = {
+          enable = true;
+          extraSettings.outputs = [
+            {
+              fast = {
+                enabled = true;
+                filename = "fast.log";
+              };
+            }
+          ];
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = (builtins.head config.services.suricata.settings.outputs) ? fast;
+          message = "router-network-security should let extraSettings.outputs replace the generated eve-log output.";
+        }
+        {
+          assertion = !(config.services.logrotate.settings ? router-suricata-eve);
+          message = "router-network-security should not rotate a generated EVE path that custom outputs do not write.";
+        }
       ];
     })
   ];
