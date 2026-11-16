@@ -52,7 +52,7 @@ let
       config.services.router-technitium.apiKeySecretName
     else
       "technitium-api-key";
-  # Candidate token files in order of preference: the token maintained by
+  # WHY: candidate token files in order of preference: the token maintained by
   # technitium-bootstrap-api-token (validated and re-minted when it stops
   # working), then the configured age secret.
   apiTokenPaths =
@@ -85,7 +85,7 @@ let
 
     TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$API_TOKEN_FILE")"
 
-    # Technitium reports API errors (including invalid-token) with HTTP 200,
+    # GOTCHA: Technitium reports API errors (including invalid-token) with HTTP 200,
     # so curl -f alone does not catch them.
     technitium_api() {
       local response status
@@ -208,7 +208,7 @@ in
       ] ++ optional hasTokenBootstrap "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
-      # Retry if the token or Technitium is not ready yet (e.g. the
+      # WHY: retry if the token or Technitium is not ready yet (e.g. the
       # bootstrap token service failed transiently at boot).
       startLimitIntervalSec = 0;
       serviceConfig = {

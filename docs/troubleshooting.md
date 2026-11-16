@@ -94,22 +94,69 @@ Common causes:
 - routed interface is missing RA settings
 - downstream clients only have link-local IPv6 because no default route was advertised
 
-## Technitium sync services do not populate zones or blocklists
+## Technitium sync services report success but nothing changed
+
+Symptom:
+- `technitium-sync-static-hosts`, `technitium-sync-blocklists` or
+  `technitium-enable-rfc2136` show `active (exited)`
+- records, block lists (`blockListUrls: null`) or RFC2136 settings are missing
+  in Technitium
 
 Checks:
 
 ```sh
-systemctl status router-dns-zone-sync --no-pager
-systemctl status router-dns-blocklists-sync --no-pager
-journalctl -u router-dns-zone-sync -b --no-pager
-journalctl -u router-dns-blocklists-sync -b --no-pager
-curl -fsS http://127.0.0.1:5380/api/dns/status
+systemctl status technitium-bootstrap-api-token technitium-sync-static-hosts technitium-sync-blocklists --no-pager
+journalctl -u technitium-sync-blocklists -b --no-pager
+TOKEN=$(sudo cat /var/lib/private/technitium-dns-server/nix-router-api-token)
+curl -fsS "http://127.0.0.1:5380/api/settings/get?token=$TOKEN" | jq '{status, blockListUrls: .response.blockListUrls}'
 ```
 
 Common causes:
-- API key secret missing
-- Technitium not yet ready when sync service runs
-- service can reach the API locally but not apply records because the payload is invalid
+- the unit used a stale token. Technitium answers `invalid-token` with HTTP 200,
+  so scripts that only check `curl -f` report success. Current units check the
+  JSON status, but consumer-side scripts may not.
+- `apiKeySecretName` points at an age secret holding a token Technitium no
+  longer accepts, and no `bootstrapPasswordSecretName` is configured to mint a
+  new one.
+- Technitium was not ready yet. `technitium-sync-blocklists` retries every 60s.
+
+See [`router-technitium-automation.md`](./router-technitium-automation.md) for
+the recommended token setup and verification commands.
+
+## A removed host still resolves
+
+Symptom:
+- a host was removed from `staticHosts`, but its name still resolves
+
+Checks:
+
+```sh
+journalctl -u technitium-sync-static-hosts -b --no-pager | grep -i stale
+sudo jq length /var/lib/technitium-sync-static-hosts/managed-records.json
+```
+
+Common causes:
+- the host was removed before the pruning version was deployed. The first run
+  has no state file, so it prunes nothing. Delete the record once by hand.
+- the record was changed by hand (different IP or CNAME target), so pruning
+  leaves it alone on purpose.
+
+## EveBox shows no events
+
+Checks:
+
+```sh
+systemctl is-active suricata router-evebox
+sudo ls -la /var/log/suricata/
+grep -A3 '^outputs:' "$(systemctl cat suricata | grep -o '/nix/store/[^ ]*suricata.yaml' | head -1)"
+```
+
+Common causes:
+- the Suricata config has no `outputs:` section, so nothing is written. Use
+  `services.router-network-security.suricata.eveLog` (default on) or set
+  `extraSettings.outputs` yourself.
+- EveBox tails a different file from the one Suricata writes. Leave
+  `evebox.inputFile` at its default (`eveLog.file`).
 
 ## Dashboard shows services offline
 

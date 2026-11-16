@@ -552,8 +552,12 @@ integration; Snort and Zeek are thin systemd-based wrappers.
 ### router-technitium
 Opt-in Technitium DNS service bundle:
 - enables `services.technitium-dns-server`
-- optionally exports `TECHNITIUM_API_KEY_FILE` from an age secret while
-  preferring the runtime token file when one is present
+- mints and maintains a node-local automation token from the admin password
+  (`bootstrapPasswordSecretName`); this is the recommended token source. An
+  `apiKeySecretName` age secret is only a fallback, and can go stale silently.
+  See [`docs/router-technitium-automation.md`](docs/router-technitium-automation.md)
+- can configure RFC2136/DDNS (TSIG key and zone update policy) through
+  `services.router-technitium.rfc2136`; use this rather than a hand-written unit
 - wires declarative blocklist presets through `services.router.dnsBlockLists`
 - can add declarative DHCP reservations through `services.router-technitium.dhcpReservations`
 - can sync native encrypted DNS settings for DoH/DoT/DoQ through `services.router-technitium.encryptedDns`
@@ -1097,6 +1101,7 @@ Available presets:
 - The dashboard frontend uses browser-side layout persistence. After adding widgets or changing widget geometry, hard-refresh the page and use `Reset Layout` once if a widget appears to be missing.
 - The dashboard API is intended to run threaded. Long-running endpoints such as speed tests or firewall log streaming can stall the rest of the UI if the service is downgraded to a single-threaded server.
 - Service status is only meaningful for services that are actually enabled on the target host. Keep the monitored service list aligned with the host configuration instead of assuming Prometheus, Grafana, or Netdata are present everywhere.
+- Technitium's API returns HTTP 200 even for errors such as `invalid-token`; check the JSON `status` field, not just `curl -f`. A unit showing `active (exited)` does not prove the change was applied. See [`docs/router-technitium-automation.md`](docs/router-technitium-automation.md#verifying-that-automation-actually-applied).
 - Technitium DNS statistics vary by API version. On the current gateway, cache hits come from `totalCached` and cache size comes from `cachedEntries`, not `totalCachedQueries`.
 - Firewall log streaming and flow offload widgets need matching nftables support on the host. Without `FW-*` log rules and a runtime-created flowtable/offload rule, the dashboard will correctly show no events and `flowtable off`.
 - Fail2ban integration requires the dashboard service to have access to the fail2ban control path with the right privilege model. If the widget shows offline, verify backend access first before treating it as a frontend problem.
