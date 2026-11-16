@@ -55,6 +55,13 @@ let
       [ "any" ];
   eveboxPackage = pkgs.callPackage ../pkgs/evebox-with-webapp.nix { };
   eveboxInputDir = dirOf cfg.suricata.evebox.inputFile;
+  suricataSettings = config.services.suricata.settings;
+  suricataLogDir = suricataSettings."default-log-dir";
+  eveLogDir = dirOf cfg.suricata.eveLog.file;
+  # The generated eve-log output is only used when the consumer has not
+  # supplied their own outputs.
+  eveLogActive = cfg.suricata.enable && cfg.suricata.eveLog.enable && !(cfg.suricata.extraSettings ? outputs);
+  eveLogOutsideLogDir = eveLogActive && eveLogDir != suricataLogDir;
 
   snortHomeNet =
     if effectiveHomeNetworks == [ ] || effectiveHomeNetworks == [ "any" ] then
@@ -256,6 +263,37 @@ in
         description = "Rule IDs disabled through the upstream Suricata module.";
       };
 
+      eveLog = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = ''
+            Write Suricata events as EVE JSON. Without an `outputs` section
+            Suricata inspects traffic but records nothing, so this is on by
+            default. When `extraSettings.outputs` is set it replaces this
+            output, and the rotation and directory handling here are skipped.
+          '';
+        };
+
+        file = mkOption {
+          type = types.str;
+          default = "/var/log/suricata/eve.json";
+          description = "Absolute path of the EVE JSON log. EveBox tails this file by default.";
+        };
+
+        types = mkOption {
+          type = types.listOf types.str;
+          default = [ "alert" "anomaly" "http" "dns" "tls" "ssh" "flow" ];
+          description = "EVE event types to log.";
+        };
+
+        retentionDays = mkOption {
+          type = types.ints.positive;
+          default = 7;
+          description = "Number of daily rotated EVE log files to keep.";
+        };
+      };
+
       extraSettings = mkOption {
         type = types.attrs;
         default = { };
@@ -290,7 +328,8 @@ in
 
         inputFile = mkOption {
           type = types.str;
-          default = "/var/log/suricata/eve.json";
+          default = cfg.suricata.eveLog.file;
+          defaultText = literalExpression "config.services.router-network-security.suricata.eveLog.file";
           description = "Suricata EVE JSON file EveBox tails.";
         };
 
@@ -443,7 +482,38 @@ in
             }
           ) effectiveInterfaces;
         }
+        // optionalAttrs eveLogActive {
+          outputs = [
+            {
+              eve-log = {
+                enabled = true;
+                filetype = "regular";
+                filename = cfg.suricata.eveLog.file;
+                community-id = true;
+                types = map (
+                  type: if type == "alert" then { alert.tagged-packets = "yes"; } else type
+                ) cfg.suricata.eveLog.types;
+              };
+            }
+          ];
+        }
         // cfg.suricata.extraSettings;
+    };
+
+    # Suricata never rotates its own logs; without this eve.json (which
+    # includes flow and DNS events) grows until the disk fills. copytruncate
+    # keeps Suricata's open file handle valid, and EveBox follows truncation.
+    services.logrotate.settings.router-suricata-eve = mkIf eveLogActive {
+      files = [ cfg.suricata.eveLog.file ];
+      frequency = "daily";
+      rotate = cfg.suricata.eveLog.retentionDays;
+      compress = true;
+      delaycompress = true;
+      copytruncate = true;
+      missingok = true;
+      notifempty = true;
+      # The log directory is owned by Suricata's run-as account.
+      su = "${suricataSettings.run-as.user} ${suricataSettings.run-as.group}";
     };
 
     users.groups.snort = mkIf cfg.snort.enable { };
@@ -465,7 +535,19 @@ in
       extraGroups = [ "suricata" ];
     };
 
+    # Upstream only makes default-log-dir writable (ProtectSystem=strict);
+    # an EVE file elsewhere needs its directory created and allowed too.
+    systemd.tmpfiles.rules = mkIf eveLogOutsideLogDir [
+      "d ${eveLogDir} 0755 ${suricataSettings.run-as.user} ${suricataSettings.run-as.group}"
+    ];
+
     systemd.services = mkMerge [
+      (mkIf eveLogOutsideLogDir {
+        suricata.serviceConfig.ReadWritePaths = mkForce [
+          suricataLogDir
+          eveLogDir
+        ];
+      })
       (mkIf (cfg.suricata.enable && cfg.suricata.seedPackagedRules) {
         router-suricata-seed-rules = {
           description = "Seed baseline Suricata rules for offline-safe startup";
