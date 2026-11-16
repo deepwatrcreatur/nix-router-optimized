@@ -129,9 +129,8 @@ longer configured:
   left alone.
 - Matching is by name, type and value, not by record identity. If you delete a
   managed record and recreate an identical one by hand, the service still
-  treats it as its own and removes it when the host leaves the config. Give
-  hand-made records a different name or value, or keep them out of
-  `staticHosts` history.
+  treats it as its own and removes it when the host leaves the config. To keep
+  a hand-made record, give it a value the config never managed.
 - Failed lookups or deletions stay in the file and are retried on the next run.
 
 Two consequences for operators:
