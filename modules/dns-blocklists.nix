@@ -46,17 +46,32 @@ let
   );
 
   ageSecrets = config.age.secrets or { };
-  apiTokenPath =
-    if ageSecrets ? technitium-api-key then
-      ageSecrets."technitium-api-key".path
+  hasTokenBootstrap = config.systemd.services ? technitium-bootstrap-api-token;
+  technitiumSecretName =
+    if config.services ? router-technitium then
+      config.services.router-technitium.apiKeySecretName
     else
-      "";
+      "technitium-api-key";
+  # Candidate token files in order of preference: the token maintained by
+  # technitium-bootstrap-api-token (validated and re-minted when it stops
+  # working), then the configured age secret.
+  apiTokenPaths =
+    optional hasTokenBootstrap "/var/lib/private/technitium-dns-server/nix-router-api-token"
+    ++ optional (technitiumSecretName != null && ageSecrets ? ${technitiumSecretName})
+      ageSecrets.${technitiumSecretName}.path;
 
   blockListScript = pkgs.writeShellScript "technitium-sync-blocklists" ''
     set -euo pipefail
 
-    if [ -z "${apiTokenPath}" ] || [ ! -f "${apiTokenPath}" ]; then
-      echo "Technitium API token file not found; cannot sync block lists" >&2
+    API_TOKEN_FILE=""
+    for candidate in ${escapeShellArgs apiTokenPaths}; do
+      if [ -s "$candidate" ]; then
+        API_TOKEN_FILE="$candidate"
+        break
+      fi
+    done
+    if [ -z "$API_TOKEN_FILE" ]; then
+      echo "Technitium API token file not found (tried: ${concatStringsSep " " apiTokenPaths}); cannot sync block lists" >&2
       exit 1
     fi
 
@@ -68,8 +83,22 @@ let
       sleep 2
     done
 
-    TOKEN="$(${pkgs.coreutils}/bin/cat "${apiTokenPath}")"
-    SETTINGS="$(${pkgs.curl}/bin/curl -fsS "http://127.0.0.1:5380/api/settings/get?token=$TOKEN")"
+    TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$API_TOKEN_FILE")"
+
+    # Technitium reports API errors (including invalid-token) with HTTP 200,
+    # so curl -f alone does not catch them.
+    technitium_api() {
+      local response status
+      response="$(${pkgs.curl}/bin/curl -fsS "$@")"
+      status="$(${pkgs.jq}/bin/jq -r '.status // empty' <<<"$response" 2>/dev/null || true)"
+      if [ "$status" != "ok" ]; then
+        echo "Technitium API call failed (status: ''${status:-unknown}): $response" >&2
+        return 1
+      fi
+      printf '%s' "$response"
+    }
+
+    SETTINGS="$(technitium_api "http://127.0.0.1:5380/api/settings/get?token=$TOKEN")"
 
     ENABLE_BLOCKING="$(${pkgs.jq}/bin/jq -r '.response.enableBlocking // true' <<<"$SETTINGS")"
     ALLOW_TXT_BLOCKING_REPORT="$(${pkgs.jq}/bin/jq -r '.response.allowTxtBlockingReport // true' <<<"$SETTINGS")"
@@ -80,7 +109,7 @@ let
     # Use declarative allowlist — this is authoritative and overwrites any UI additions
     BLOCKING_BYPASS_LIST="${concatStringsSep "," cfg.allowlistDomains}"
 
-    ${pkgs.curl}/bin/curl -fsS -X POST \
+    technitium_api -X POST \
       --data-urlencode "token=$TOKEN" \
       --data-urlencode "enableBlocking=$ENABLE_BLOCKING" \
       --data-urlencode "allowTxtBlockingReport=$ALLOW_TXT_BLOCKING_REPORT" \
@@ -94,7 +123,7 @@ let
       >/dev/null
 
     if [ "${boolToString cfg.forceUpdateOnActivation}" = "true" ]; then
-      ${pkgs.curl}/bin/curl -fsS \
+      technitium_api \
         "http://127.0.0.1:5380/api/settings/forceUpdateBlockLists?token=$TOKEN" \
         >/dev/null
     fi
@@ -173,15 +202,20 @@ in
       after = [
         "technitium-dns-server.service"
         "agenix.service"
-      ];
+      ] ++ optional hasTokenBootstrap "technitium-bootstrap-api-token.service";
       wants = [
         "technitium-dns-server.service"
-      ];
+      ] ++ optional hasTokenBootstrap "technitium-bootstrap-api-token.service";
       wantedBy = [ "multi-user.target" ];
 
+      # Retry if the token or Technitium is not ready yet (e.g. the
+      # bootstrap token service failed transiently at boot).
+      startLimitIntervalSec = 0;
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        Restart = "on-failure";
+        RestartSec = "60s";
       };
 
       script = ''

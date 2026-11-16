@@ -996,9 +996,12 @@ in {
           TECHNITIUM_URL = "http://localhost:5380";
           TECHNITIUM_RUNTIME_API_KEY_FILE =
             if config.services.router-technitium.enable or false then technitiumTokenSnapshotFile else "";
-          TECHNITIUM_API_KEY_FILE = if config ? age && config.age ? secrets && config.age.secrets ? technitium-api-key
-            then config.age.secrets.technitium-api-key.path
-            else "";
+          TECHNITIUM_API_KEY_FILE =
+            let
+              secretName = config.services.router-technitium.apiKeySecretName or "technitium-api-key";
+              secrets = config.age.secrets or { };
+            in
+            if secretName != null && secrets ? ${secretName} then secrets.${secretName}.path else "";
         };
 
         serviceConfig = {
