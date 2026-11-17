@@ -77,7 +77,7 @@ in
 
       # GOTCHA: upstream runs pangolin as `pangolin` with ProtectSystem=full,
       # so /etc is read-only to it and preStart cannot create /etc/pangolin on
-      # a fresh host. Create it here and make it writable to the service.
+      # a fresh host (docs/router-pangolin.md).
       systemd.tmpfiles.rules = [ "d /etc/pangolin 0750 pangolin fossorial -" ];
 
       systemd.services.pangolin = {
