@@ -75,8 +75,14 @@ in
       // optionalAttrs (cfg.letsEncryptEmail != null) { letsEncryptEmail = cfg.letsEncryptEmail; }
       // optionalAttrs (cfg.environmentFile != null) { environmentFile = cfg.environmentFile; };
 
+      # GOTCHA: upstream runs pangolin as `pangolin` with ProtectSystem=full,
+      # so /etc is read-only to it and preStart cannot create /etc/pangolin on
+      # a fresh host. Create it here and make it writable to the service.
+      systemd.tmpfiles.rules = [ "d /etc/pangolin 0750 pangolin fossorial -" ];
+
       systemd.services.pangolin = {
         serviceConfig = {
+          ReadWritePaths = [ "/etc/pangolin" ];
           # Loosen SocketBindDeny so Node process can bind listening TCP ports on localhost
           SocketBindDeny = lib.mkForce [
             "ipv4:udp"
