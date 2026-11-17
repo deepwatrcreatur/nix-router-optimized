@@ -6,7 +6,8 @@
 
 {
   # INVARIANT: upstream runs pangolin as `pangolin` with ProtectSystem=full,
-  # so /etc/pangolin must be created by tmpfiles and listed in ReadWritePaths,
+  # so /etc/pangolin must be created by a privileged ExecStartPre and listed in
+  # ReadWritePaths,
   # or preStart fails on a fresh host (docs/router-pangolin.md).
   router-pangolin-etc-dir-eval = eval.mkNixosEvalCheck "router-pangolin-etc-dir" [
     self.nixosModules.router-pangolin
@@ -21,11 +22,14 @@
     ({ config, ... }: {
       assertions = [
         {
-          assertion = builtins.elem "d /etc/pangolin 0750 pangolin fossorial -" config.systemd.tmpfiles.rules;
-          message = "router-pangolin must create /etc/pangolin owned by pangolin via tmpfiles.";
+          assertion =
+            let pre = config.systemd.services.pangolin.serviceConfig.ExecStartPre;
+            in builtins.isList pre && pre != [ ] && builtins.substring 0 1 (toString (builtins.head pre)) == "+"
+              && builtins.match ".*pangolin-etc-dir.*" (toString (builtins.head pre)) != null;
+          message = "router-pangolin must create /etc/pangolin in a privileged ExecStartPre that runs first.";
         }
         {
-          assertion = builtins.elem "/etc/pangolin" config.systemd.services.pangolin.serviceConfig.ReadWritePaths;
+          assertion = builtins.elem "-/etc/pangolin" config.systemd.services.pangolin.serviceConfig.ReadWritePaths;
           message = "router-pangolin must make /etc/pangolin writable to the sandboxed service.";
         }
         {
