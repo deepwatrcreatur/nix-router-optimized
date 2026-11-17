@@ -95,6 +95,10 @@ let
     inherit self lib eval pkgs;
   };
 
+  routerPangolinChecks = import ./router-pangolin.nix {
+    inherit self eval;
+  };
+
   routerHaLabChecks = import ./router-ha-lab.nix {
     inherit self lib eval pkgs;
   };
@@ -171,6 +175,7 @@ in
 // routerDashboardFirewallChecks
 // routerDashboardServiceControlChecks
 // routerNetworkSecurityChecks
+// routerPangolinChecks
 // routerSecurityHardeningChecks
 // routerZonesChecks
 // routerClatObservabilityChecks

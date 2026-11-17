@@ -55,6 +55,8 @@ from module names alone.
   surface, including Geo-IP, WAN egress bogon blocking, and MAC controls
 - [`router-network-security.md`](./router-network-security.md) — bounded
   Suricata/Snort/Zeek sensor wrapper options for flake consumers
+- [`router-pangolin.md`](./router-pangolin.md) — Pangolin wrapper, the files
+  it manages, and why `/etc/pangolin` is created outside the sandboxed unit
 - [`router-technitium-automation.md`](./router-technitium-automation.md) —
   Technitium API token sources, sync units, record pruning, and how to verify
   that automation actually applied

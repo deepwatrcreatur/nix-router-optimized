@@ -75,8 +75,22 @@ in
       // optionalAttrs (cfg.letsEncryptEmail != null) { letsEncryptEmail = cfg.letsEncryptEmail; }
       // optionalAttrs (cfg.environmentFile != null) { environmentFile = cfg.environmentFile; };
 
+      # GOTCHA: upstream runs pangolin as `pangolin` with ProtectSystem=full,
+      # so /etc is read-only to it and preStart cannot create /etc/pangolin on
+      # a fresh host (docs/router-pangolin.md).
       systemd.services.pangolin = {
         serviceConfig = {
+          # "+" runs outside the sandbox as root. Creating the directory on
+          # every start (not via tmpfiles) also covers it being deleted while
+          # the system runs; an existing directory keeps its mode.
+          ExecStartPre = lib.mkBefore [
+            "+${pkgs.writeShellScript "pangolin-etc-dir" ''
+              [ -d /etc/pangolin ] || ${pkgs.coreutils}/bin/install -d -m 0750 -o pangolin -g fossorial /etc/pangolin
+            ''}"
+          ];
+          # "-": a missing path must not abort sandbox setup before the step
+          # above has created it.
+          ReadWritePaths = [ "-/etc/pangolin" ];
           # Loosen SocketBindDeny so Node process can bind listening TCP ports on localhost
           SocketBindDeny = lib.mkForce [
             "ipv4:udp"
@@ -87,10 +101,10 @@ in
         };
 
         preStart = lib.mkBefore ''
-          # Ensure secret file exists
-          mkdir -p /etc/pangolin
+          # Ensure secret file exists. umask 077 so it is never group- or
+          # world-readable, not even before the chmod.
           if [ ! -f /etc/pangolin/pangolin.env ]; then
-            echo "SERVER_SECRET=$(${pkgs.openssl}/bin/openssl rand -hex 32)" > /etc/pangolin/pangolin.env
+            (umask 077; echo "SERVER_SECRET=$(${pkgs.openssl}/bin/openssl rand -hex 32)" > /etc/pangolin/pangolin.env)
             chmod 600 /etc/pangolin/pangolin.env
             chown pangolin:fossorial /etc/pangolin/pangolin.env 2>/dev/null || true
           fi
