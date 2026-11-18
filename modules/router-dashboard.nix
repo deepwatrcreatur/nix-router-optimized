@@ -1033,7 +1033,9 @@ in {
             "/proc"
             "/sys/class/net"
             "/var/log/journal"
-            "/run/agenix"
+            # WHY: hosts that install secrets another way (sops-nix, clan
+            # vars) have no /run/agenix; "-" keeps the unit starting there.
+            "-/run/agenix"
             "/run/router-dashboard"
           ]
           ++ lib.optional (config.services.router-clat.enable or false) "/run/router-clat"
