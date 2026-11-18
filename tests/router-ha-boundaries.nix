@@ -55,4 +55,58 @@
         ];
       })
   ];
+
+  router-ha-preempt-delay-eval = eval.mkNixosEvalCheck "router-ha-preempt-delay" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        priority = 110;
+        preemptDelay = 300;
+      };
+    }
+    ({ config, ... }:
+      let
+        instance = config.services.keepalived.vrrpInstances.main;
+      in
+      {
+        assertions = [
+          {
+            assertion = instance.state == "BACKUP";
+            message = "router-ha with preemptDelay must start as BACKUP even for role = master (keepalived ignores preempt_delay on MASTER).";
+          }
+          {
+            assertion = lib.strings.hasInfix "preempt_delay 300" instance.extraConfig;
+            message = "router-ha should render preempt_delay from preemptDelay.";
+          }
+        ];
+      })
+  ];
+
+  router-ha-preempt-default-eval = eval.mkNixosEvalCheck "router-ha-preempt-default" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+      };
+    }
+    ({ config, ... }:
+      let
+        instance = config.services.keepalived.vrrpInstances.main;
+      in
+      {
+        assertions = [
+          {
+            assertion = instance.state == "MASTER" && !(lib.strings.hasInfix "preempt_delay" instance.extraConfig);
+            message = "router-ha without preemptDelay must keep the role-based MASTER start and no preempt_delay (backwards compatible).";
+          }
+        ];
+      })
+  ];
 }

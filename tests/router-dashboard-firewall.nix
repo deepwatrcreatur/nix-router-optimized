@@ -34,4 +34,21 @@ in
       ];
     }
   ];
+
+  router-dashboard-agenix-optional-eval = eval.mkNixosEvalCheck "router-dashboard-agenix-optional" [
+    self.nixosModules.router-dashboard
+    {
+      services.router-dashboard.enable = true;
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion =
+            builtins.elem "-/run/agenix" config.systemd.services.router-dashboard.serviceConfig.ReadOnlyPaths
+            && !(builtins.elem "/run/agenix" config.systemd.services.router-dashboard.serviceConfig.ReadOnlyPaths);
+          message = "router-dashboard must bind /run/agenix optionally (\"-/run/agenix\"); hosts without agenix otherwise fail with 226/NAMESPACE.";
+        }
+      ];
+    })
+  ];
 }

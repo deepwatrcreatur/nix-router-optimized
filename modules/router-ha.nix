@@ -153,6 +153,19 @@ in
       description = "The VRRP priority (higher wins). Defaults based on role.";
     };
 
+    preemptDelay = mkOption {
+      type = types.nullOr (types.ints.between 0 1000);
+      default = null;
+      example = 300;
+      description = ''
+        Seconds a recovered higher-priority node waits as BACKUP before taking
+        the VIP back (keepalived `preempt_delay`, max 1000). Setting it makes
+        every node start as BACKUP so priority alone decides; keepalived
+        ignores `preempt_delay` on an instance that starts as MASTER. `null`
+        keeps the role-based initial state and immediate preemption.
+      '';
+    };
+
     singleActiveUnits = mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -249,7 +262,9 @@ in
           script_user root
         '';
         vrrpInstances.main = {
-          state = if cfg.role == "master" then "MASTER" else "BACKUP";
+          # INVARIANT: with preemptDelay every node starts BACKUP; keepalived
+          # ignores preempt_delay on a MASTER-start instance.
+          state = if cfg.role == "master" && cfg.preemptDelay == null then "MASTER" else "BACKUP";
           interface = cfg.vrrpInterface;
           virtualRouterId = cfg.vrrpId;
           priority = cfg.priority;
@@ -257,6 +272,7 @@ in
             { addr = cfg.virtualIp; }
           ];
           extraConfig = ''
+            ${optionalString (cfg.preemptDelay != null) "preempt_delay ${toString cfg.preemptDelay}"}
             authentication {
               auth_type PASS
               auth_pass ${cfg.vrrpPassword}

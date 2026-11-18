@@ -45,6 +45,26 @@ The example is split into:
 The important idea is to keep the shared settings in one place and only vary
 role/priority per node.
 
+## Delayed Fail-Back (`preemptDelay`)
+
+By default the node with `role = "master"` starts as MASTER and takes the VIP
+back the moment it returns. Set `services.router-ha.preemptDelay` (seconds,
+0–1000) on every node to make a recovered higher-priority node wait as
+BACKUP before preempting:
+
+```nix
+services.router-ha = {
+  priority = 110;      # preferred node; peers use lower priorities
+  preemptDelay = 300;  # wait 5 minutes before taking the VIP back
+};
+```
+
+With `preemptDelay` set, every node starts as BACKUP and priority alone
+picks the master (keepalived ignores `preempt_delay` on an instance that
+starts as MASTER). Failover away from a dead master is not delayed; only the
+return is. Each fail-back moves the single-active units (WAN, DHCP, DDNS),
+so fewer of them means fewer short outages when a primary flaps.
+
 ## Recommended Ownership Split
 
 | Service area | Recommended starting policy | Why |
