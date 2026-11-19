@@ -1,5 +1,10 @@
 # NixOS Router Ecosystem Research & Architectural Improvement Plan
 
+> **Research input, under review.** Discussion 21
+> ([`discussions/21-ecosystem-plan-review.md`](discussions/21-ecosystem-plan-review.md))
+> found outdated and incorrect claims in this plan. Corrections are tracked
+> in bead `router-q5k`; treat unmarked claims as unverified.
+
 **Status**: Research & Strategic Architecture  
 **Target Repository**: `nix-router-optimized`  
 **Homelab Consumers Analyzed**: `router` (Primary, Proxmox VM / igc 2.5G) and `elitedesk` (Standby, HP EliteDesk 8300 SFF / X520 10G SFP+)  

@@ -24,6 +24,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [18](./18-router-ha-lab-backend-and-scope.md) | What Should Be the First Safe HA Lab Backend for `nix-router-optimized`? | 2026-07-18 | Closed |
 | [19](./19-dhcpv6-ula-rfc9686-and-option108-464xlat-strategy.md) | DHCPv6 Host Registration, ULA (RFC 9686), and DHCP Option 108 / 464XLAT Strategy | 2026-08-16 | Closed |
 | [20](./20-critique-synthesis-and-framework-roadmap.md) | External Architectural Critique Synthesis, Positioning, and Maturation Roadmap | 2026-09-16 | Closed |
+| [21](./21-ecosystem-plan-review.md) | Review of the Ecosystem Research and Improvement Plan | 2026-11-19 | Closed |
 
 
 ## Methodology

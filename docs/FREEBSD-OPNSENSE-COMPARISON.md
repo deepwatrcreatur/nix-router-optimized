@@ -1,5 +1,10 @@
 # Architectural Comparison: Linux/NixOS vs. FreeBSD/OPNsense for Edge Routers
 
+> **Research input, under review.** Discussion 21
+> ([`discussions/21-ecosystem-plan-review.md`](discussions/21-ecosystem-plan-review.md))
+> found outdated and incorrect claims in this comparison. Corrections are tracked
+> in bead `router-q5k`; treat unmarked claims as unverified.
+
 **Status**: Architectural Evaluation & Platform Positioning  
 **Target Repository**: `nix-router-optimized`  
 **Date**: November 2026  
