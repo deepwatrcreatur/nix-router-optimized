@@ -35,42 +35,60 @@ let
 
   stripCidr = addr: builtins.head (splitString "/" addr);
 
-  defaultListenAddress =
-    if cfg.listenAddress != null then
-      cfg.listenAddress
-    else if routedIfaces ? lan then
+  routedAddress =
+    if routedIfaces ? lan then
       stripCidr routedIfaces.lan.ipv4Address
     else if routedIfaces != { } then
       stripCidr ((builtins.head (attrValues routedIfaces)).ipv4Address)
     else
+      null;
+
+  defaultListenAddress =
+    if cfg.listenAddress != null then
+      cfg.listenAddress
+    else if routedAddress != null then
+      routedAddress
+    else
       "0.0.0.0";
+
+  # WHY: a wildcard bind address is not a URL a browser can open; links fall
+  # back to the routed LAN address when services bind to 0.0.0.0.
+  linkHost =
+    if cfg.linkAddress != null then
+      cfg.linkAddress
+    else if defaultListenAddress != "0.0.0.0" then
+      defaultListenAddress
+    else if routedAddress != null then
+      routedAddress
+    else
+      "localhost";
 
   dashboardLinks =
     (optionals cfg.enableNetdata [
       {
         label = "Netdata";
-        url = "http://${defaultListenAddress}:19999/";
+        url = "http://${linkHost}:19999/";
         icon = "📊";
       }
     ])
     ++ (optionals cfg.enableMonitoring [
       {
         label = "Grafana";
-        url = "http://${defaultListenAddress}:${toString cfg.grafanaPort}/";
+        url = "http://${linkHost}:${toString cfg.grafanaPort}/";
         icon = "📈";
       }
     ])
     ++ (optionals (config.services.router-ntopng.enable or false) [
       {
         label = "Traffic";
-        url = "http://${defaultListenAddress}:${toString config.services.router-ntopng.port}/";
+        url = "http://${linkHost}:${toString config.services.router-ntopng.port}/";
         icon = "🛰️";
       }
     ])
     ++ (optionals (config.services.technitium-dns-server.enable or false) [
       {
         label = "DNS Admin";
-        url = "http://${defaultListenAddress}:5380/";
+        url = "http://${linkHost}:5380/";
         icon = "🌍";
       }
     ])
@@ -117,6 +135,16 @@ in
       type = types.nullOr types.str;
       default = null;
       description = "Primary LAN address used for monitoring and dashboard links.";
+    };
+
+    linkAddress = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "router.home.example";
+      description = ''
+        Host name or address used in dashboard links. Defaults to the listen
+        address, or the routed LAN address when services bind to 0.0.0.0.
+      '';
     };
 
     sshTarget = mkOption {
