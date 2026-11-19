@@ -83,6 +83,8 @@ let
     mkdir -p $out
     cat > $out/new-device.sh <<'EOF'
     #!${pkgs.bash}/bin/bash
+    # GOTCHA: Kea spawns hook scripts with only its LEASE*/QUERY* variables
+    # and no PATH, so every tool below is called by absolute path.
     set -u
     case "''${1:-}" in
       leases4_committed)
@@ -99,15 +101,17 @@ let
     ${pkgs.util-linux}/bin/flock 9
     if [ ! -e "$seen" ]; then
       # WHY: on first use, every device with a lease is already known; seed
-      # from the lease file instead of announcing the whole network.
-      ${pkgs.gawk}/bin/awk -F, 'NR > 1 && $2 != "" { print tolower($2) }' \
-        ${escapeShellArg cfg.newDhcpDevices.leaseFile} 2>/dev/null | sort -u > "$seen.tmp"
-      grep -qxF "$mac" "$seen.tmp" || printf '%s\n' "$mac" >> "$seen.tmp"
-      mv "$seen.tmp" "$seen"
+      # from the memfile, including Kea's compaction pieces (.1, .2,
+      # .completed), instead of announcing the whole network.
+      lf=${escapeShellArg cfg.newDhcpDevices.leaseFile}
+      for f in "$lf" "$lf.1" "$lf.2" "$lf.completed"; do
+        [ -r "$f" ] && ${pkgs.gawk}/bin/awk -F, 'FNR > 1 && $2 != "" { print tolower($2) }' "$f"
+      done | ${pkgs.coreutils}/bin/sort -u > "$seen.tmp"
+      ${pkgs.gnugrep}/bin/grep -qxF "$mac" "$seen.tmp" || printf '%s\n' "$mac" >> "$seen.tmp"
+      ${pkgs.coreutils}/bin/mv "$seen.tmp" "$seen"
       exit 0
     fi
-    grep -qxF "$mac" "$seen" && exit 0
-    printf '%s\n' "$mac" >> "$seen"
+    ${pkgs.gnugrep}/bin/grep -qxF "$mac" "$seen" && exit 0
     now=$(${pkgs.coreutils}/bin/date -u +%Y-%m-%dT%H:%M:%SZ)
     ends=$(${pkgs.coreutils}/bin/date -u -d '+${toString cfg.newDhcpDevices.alertMinutes} minutes' +%Y-%m-%dT%H:%M:%SZ)
     ${pkgs.jq}/bin/jq -n --arg mac "$mac" --arg ip "$ip" --arg name "''${name%.}" --arg host "$(${pkgs.hostname}/bin/hostname)" \
@@ -116,7 +120,10 @@ let
          annotations: {summary: ("New device " + (if $name == "" then $mac else $name + " (" + $mac + ")" end) + " got " + $ip)},
          startsAt: $now, endsAt: $ends}]' \
       | ${pkgs.curl}/bin/curl -fsS -m 5 -H 'Content-Type: application/json' --data-binary @- \
-          http://${amAddress}/api/v2/alerts >/dev/null
+          http://${amAddress}/api/v2/alerts >/dev/null || exit 1
+    # WHY: remember the device only once Alertmanager accepted the alert, so
+    # a failed send is retried on the next lease event.
+    printf '%s\n' "$mac" >> "$seen"
     EOF
     chmod +x $out/new-device.sh
   '';
@@ -369,7 +376,7 @@ in
       # SECURITY: Alertmanager runs with DynamicUser; secrets reach it as
       # systemd credentials instead of world-readable paths.
       systemd.services.alertmanager.serviceConfig.LoadCredential =
-        optional (cfg.email.passwordFile != null) "email-password:${cfg.email.passwordFile}"
+        optional (cfg.email.enable && cfg.email.passwordFile != null) "email-password:${cfg.email.passwordFile}"
         ++ optional (cfg.watchdog.pingUrlFile != null) "watchdog-url:${cfg.watchdog.pingUrlFile}"
         ++ mapAttrsToList (name: file: "${name}:${file}") cfg.extraCredentials;
     }

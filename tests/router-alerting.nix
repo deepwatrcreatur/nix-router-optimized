@@ -145,12 +145,20 @@ in
     python3 fake.py 18093 am.log & F2=$!
     sleep 0.5
     printf 'address,hwaddr,client_id\n10.99.0.101,aa:bb:cc:00:00:01,\n' > leases
+    printf 'address,hwaddr,client_id\n10.99.0.104,aa:bb:cc:00:00:04,\n' > leases.2
     script=$(mktemp); sed -e "s|/var/lib/kea/dhcp4.leases|$PWD/leases|; s|/var/lib/kea/router-alerting-seen-macs|$PWD/seen|; s|127.0.0.1:9093|127.0.0.1:18093|" ${hook.parameters.name} > $script; chmod +x $script
-    LEASES4_SIZE=1 LEASES4_AT0_HWADDR=aa:bb:cc:00:00:02 LEASES4_AT0_ADDRESS=10.99.0.102 $script leases4_committed
+    # GOTCHA: run like Kea does, with no inherited environment.
+    env -i LEASES4_SIZE=1 LEASES4_AT0_HWADDR=aa:bb:cc:00:00:02 LEASES4_AT0_ADDRESS=10.99.0.102 $script leases4_committed
     test ! -e am.log || { echo "first run must only seed"; exit 1; }
-    grep -qx aa:bb:cc:00:00:01 seen && grep -qx aa:bb:cc:00:00:02 seen
-    LEASES4_SIZE=1 LEASES4_AT0_HWADDR=AA:BB:CC:00:00:03 LEASES4_AT0_ADDRESS=10.99.0.103 LEASES4_AT0_HOSTNAME=phone. $script leases4_committed
-    LEASE4_HWADDR=aa:bb:cc:00:00:03 LEASE4_ADDRESS=10.99.0.103 $script lease4_renew
+    grep -qx aa:bb:cc:00:00:01 seen && grep -qx aa:bb:cc:00:00:02 seen && grep -qx aa:bb:cc:00:00:04 seen
+    # A send that fails (Alertmanager down) must not mark the device known.
+    kill $F2; sleep 0.3
+    env -i LEASES4_SIZE=1 LEASES4_AT0_HWADDR=AA:BB:CC:00:00:03 LEASES4_AT0_ADDRESS=10.99.0.103 LEASES4_AT0_HOSTNAME=phone. $script leases4_committed || true
+    ! grep -qx aa:bb:cc:00:00:03 seen
+    python3 fake.py 18093 am.log & F2=$!
+    sleep 0.5
+    env -i LEASE4_HWADDR=aa:bb:cc:00:00:03 LEASE4_ADDRESS=10.99.0.103 LEASE4_HOSTNAME=phone. $script lease4_renew
+    env -i LEASE4_HWADDR=aa:bb:cc:00:00:03 LEASE4_ADDRESS=10.99.0.103 $script lease4_renew
     test "$(wc -l < am.log)" = 1
     jq -e '.path == "/api/v2/alerts" and (.body | fromjson | .[0].labels.mac == "aa:bb:cc:00:00:03" and (.[0].annotations.summary | contains("phone (aa:bb:cc:00:00:03)")))' am.log >/dev/null
     kill $F1 $F2 $B
