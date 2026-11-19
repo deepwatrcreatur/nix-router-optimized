@@ -76,6 +76,7 @@ in
                 assertion =
                   lib.hasInfix "leaving it unchanged" script
                   && lib.hasInfix "owned-secondaries" script
+                  && lib.hasInfix "created+=(home.example)" script
                   && lib.hasInfix ''if [ "$(zone_type "$zone")" = "Secondary" ]; then'' script;
                 message = "the script may delete only owned zones that are still Secondary.";
               }

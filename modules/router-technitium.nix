@@ -679,6 +679,7 @@ let
       fi
     '') replication.primary.zones}
 
+    created=()
     ${concatMapStringsSep "\n" (zone: ''
       type="$(zone_type ${escapeShellArg zone.name})"
       case "$type" in
@@ -694,6 +695,7 @@ let
             --data-urlencode "tsigKeyName=${replication.tsigKeyName}" \
             "http://127.0.0.1:5380/api/zones/create" \
             >/dev/null
+          created+=(${escapeShellArg (toLower zone.name)})
           ;;
         Secondary)
           echo "Updating secondary zone ${zone.name}"
@@ -741,13 +743,17 @@ let
     ZONES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
       --data-urlencode "token=$TOKEN" \
       "http://127.0.0.1:5380/api/zones/list")"
+    # WHY: ownership covers only zones this unit created; a pre-existing
+    # Secondary that happens to be declared is never recorded or pruned.
     : > "$owned_file.tmp"
-    for zone in "''${declared[@]}"; do
-      if [ "$(zone_type "$zone")" = "Secondary" ]; then
+    for zone in "''${owned[@]}" "''${created[@]}"; do
+      [ -n "$zone" ] || continue
+      case " ''${declared[*]} " in *" $zone "*) ;; *) continue ;; esac
+      if [ "$(zone_type "$zone")" = "Secondary" ] && ! ${pkgs.gnugrep}/bin/grep -qxF "$zone" "$owned_file.tmp"; then
         printf '%s\n' "$zone" >> "$owned_file.tmp"
       fi
     done
-    mv "$owned_file.tmp" "$owned_file"
+    ${pkgs.coreutils}/bin/mv "$owned_file.tmp" "$owned_file"
 
     echo "Technitium zone replication configured"
   '';
