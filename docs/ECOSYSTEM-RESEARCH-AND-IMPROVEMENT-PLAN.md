@@ -1,15 +1,142 @@
 # NixOS Router Ecosystem Research & Architectural Improvement Plan
 
-> **Research input, under review.** Discussion 21
-> ([`discussions/21-ecosystem-plan-review.md`](discussions/21-ecosystem-plan-review.md))
-> found outdated and incorrect claims in this plan. Corrections are tracked
-> in bead `router-q5k`; treat unmarked claims as unverified.
-
 **Status**: Research & Strategic Architecture  
 **Target Repository**: `nix-router-optimized`  
 **Homelab Consumers Analyzed**: `router` (Primary, Proxmox VM / igc 2.5G) and `elitedesk` (Standby, HP EliteDesk 8300 SFF / X520 10G SFP+)  
 **Infrastructure Context**: Migration from `unified-nix-configuration` to `nix-clan-homelab` (Clan-core, Den aspects, `clan vars`, `deploy-rs`)  
-**Date**: November 2026  
+**Date**: November 2026 (revision 1)  
+**Revised**: 2026-11-19 (revision 2: panel review, see §0)  
+
+---
+
+## 0. Revision 2 (2026-11-19): project state and review findings
+
+**This section is authoritative.** Where §1–§7 (revision 1) disagree with it, this
+section wins. Future agents should read §0 first, then
+[discussion 21](discussions/21-ecosystem-plan-review.md) for the reasoning, and
+the beads queues for live status. §1–§7 are kept as the original research
+input, with factual errors corrected in place (marked *[rev 2]*).
+
+### 0.1 Revision history
+
+| Revision | Date | Author | Change |
+| --- | --- | --- | --- |
+| 1 | 2026-11 | external chatbot | Original research, survey and proposals |
+| 2 | 2026-11-19 | Claude (IC), after a five-voice panel (Codex, Gemini, Claude, Copilot, DeepSeek) | State of the project; priorities and verdicts from discussion 21; factual corrections |
+
+### 0.2 State of the project as of 2026-11-19
+
+**Shipped in nix-router-optimized** (PR numbers):
+
+- `router-ha.preemptDelay`: delayed fail-back (#144). The dashboard no longer
+  requires `/run/agenix` (#144).
+- `router-technitium.zoneReplication`: TSIG AXFR/IXFR and NOTIFY to standbys
+  (#145).
+- `zoneReplication.ha`: zones follow VRRP. The owner unit is single-active;
+  demotion is guarded (SOA from another node, validated export, MASTER
+  re-check, lock), and a reconcile timer handles reboots (#148, #149).
+- `router-alerting`: Alertmanager plus an ntfy relay, email, webhooks and
+  native receivers, a healthchecks-style watchdog, and new-DHCP-device
+  notices via Kea `run_script` (#150). Alerts are labelled with the host (#152).
+- `router-homelab` dashboard links never use a wildcard address (#146).
+- From discussion 20: topology assertions, the hardware safety matrix,
+  multi-node VM test harness, `routerctl` diagnostics, systemd slice
+  isolation (beads `router-a2z`, `router-inl`, `router-osv`, `router-tat`,
+  `router-qmu`, all closed).
+
+**Not done:**
+
+- VRRP is **not** enabled on the homelab pair. There has been **no** live
+  failover; the zone promotion and demotion was rehearsed by hand on elitedesk.
+- DHCP is single-active with manual promotion. The `keaSync` option in
+  `router-ha` contradicts that model (bead `router-4dk`).
+- `notify_master` still restarts systemd-networkd (`modules/router-ha.nix`,
+  bead `router-53n`).
+- The VRRP password defaults to `nix-router-ha` and lands in the Nix store
+  (bead `router-ehu`).
+
+**Homelab consumers:**
+
+- `router`, the primary, is a Proxmox VM managed by
+  unified-nix-configuration.
+  - It uses passed-through Intel igc ports for LAN (`enp6s16`) and WAN
+    (`enp6s17`), both 2.5 Gb/s, with e1000e for management (`ens18`).
+  - It already uses `zoneReplication.primary` and the upstream RFC2136 unit.
+- `elitedesk`, the standby, is bare metal managed by nix-clan-homelab (Clan
+  and den).
+  - Its NIC is an Intel X520 (ixgbe) on 10G DAC.
+  - Its WAN is administratively down.
+  - It holds the zones under `zoneReplication.ha` and runs router-alerting
+    (ntfy and the watchdog).
+
+**Open incidents:**
+
+- [`incidents/2026-11-19-x520-tcp-reply-loss`](incidents/2026-11-19-x520-tcp-reply-loss/SUMMARY.md):
+  1–8% of TCP connections to elitedesk lost every SYN-ACK at the X520, while
+  UDP was unaffected.
+  - With Flow Director ATR off (`ntuple on`), 0 of 6920 TCP queries failed
+    over 2 h.
+  - An ATR-on control is running.
+- The same card once dropped off the PCIe bus (homelab bead `nch-sny.31`).
+- Together they **gate any promotion of elitedesk**: a 24 h pass/fail
+  threshold (`nch-sny.34`). A Mellanox ConnectX-4 Lx is available as the
+  replacement.
+
+### 0.3 Priorities (replaces §4's P1–P4 ordering and §6's roadmap)
+
+| Order | Work | Beads |
+| --- | --- | --- |
+| P0 | Hardware gate: close the X520 incident against its threshold, add AER and link-flap alerting, or swap the NIC | `nch-sny.34`, `nch-sny.31` |
+| P1 | Failover correctness: WAN promotion without restarting networkd; two-node VRRP VM test (promote, demote, fault, reboot, zone HA, single-active units); VRRP secret as a file | `router-53n`, `router-0lh`, `router-ehu` |
+| P1 | Supervised failover rehearsal with measured outage and tested fail-back, before VRRP is enabled | `nch-sny.36` |
+| P2 | Typed per-service single-active ownership, and one DHCP HA model (`keaSync` retired or made real) | `router-4dk` |
+| P2 | Dashboard listen backlog (5 → larger); fix the doc errors in this file | `nch-sny.35`, `router-q5k` |
+| P3 | Keepalived's built-in GARP and NA refresh options | `router-3m7` |
+| Later | conntrackd, IRQ/RPS/XPS tuning, automatic CAKE, SSE, netns, CoreRAD (see 0.4) | none yet |
+
+The panel was unanimous: hardware validation and plain failover correctness
+come before session preservation or performance work. New proposals feed
+discussion 20's roadmap instead of competing with it.
+
+### 0.4 Verdicts on the §4 proposals
+
+| Proposal (§) | Verdict | Condition or reason |
+| --- | --- | --- |
+| Node role modeling (4.1.1) | adopt, modified | Typed per-service ownership tied to the VRRP state (the `zoneReplication.ha` pattern), not a static `nodeMode` that disables services at build time |
+| Non-disruptive WAN promotion (4.1.2) | adopt, modified | Use `ActivationPolicy=manual` with `networkctl up`/`down` (`always-down` conflicts with `reconfigure`); prove it in the VM test |
+| conntrackd (4.1.3) | defer | Only after plain VRRP failover is rehearsed. Rebuild from the April 2026 decision (unified `docs/design/router-election/2026-04-vrrp-pair/conntrackd-flowtable/DECISION.md`), not the §5.2 blueprint |
+| GARP refresh (4.1.4) | adopt, modified | Keepalived's `vrrp_garp_*` and `garp_master_refresh`, not `arping` or `ndisc6` scripts |
+| IRQ/RPS/XPS pinning (4.2.1) | defer | Interacts with Flow Director, the incident's suspect. Revisit opt-in and per interface after the incident, with irqbalance and NUMA in mind |
+| SFP quirk abstraction (4.2.2) | defer | Document `allow_unsupported_sfp`; a typed wrapper adds little |
+| Automatic CAKE (4.2.3) | defer | If built, derive from a declared, measured rate, never from link speed |
+| Dashboard privilege separation (4.3.1) | adopt, modified | Audit the existing privileged units first; fix the backlog now |
+| SSE/WebSockets (4.3.2) | defer | 5 s polling is not the bottleneck |
+| Kea/Technitium data planes (4.3.3) | adopt, modified, low priority | Kea control socket and Technitium API (check `.status`), never the memfile |
+| Two-tier secrets (4.4.1) | reject the Vault/Infisical framing | The existing `*File` options plus agenix, sops or clan vars already decrypt offline at boot; document that |
+| netns zones (4.4.2) | defer | No threat model yet; it changes firewall semantics |
+| CoreRAD (4.4.3) | defer | A behaviour change during the HA migration |
+
+### 0.5 Corrections applied to §1–§7 (marked *[rev 2]*)
+
+- **conntrackd flag:** the commit flag is `-c`; `-C` selects a config file
+  (§5.2, §6).
+- **RFC numbers:** IPv6-Only Preferred is RFC 8925, a DHCPv4 option; RFC 9686
+  is DHCPv6 address registration (§3, CoreRAD).
+- **Session loss:** "every session drops without conntrackd" is overstated
+  (§3.5). TCP loose pickup, UDP and WireGuard re-establish themselves. The
+  larger outage is the new master's WAN lease and prefix acquisition.
+- **IRQ claims:** "all IRQs hit CPU 0 by default" does not match ixgbe or igc,
+  which use MSI-X with a queue per CPU, usually with irqbalance. The throughput
+  figures (≈3–4 Gbps per core, single-digit CPU at 10G) are unsourced (§3,
+  §4.2.1).
+- **Topology diagram:** it shows the VIP as live, but VRRP is not enabled
+  (§2).
+
+**Verified, not errors:** all external repositories cited in §3 exist
+(`joshpearce/nix-router` does have `network-irq.nix`). The April 2026
+conntrackd ledger exists, and `8a8d1b1167c1` is an upstream conntrack-tools
+commit. router's LAN and WAN are passed-through igc NICs. File-level claims
+about other repositories' internals remain unverified.
 
 ---
 
@@ -55,7 +182,7 @@ Understanding the concrete operational environment is essential before adopting 
                              │             │     (Standby SFF PC)     │
                              │             │  Intel X520-2 Dual SFP+  │
                              │             └─────────────┬────────────┘
-                             │ LAN (10.10.10.1 VIP)      │ LAN (10.10.10.4 Node IP)
+                             │ LAN (10.10.10.1, VIP planned)│ LAN (10.10.10.4 Node IP)
                              ▼                           ▼
                      ═══════════════════════════════════════════
                                  Homelab LAN Switch
@@ -148,7 +275,7 @@ To identify potential architectural improvements, we surveyed leading open-sourc
 
 #### 2. `joshpearce/nix-router` (GitHub: [joshpearce/nix-router](https://github.com/joshpearce/nix-router))
 - **Key Pattern 1: Multi-Queue IRQ & SMP Affinity Tuning (`network-irq.nix`)**:
-  On multi-gigabit NICs (such as the Intel I225/I226 2.5G on `router` and the Intel X520-2 10G on `elitedesk`), all packet receive interrupts frequently hit CPU 0 by default. `joshpearce/nix-router` configures explicit SMP IRQ affinity, Receive Packet Steering (RPS), and Transmit Packet Steering (XPS) masks across physical CPU cores.
+  On multi-gigabit NICs (such as the Intel I225/I226 2.5G on `router` and the Intel X520-2 10G on `elitedesk`), all packet receive interrupts frequently hit CPU 0 by default *[rev 2: not the ixgbe/igc default, which spreads MSI-X queues across CPUs]*. `joshpearce/nix-router` configures explicit SMP IRQ affinity, Receive Packet Steering (RPS), and Transmit Packet Steering (XPS) masks across physical CPU cores.
 - **Key Pattern 2: Vector + Ulogd Flow Observability**:
   Instead of heavy full-system monitoring agents, it configures `ulogd2` with JSON logging coupled directly to a local `vector` agent. Netfilter drop events, conntrack creations, and DNS query flows are parsed and pushed into ClickHouse/Loki with minuscule CPU overhead.
 - **Key Pattern 3: Pure Nix Unit Test Suite via `pkgs.runCommand`**:
@@ -158,7 +285,7 @@ To identify potential architectural improvements, we surveyed leading open-sourc
 - **Key Pattern: Observable IPv6 Neighbor Discovery via CoreRAD**:
   `systemd-networkd`'s built-in `IPv6SendRA` engine is an opaque black box: it does not expose Prometheus metrics, cannot alert operators when downstream clients fail to obtain SLAAC prefixes, and provides virtually no visibility into neighbor advertisement health.
 - **Architectural Value**:
-  Matt Layher's `corerad` is written in Go specifically for production Linux routers. It exports rich Prometheus metrics for all advertised prefixes, route information options, RDNSS lifetimes, and RFC 9686 IPv6-Only Preferred flags, while maintaining clean per-interface configuration.
+  Matt Layher's `corerad` is written in Go specifically for production Linux routers. It exports rich Prometheus metrics for all advertised prefixes, route information options, RDNSS lifetimes, and RFC 8925 IPv6-Only Preferred *[rev 2: was misattributed to RFC 9686]*, while maintaining clean per-interface configuration.
 
 #### 4. `sdlfoundation/hard-nix-router` (GitHub: [sdlfoundation/hard-nix-router](https://github.com/sdlfoundation/hard-nix-router))
 - **Key Pattern: Zero-Trust Strict MAC Filtering & Inline Suricata IPS**:
@@ -168,7 +295,7 @@ To identify potential architectural improvements, we surveyed leading open-sourc
 - **Key Pattern: Connection Tracking State Synchronization**:
   In OPNsense and pfSense, High Availability is achieved through two synchronized protocols: CARP (for floating VIP election) and **pfsync** (for real-time state table replication). In Linux, the direct equivalent is **Keepalived (VRRP) + `conntrackd`**.
 - **The Critical Missing Link**:
-  Without `conntrackd`, any VRRP failover between `router` and `elitedesk` causes **immediate disconnection of all active TCP sessions, VoIP/SIP calls, SSH connections, and UDP flows**, because the new master possesses an empty conntrack table and drops packets as `ct state invalid`.
+  Without `conntrackd`, any VRRP failover between `router` and `elitedesk` causes **disruption of active TCP sessions, VoIP/SIP calls and SSH connections** *[rev 2: overstated; TCP loose pickup, UDP and WireGuard often recover; the WAN lease and prefix re-acquisition dominate the outage]*, because the new master possesses an empty conntrack table and drops packets as `ct state invalid`.
 - See the dedicated companion document: [`docs/FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md) for an exhaustive technical breakdown of Linux/NixOS vs FreeBSD/OPNsense.
 
 ---
@@ -268,7 +395,7 @@ ${pkgs.ndisc6}/bin/ndisc6 -r 3 ${lanVipIpv6} ${lanDevice}
 #### 1. Multi-Queue SMP IRQ Affinity & RPS/XPS Pinning (`network-irq.nix`)
 **Problem Today**:
 `router-optimizations.nix` provides an excellent Python script for ethtool offloads (TSO, GSO, GRO on, LRO off) and ring buffer sizing. However, it does not configure CPU affinity for multi-queue network cards.
-- On `elitedesk` (Intel X520-2, 10 Gbps SFP+), the card provides up to 64 MSI-X hardware queues. If all queue interrupts route to CPU Core 0, single-core interrupt processing becomes saturated at ~3-4 Gbps, despite the i7-3770 having 4 physical cores / 8 threads available.
+- On `elitedesk` (Intel X520-2, 10 Gbps SFP+), the card provides up to 64 MSI-X hardware queues. If all queue interrupts route to CPU Core 0, single-core interrupt processing becomes saturated at ~3-4 Gbps *[rev 2: unsourced]*, despite the i7-3770 having 4 physical cores / 8 threads available.
 - On `router` (Intel I225/I226 2.5 Gbps), 4 hardware queues exist.
 
 **Recommended Solution**:
@@ -411,7 +538,7 @@ notifyMasterScript = pkgs.writeShellScript "keepalived-master" ''
 
   # 5. Commit conntrackd external cache if conntrack sync is active
   if [ -x "${pkgs.conntrack-tools}/bin/conntrackd" ]; then
-    ${pkgs.conntrack-tools}/bin/conntrackd -C || true
+    ${pkgs.conntrack-tools}/bin/conntrackd -c || true  # [rev 2: commit is -c; -C names a config file]
   fi
 
   # 6. Start single-active units
@@ -585,7 +712,7 @@ To execute these enhancements methodically without regressing production homelab
 ### Phase 2: State Synchronization & Hardware Optimization
 - [ ] **Work Item 2.1**: Implement `modules/router-conntrackd.nix`.
   - Wire conntrackd configuration over management plane `192.168.100.0/24`.
-  - Add `conntrackd -C` commit trigger to `notify_master`.
+  - Add `conntrackd -c` commit trigger to `notify_master` *[rev 2: deferred, see §0.4]*.
   - Validate in nspawn lab test environment.
 - [ ] **Work Item 2.2**: Integrate SMP IRQ affinity script into `modules/router-optimizations.nix`.
   - Distribute MSI-X queues across CPU cores for Intel `igc` and `ixgbe` controllers.

@@ -1,9 +1,10 @@
 # Architectural Comparison: Linux/NixOS vs. FreeBSD/OPNsense for Edge Routers
 
-> **Research input, under review.** Discussion 21
-> ([`discussions/21-ecosystem-plan-review.md`](discussions/21-ecosystem-plan-review.md))
-> found outdated and incorrect claims in this comparison. Corrections are tracked
-> in bead `router-q5k`; treat unmarked claims as unverified.
+
+> **Revised 2026-11-19 (revision 2).** Corrected after the panel review in
+> [discussion 21](discussions/21-ecosystem-plan-review.md); corrections are
+> marked *[rev 2]*. For the project's current state and priorities, see §0 of
+> [`ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md#0-revision-2-2026-11-19-project-state-and-review-findings).
 
 **Status**: Architectural Evaluation & Platform Positioning  
 **Target Repository**: `nix-router-optimized`  
@@ -30,13 +31,13 @@ A widespread misconception is that FreeBSD technologies like CARP and pfsync hav
 
 | Capability / Concern | FreeBSD / OPNsense | Linux / `nix-router-optimized` | Architectural Comparison |
 | :--- | :--- | :--- | :--- |
-| **Virtual IP Redundancy** | **CARP** (Common Address Redundancy Protocol) | **Keepalived / VRRP** (RFC 5798, v2/v3) | **Identical Protocol Logic**: Both share floating VIPs via multicast/unicast heartbeats and elect master/backup nodes dynamically. VRRP is the vendor-neutral IETF standard used across enterprise networking (Cisco, Juniper, Arista). |
+| **Virtual IP Redundancy** | **CARP** (Common Address Redundancy Protocol) | **Keepalived / VRRP** (RFC 5798; VRRPv3 is RFC 9568) | **Analogous roles, different protocols** *[rev 2: was "identical protocol logic"; CARP and VRRP share IP protocol 112 but differ in packet format and authentication]*: Both share floating VIPs via multicast/unicast heartbeats and elect master/backup nodes dynamically. VRRP is the vendor-neutral IETF standard used across enterprise networking (Cisco, Juniper, Arista). |
 | **State Table Replication** | **pfsync** | **`conntrackd`** (FTFW Mode) | **Identical State Sharing**: `pfsync` multicasts pf state updates; `conntrackd` replicates Netfilter connection tracking events over an isolated management link. Both ensure established TCP/UDP flows survive failover without dropping sessions. |
 | **Firewall Engine** | **pf** (Packet Filter) | **nftables** | **Linux Advantage**: `nftables` compiles into an in-kernel bytecode virtual machine with atomic rule replacement, native sets/maps, and higher lookup efficiency for large rule trees. |
 | **Fast-Path Flow Offloading** | Hardware offload via FreeBSD drivers | **Netfilter Flowtables (FastTrack)** | **Linux Advantage**: Flowtables (`flow add @ft`) bypass the Netfilter evaluation pipeline for established connections, executing hardware/software fast-path forwarding at near line-rate. |
 | **Kernel Bypass / Ring Filtering** | Netmap | **eBPF / XDP** (eXpress Data Path) | **Linux Advantage**: XDP executes programmable eBPF byte-code directly in the NIC driver ring buffer before the kernel allocates an `sk_buff`, enabling line-rate DDoS filtering and packet manipulation that FreeBSD cannot match. |
 | **Multi-Queue Concurrency** | `net.isr` + RSS | **MSI-X IRQ Affinity + RPS/XPS** | **Parity**: Both can spread packet processing across CPU cores when configured properly; Linux offers fine-grained per-queue MSI-X core affinity and software steering masks. |
-| **System Lifecycle & Config** | Imperative PHP / XML (`config.xml`) | **Nix Flakes + Clan + Den Aspects** | **NixOS Advantage**: 100% bit-identical reproducible builds, atomic generational upgrades, zero runtime configuration drift, and instant bootloader rollbacks. |
+| **System Lifecycle & Config** | Imperative PHP / XML (`config.xml`) | **Nix Flakes + Clan + Den Aspects** | **NixOS Advantage**: reproducible builds, atomic generational upgrades, declarative configuration without runtime drift, and bootloader rollbacks *[rev 2: was "100% bit-identical" and "zero drift"; most, not all, store paths are bit-reproducible]*. |
 
 ---
 
@@ -63,7 +64,7 @@ State Sync:  │  pfsync (Multicast/Unicast) │  ==   │   conntrackd (FTFW Mo
 1. Hooks into Linux Netfilter connection tracking (`ctnetlink`).
 2. Transmits state transitions (new connections, TCP handshakes, NAT translations) over an isolated out-of-band management subnet (e.g. `192.168.100.0/24`).
 3. Maintains an external cache on the standby node.
-4. Upon VRRP election victory, Keepalived triggers `conntrackd -C`, which instantly injects the external cache into the standby node's kernel conntrack table.
+4. Upon VRRP election victory, Keepalived triggers `conntrackd -c` *[rev 2: was `-C`]*, which injects the external cache into the standby node's kernel conntrack table.
 5. In-flight TCP streams, VoIP/SIP calls, and established WireGuard tunnels continue flowing without connection resets (`RST`).
 
 There is no technical feature in CARP/pfsync that Linux cannot deliver with VRRP/`conntrackd`.
@@ -94,12 +95,12 @@ The most decisive distinction between OPNsense and `nix-router-optimized` is not
 ### The OPNsense Paradigm: The Single-Box Web Appliance
 - **Configuration Storage**: A single monolithic XML file (`/conf/config.xml`).
 - **Mutation Model**: Imperative changes made via a web UI or REST API modify `config.xml`, which triggers PHP backend scripts (`configd`) to regenerate daemon configurations on the fly.
-- **Upgrades**: Upgrades are in-place binary replacements via FreeBSD `pkg`. If an upgrade fails or breaks driver compatibility, rollback requires booting an older ZFS snapshot or reinstalling from ISO and restoring a backup.
+- **Upgrades**: Upgrades are in-place binary replacements via FreeBSD `pkg`. If an upgrade fails or breaks driver compatibility, rollback is done by booting an older ZFS boot environment or restoring a configuration backup *[rev 2: OPNsense has supported boot environments and config backup/restore for years]*.
 - **Fleet Integration**: Each OPNsense instance is an isolated island. Managing a pair of routers requires third-party tools, manual XML replication (HA sync), or custom API scripts.
 
 ### The `nix-router-optimized` Paradigm: Declarative Infrastructure as Code
 - **Configuration Storage**: Typed, version-controlled Nix expressions structured in a Git repository.
-- **Mutation Model**: Completely pure and deterministic. System configurations evaluate into bit-identical Nix store derivations.
+- **Mutation Model**: Completely pure and deterministic. System configurations evaluate into deterministic Nix store derivations *[rev 2: evaluation is deterministic; build outputs are mostly, not always, bit-identical]*.
 - **Upgrades & Atomic Rollback**: Every configuration change or package update produces a new NixOS **system generation**. If a change breaks connectivity, `deploy-rs` automatically rolls back within 30 seconds. In disaster scenarios, operators select an older generation from the GRUB bootloader menu to instantly restore a known-good state.
 - **Fleet Synergy**: Routers are not isolated pets; they are first-class nodes in a multi-host homelab fleet (`nix-clan-homelab`). The exact same typed topology defines DNS records, firewall policies, DHCP pools, and monitoring targets across physical routers, hypervisors, and application hosts.
 - **Compile-Time Verification**: `nix flake check` runs evaluation-time assertions, catching overlapping subnets, missing interface bindings, and configuration conflicts **before any byte is deployed to production hardware**.

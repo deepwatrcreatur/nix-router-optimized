@@ -1,6 +1,7 @@
 ## Discussion 21: Review of the ecosystem research and improvement plan
 
-**Status:** closed (round 1)
+**Status:** closed (round 1). The findings are applied in revision 2 of the plan
+([`../ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md` §0](../ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md#0-revision-2-2026-11-19-project-state-and-review-findings)).
 **Date:** 2026-11-19
 **IC:** Claude
 **Subject:** `docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md` and
@@ -40,6 +41,9 @@ The voices disagreed on facts, so I checked them on 2026-11-19:
   `notify_master`.
 - **The VRRP password defaults to `nix-router-ha`** and ends up in the Nix
   store (Claude's finding).
+- **router's LAN and WAN are passed-through Intel igc ports** (`enp6s16`,
+  `enp6s17`, 2.5 Gb/s), not virtual NICs; Claude's doubt about this was wrong.
+  Checked read-only after the round.
 - **Discussion 20's work items WI-95 to WI-99 are closed** in this repo's
   beads: topology assertions, the hardware safety matrix, the multi-node VM
   test harness, `routerctl`, and slice isolation. Several voices treated
