@@ -184,7 +184,8 @@ services.router-technitium.zoneReplication = {
 - **Demotion.** Technitium cannot convert Primary to Secondary. On BACKUP or
   FAULT the zone is exported to `/var/lib/technitium-zone-replication`,
   deleted and recreated as a Secondary of the virtual IP, but only once a
-  primary there answers SOA for it. Otherwise the Primary copy is kept and
+  primary on another node answers SOA for it (TCP, up to three attempts per
+  address, skipping any address this node holds). Otherwise the Primary copy is kept and
   `technitium-zone-ha-reconcile.timer` (every `ha.reconcileInterval`)
   retries. The same reconcile run demotes a stale Primary after a reboot
   during which this node was MASTER.
