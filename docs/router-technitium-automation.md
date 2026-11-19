@@ -58,6 +58,7 @@ secret readable only by root (`mode = "0400"`), not `0444`.
 | `technitium-sync-static-hosts` | `services.router.dnsZone(s)` records | bootstrapped token when the bootstrap service is configured (no fallback); otherwise the `apiKeySecretName` secret |
 | `technitium-sync-blocklists` | `services.router.dnsBlockLists` | bootstrapped token, else `apiKeySecretName` secret |
 | `technitium-enable-rfc2136` | `services.router-technitium.rfc2136` | bootstrapped token, else `apiKeySecretName` secret |
+| `technitium-zone-replication` | `services.router-technitium.zoneReplication` | bootstrapped token, else `apiKeySecretName` secret |
 | `router-dashboard-technitium-token` (timer) | copies the bootstrapped token to `/run/router-dashboard/` for the dashboard | bootstrapped token |
 
 The bootstrapped token lives under `/var/lib/private/` because Technitium runs
@@ -114,6 +115,52 @@ curl -fsS "http://127.0.0.1:5380/api/zones/options/get?token=$TOKEN&zone=example
 
 `blockListZones` is the number of blocked domains loaded. It stays at 0 for a
 few minutes after the first sync while Technitium downloads the lists.
+
+## Replicating a zone to a standby router
+
+A standby router answers nothing for a zone that lives only in the primary's
+runtime state, such as one Kea DDNS fills. `zoneReplication` makes the standby
+a TSIG-authenticated secondary of that zone:
+
+```nix
+# Primary (10.10.10.1)
+services.router-technitium.zoneReplication = {
+  tsigKeyFile = config.age.secrets.technitium-zone-transfer.path;
+  primary = {
+    zones = [ { name = "home.example"; } { name = "10.10.in-addr.arpa"; } ];
+    secondaries = [ "10.10.10.4" ];
+  };
+};
+
+# Standby (10.10.10.4)
+services.router-technitium.zoneReplication = {
+  tsigKeyFile = config.age.secrets.technitium-zone-transfer.path;
+  secondary = {
+    zones = [ { name = "home.example"; } { name = "10.10.in-addr.arpa"; } ];
+    primaryAddresses = [ "10.10.10.1" ];
+  };
+};
+```
+
+Both sides must hold the same base64 secret
+(`openssl rand -base64 32`). The primary allows AXFR/IXFR only from the listed
+secondaries with that key and sends them NOTIFY on every change.
+
+- **The unit never demotes a zone.** If the standby promoted its copy to
+  Primary during a failover, activation leaves it alone. Converting it back
+  to a secondary is a manual (or failover-script) step.
+- **TSIG keys share one list.** Technitium's `settings/set` replaces the whole
+  key list, so the RFC2136 and replication units each register every key the
+  module manages. Key names must differ.
+- **Secondaries are read-only.** RFC2136 updates sent to a standby fail until
+  its zone is promoted.
+
+Verify on the standby:
+
+```sh
+curl -s "http://127.0.0.1:5380/api/zones/list?token=$TOKEN" | jq '.response.zones[] | {name,type,lastRefreshed,syncFailed}'
+dig @127.0.0.1 router.home.example +short
+```
 
 ## Static host records and pruning
 

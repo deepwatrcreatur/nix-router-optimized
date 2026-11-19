@@ -83,6 +83,10 @@ let
     inherit self lib eval;
   };
 
+  routerTechnitiumZoneReplicationChecks = import ./router-technitium-zone-replication.nix {
+    inherit self lib eval;
+  };
+
   routerNdppdChecks = import ./router-ndppd.nix {
     inherit self lib eval;
   };
@@ -182,6 +186,7 @@ in
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
 // routerHaBoundaryChecks
+// routerTechnitiumZoneReplicationChecks
 // routerHaLabChecks
 // routerNdppdChecks
 // routerOptimizationsChecks
