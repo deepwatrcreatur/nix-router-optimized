@@ -37,8 +37,7 @@ input, with factual errors corrected in place (marked *[rev 2]*).
   re-check, lock), and a reconcile timer handles reboots (#148, #149).
 - `router-alerting`: Alertmanager plus an ntfy relay, email, webhooks and
   native receivers, a healthchecks-style watchdog, and new-DHCP-device
-  notices via Kea `run_script` (#150, merged as 879d785). Pending: naming the
-  host in every alert (#152).
+  notices via Kea `run_script` (#150). Every alert names its host (#152).
 - `router-homelab` dashboard links never use a wildcard address (#146).
 - From discussion 20: topology assertions, the hardware safety matrix,
   multi-node VM test harness, `routerctl` diagnostics, systemd slice
