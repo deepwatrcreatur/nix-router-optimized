@@ -680,16 +680,21 @@ let
     primary_answers() {
       local addr out
       for addr in ${concatMapStringsSep " " escapeShellArg replication.secondary.primaryAddresses}; do
-        # GOTCHA: while this node still holds the VIP it would answer itself.
-        if is_local_address "$addr"; then
-          continue
-        fi
         # GOTCHA: dig prints connection errors on stdout; require exit 0 and
         # a well-formed SOA (seven fields, numeric serial).
-        if out="$(${pkgs.dnsutils}/bin/dig +tcp +short +time=2 +tries=1 "@$addr" "$1" SOA 2>/dev/null)" \
-          && printf '%s\n' "$out" | ${pkgs.gnugrep}/bin/grep -qE '^[^ ]+ [^ ]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+$'; then
-          return 0
-        fi
+        # WHY: a lone TCP query timed out about 1 in 20 times on a live pair;
+        # retry before treating the primary as gone.
+        for _try in 1 2 3; do
+          # GOTCHA: re-check every attempt: a promotion during a timeout can
+          # move the VIP here, and this node would then answer itself.
+          if is_local_address "$addr"; then
+            break
+          fi
+          if out="$(${pkgs.dnsutils}/bin/dig +tcp +short +time=2 +tries=1 "@$addr" "$1" SOA 2>/dev/null)" \
+            && printf '%s\n' "$out" | ${pkgs.gnugrep}/bin/grep -qE '^[^ ]+ [^ ]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+$'; then
+            return 0
+          fi
+        done
       done
       return 1
     }
@@ -723,6 +728,12 @@ let
       # recreate it, keeping an export in case the transfer then fails.
       if ! export_zone "$zone" "$backup"; then
         echo "Not demoting $zone: export failed or returned no zone data" >&2
+        return 1
+      fi
+      # GOTCHA: the checks above take seconds; re-check the role right before
+      # the delete in case this node was promoted meanwhile.
+      if is_master; then
+        echo "Not demoting $zone: this node became VRRP MASTER" >&2
         return 1
       fi
       echo "Demoting $zone to Secondary of ${concatStringsSep ", " replication.secondary.primaryAddresses}"

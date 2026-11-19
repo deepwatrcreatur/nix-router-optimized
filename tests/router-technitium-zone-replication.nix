@@ -277,6 +277,11 @@ in
                 message = "demotion refuses on MASTER, ignores its own VIP, and aborts on a bad export.";
               }
               {
+                # Bounded retries, with the local-address check inside the loop.
+                assertion = before "for _try in 1 2 3; do" "is_local_address \"$addr\"" demote;
+                message = "the SOA check retries three times and re-checks the VIP on every attempt.";
+              }
+              {
                 assertion = lib.hasInfix "! is_master; then" replication && lib.hasInfix "demote_zone home.example" replication;
                 message = "the replication run must demote a Primary on a node that is not MASTER.";
               }
