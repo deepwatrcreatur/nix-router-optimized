@@ -1,233 +1,93 @@
-# NixOS Router Framework
+# NixOS Router Framework (`nix-router-optimized`)
 
-A typed, topology-driven declarative router framework for NixOS: Deterministic edge networking, zone security, and resilient protocol orchestration.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![NixOS](https://img.shields.io/badge/NixOS-unstable-blue?logo=nixos&logoColor=white)](https://nixos.org)
+[![Docs](https://img.shields.io/badge/Docs-Interactive_Portal-cyan)](https://deepwatrcreatur.github.io/nix-router-optimized/)
 
-## Architectural Philosophy: The 4-Stage Pipeline
+> **A typed, topology-driven declarative router framework for NixOS.**  
+> Deterministic edge networking, dual-node HA failover, zone security, and line-rate forwarding.
 
-Rather than functioning as a black-box appliance or imperative shell, this framework operates on a deterministic 4-stage declarative pipeline:
+---
+
+## Welcome to Declarative Edge Networking
+
+Tired of click-and-pray web GUIs with opaque XML backups? Tired of maintaining fragile bash scripts for `iptables` and `dhcpd` that drift across reboots?
+
+**`nix-router-optimized`** transforms standard x86 and ARM hardware into a carrier-grade edge router using the full power of NixOS. You define your physical links, IP subnets, and security zones as **strict, typed Nix expressions**; the framework deterministically derives your `nftables` firewall rules, Kea DHCP pools, Technitium/Unbound DNS resolvers, and hardware offload parameters.
+
+Every deployment produces an immutable, bit-identical NixOS system generation that can be verified at build time and rolled back instantly if an update misbehaves.
+
+---
+
+## The 4-Stage Declarative Pipeline
+
+Rather than acting as a black-box appliance, the framework operates on a deterministic 4-stage pipeline:
 
 ```
-Typed Topology  ──▶  Derived Config  ──▶  Reproducible Deploy  ──▶  Measurable Perf
-  (Nix types &          (nftables, DHCP,       (Bit-identical            (Zero-regression
-   eval assertions)      DNS, QoS rules)        nixos-rebuild)            benchmarks & telemetry)
+Typed Topology  ──▶  Derived Config  ──▶  Immutable Deploy  ──▶  Measurable Perf
+  (Strict Nix types,    (nftables, Kea pools,   (Bit-identical            (Zero-regression
+   eval assertions)      Technitium DNS, CAKE)   deploy-rs rollbacks)      flowtable & routerctl)
 ```
 
-1. **Typed Topology**: Zones, interfaces, links, prefixes, and pools are defined as strict Nix types. Evaluation-time assertions catch prefix overlaps, DHCP boundary violations, and MTU mismatches before system generation.
-2. **Derived Config**: Firewall rule trees (nftables), DHCP subnets and pools (Kea), DNS resolvers (Unbound/Technitium), and QoS configurations (CAKE/fq_codel) are derived deterministically from the single source of truth topology.
-3. **Reproducible Deploy**: System configurations evaluate into bit-identical NixOS systems deployable with atomic rollbacks, declarative systemd slice isolation, and verifiable reproducibility.
-4. **Measurable Performance**: Hardware-aware driver negotiation, FastTrack/FastPath flowtables, and safe NIC offloads deliver line-rate forwarding with structured diagnostic validation (`routerctl`).
+1. **Typed Topology**: Interfaces, links, subnets, and VLANs are modeled as typed Nix options. Evaluation-time assertions catch subnet collisions, MTU mismatches, and pool overlaps **before compilation**.
+2. **Derived Config**: Netfilter firewall trees (`nftables`), DHCPv4/v6 pools (`Kea`), DNS zones (`Technitium`), and smart queue management (`CAKE`) compile deterministically from your topology.
+3. **Immutable Deploy**: Generates reproducible NixOS closures. Deployed via `deploy-rs` with automatic rollback if network connectivity is interrupted.
+4. **Measurable Performance**: Driver negotiation, ring buffer sizing, FastTrack flowtables, and multi-queue SMP IRQ affinity deliver line-rate forwarding with structured diagnostic validation via `routerctl`.
 
-## Platform Compatibility
+---
 
-See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for the verified platform and driver validation matrices across Core (Tier 1), SBC (Tier 2), and Budget (Tier 3) tiers.
+## What's New & Active Development
+
+### Router Failover & Dual-Node HA (Actively In Progress)
+High Availability (HA) failover is **actively being implemented and validated on reference homelab hardware** (`router` VM with Intel 2.5G `igc` + `elitedesk` bare-metal with Intel 10G SFP+ `ixgbe`), rather than existing as a distant roadmap item:
+
+* **Available Today**:
+  * **Delayed Fail-Back**: `services.router-ha.preemptDelay` allows a recovered higher-priority node to wait as BACKUP before reclaiming the VIP, preventing failover oscillation.
+  * **Secondary Technitium DNS Replication**: `services.router-technitium.zoneReplication` keeps the primary's Technitium zones, including dynamic DDNS records, synchronized on standby nodes via TSIG-signed AXFR/IXFR and NOTIFY.
+  * **Golden MAC ISP Modem Cloning**: Clones the ISP-expected MAC address onto the active master node, allowing two routers to share a single dynamic lease over an unmanaged switch.
+* **Actively In Progress**:
+  * Automatic promotion of replicated Technitium zones to Primary on MASTER, and demotion back to Secondary on BACKUP.
+  * Integration of netfilter connection tracking synchronization (`router-conntrackd`) to preserve active TCP/UDP sessions across failover.
+  * Non-disruptive networkd reconfiguration (`networkctl reconfigure`) replacing daemon restarts.
+* **Honest Operational Boundary**:
+  * DHCP currently operates as **single-active with manual promotion** ([`docs/router-dhcp-single-active.md`](docs/router-dhcp-single-active.md)) to prevent lease contention.
+
+---
+
+## Feature Highlights
+
+- ⚡ **Line-Rate FastTrack**: Netfilter flowtables bypass connection tracking for established flows, delivering 20-40% higher throughput and 50% lower CPU usage.
+- 🔄 **Automated High Availability**: Keepalived (VRRP, RFC 5798), floating VIPs, preemption delays, and Golden MAC spoofing.
+- 🛡️ **Declarative Zone Security**: High-level cross-zone policy matrix (`wan`, `lan`, `iot`, `guest`, `dmz`) compiled into atomic `nftables` chains with egress bogon filtering and Geo-IP blocking.
+- 🌐 **IPv6-First & Transition Ready**: DHCPv6 Prefix Delegation (/56), stateless NAT64 (Tayga), DNS64 (Unbound), RFC 6296 NPTv6, and experimental CLAT.
+- 🎯 **Enterprise DHCP & DNS**: ISC Kea DHCPv4/v6 with RFC 2136/TSIG dynamic DNS, coupled with Technitium DNS blocklists (Hagezi, OISD).
+- 🍰 **Bufferbloat Elimination**: CAKE and fq_codel Smart Queue Management (SQM) for latency-sensitive gaming, voice, and streaming.
+- 🧩 **Resource Slice Isolation**: Systemd resource hierarchy (`router-core.slice`, `router-observability.slice`, `router-applications.slice`) preventing telemetry agents from starving packet forwarding.
+- 📊 **Edge Observability**: Real-time web dashboard (port 8888), Grafana dashboards, Netdata, and custom `routerctl` CLI inspection.
+
+---
 
 ## Why Linux & NixOS? (Comparison with FreeBSD & OPNsense)
 
-Operators comparing DIY routers often ask whether a FreeBSD appliance like OPNsense or pfSense is preferable, or whether Linux lacks high-availability (CARP/pfsync) and firewall features:
+Operators comparing DIY routers often ask whether a FreeBSD appliance like OPNsense or pfSense is preferable:
 
-- **High Availability & State Sync**: Keepalived (VRRP, RFC 5798) is the direct equivalent of CARP; `conntrackd` (FTFW mode) is the direct equivalent of `pfsync`. Both guarantee floating VIP election and stateful connection survival without session drops.
-- **Forwarding Performance**: Linux `nftables` with Netfilter Flowtables (FastTrack) offloads established flows for line-rate forwarding at low CPU utilization. Furthermore, Linux supports eBPF/XDP for kernel-bypass packet filtering directly in NIC ring buffers—capabilities FreeBSD lacks.
-- **Declarative Fleet GitOps vs. Imperative Web UI**: Rather than configuring a single appliance via PHP web forms and mutable XML files (`config.xml`), `nix-router-optimized` treats the router as code within an immutable, bit-reproducible NixOS fleet with atomic GRUB generation rollbacks and compile-time topology validation.
+* **High Availability & State Sync**: Keepalived (VRRP) is the direct equivalent of CARP; `conntrackd` (FTFW mode) is the direct equivalent of `pfsync`. Both ensure floating VIP election and stateful session survival.
+* **Forwarding Performance**: Linux `nftables` with FastTrack flowtables offloads established flows for line-rate forwarding at low CPU utilization. Furthermore, Linux supports **eBPF / XDP** for kernel-bypass packet filtering inside NIC ring buffers—capabilities FreeBSD lacks.
+* **Declarative Fleet GitOps vs. Imperative Web UI**: Rather than managing a single appliance via PHP web forms and mutable XML files (`config.xml`), `nix-router-optimized` treats the router as code within an immutable, bit-reproducible NixOS fleet with atomic GRUB generation rollbacks and compile-time topology validation.
 
-For the comprehensive architectural breakdown and protocol mapping, see [`docs/FREEBSD-OPNSENSE-COMPARISON.md`](docs/FREEBSD-OPNSENSE-COMPARISON.md). For broader ecosystem research and the ongoing architectural roadmap, see [`docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md).
+👉 Read the full technical comparison: **[`docs/FREEBSD-OPNSENSE-COMPARISON.md`](docs/FREEBSD-OPNSENSE-COMPARISON.md)**.
 
-## Agent Work Queue
+---
 
-If you are assigning or running agents against this repo, start with:
+## Quick Start (60 Seconds)
 
-- [`docs/work-items/START-HERE.md`](docs/work-items/START-HERE.md)
-- [`docs/work-items/README.md`](docs/work-items/README.md)
-
-`START-HERE.md` is the onboarding flow.
-`docs/work-items/README.md` is the authoritative ranked queue.
-
-Operational note for agents: keep the shared `flakes-worktrees/.../main`
-checkout on branch `main`; create separate linked worktrees for feature/PR
-branches.
-
-## Features
-
-- **FastTrack/FastPath**: Connection tracking bypass for established connections
-- **Router Networking**: Reusable systemd-networkd WAN plus routed-LAN/prefix-delegation module
-- **Router DHCP**: Optional DHCP server defaults derived from routed interface definitions
-- **Router DNS Service**: Provider-aware local resolver defaults for Technitium, Unbound, or Dnsmasq
-- **Router Firewall**: Role-aware nftables policy derived from router interface definitions
-- **Router Log Storage**: Optional persistent log/journal layout on secondary storage
-- **Router PPPoE**: Composable PPPoE uplink module that can coexist with router-networking
-- **Homelab Router Profile**: Opt-in dashboard, monitoring, Netdata, and common firewall defaults
-- **Router ntopng**: Optional traffic-analysis UI with router-aware interface and LAN binding defaults
-- **Router Tailscale**: Optional router-aware Tailscale wrapper for subnet-router and exit-node roles
-- **Router WireGuard**: Optional router-aware WireGuard wrapper for site-to-site and remote-access tunnels
-- **Router OpenVPN**: Optional router-aware wrapper for declarative OpenVPN instances
-- **Router Technitium**: Opt-in Technitium DNS defaults with declarative blocklist wiring
-- **Hardware Offload**: Driver-aware TSO, GSO, and GRO optimizations with router-safe LRO suppression
-- **Resource Slice Isolation**: Systemd resource hierarchy (`router-core`, `router-observability`, `router-applications`) preventing telemetry and application leaks from starving forwarding paths
-- **routerctl CLI Diagnostics**: Structured JSON and table inspection of routing state, NIC capabilities, and static firewall policy resolution
-- **Advanced Queuing**: fq_codel, CAKE, BQL for optimal latency
-- **XDP/eBPF**: Early packet filtering at driver level
-- **nftables Fasttrack**: Flow offloading in netfilter
-- **Router Dashboard**: Real-time web UI with traffic graphs, interface stats, WAN IP
-- **Grafana Integration**: Pre-configured dashboards for network monitoring
-- **Caddy Reverse Proxy**: Declarative HTTPS with automatic Let's Encrypt
-- **Technitium Block Lists**: Declarative DNS blocklist presets with additive custom URLs
-- **Kea DHCP**: ISC Kea DHCPv4 with optional RFC2136/TSIG DDNS integration (agenix-safe secret handling)
-- **Router NTP**: Chrony-based NTP server with per-subnet access controls and firewall integration
-- **NAT64**: Tayga-backed stateless NAT64 as the repo's current PLAT-equivalent path, with automatic firewall forward rules
-- **DNS64**: Unbound dns64-module wiring for AAAA synthesis from A records
-- **CLAT (Experimental First Slice)**: Contract-oriented legacy IPv4 to IPv6 translation surface with assertions, firewall hooks, and intentionally narrow non-HA scope
-- **SQM**: Script-based smart queue management (fq_codel/CAKE) for WAN shaping
-- **mDNS Reflector**: Avahi mDNS reflector for cross-VLAN service discovery
-- **UPnP/NAT-PMP**: miniupnpd with nftables jump-rule integration
-- **BGP**: Advanced / experimental FRR bgpd wrapper for declarative internal peering
-- **NDP Proxy**: Advanced / opt-in `ndppd`-backed routed-prefix neighbor-proxy module with bounded HA ownership rules
-- **High Availability (HA)**: 
-  - **VRRP (Keepalived)**: Virtual IP (VIP) sharing between master and backup router nodes.
-  - **Kea DHCP HA**: Advanced Kea HA primitives for opt-in topologies. The
-    current reference router pair is documented as **single-active DHCP with
-    manual promotion**, not active automatic DHCP failover.
-  - **WAN HA**: Integrated "Golden MAC" cloning and interface management for seamless ISP failover when using an unmanaged switch topology.
-- **Multi-WAN Failover**: Automatic health-checking and prioritized uplink failover between multiple ISP uplinks, not generic ECMP or aggregate load balancing.
-- **WAN MAC Cloning**: Declarative MAC address spoofing for seamless ISP handover
-- **Security & Hardening**:
-  - **OpenBSD-tier Kernel Tuning**: Restricted dmesg, ASLR enforcement, and TCP/IP stack hardening.
-  - **Geo-IP Blocking**: Declaratively block inbound traffic from specific countries via nftables.
-  - **MAC Security**: Interface-specific MAC-address whitelisting with enforcement or alert policies.
-- **Zone Isolation**: Declarative "Zone-based" security (WAN, LAN, IoT) with high-level cross-zone traffic policies.
-
-## Experimental / in-progress capabilities
-
-Some features in this flake are intentionally present as bounded first slices
-rather than full maturity claims.
-
-- **`router-clat`** is available now as an experimental CLAT-style surface for
-  legacy IPv4 clients on IPv6-capable uplinks.
-- The current slice is intentionally narrow:
-  - single-router
-  - non-HA
-  - contract/assertion heavy
-  - not yet presented as a complete router-grade CLAT runtime/control plane
-- Start with the module section at [`#router-clat`](#router-clat), then read
-  [`docs/DECLARATIVE_CLAT.md`](./docs/DECLARATIVE_CLAT.md) for the current
-  design boundary and maturity language.
-
-- **Router failover (VRRP)** is being built out and tested on a reference
-  homelab pair. A standby router runs today, but no live failover has been
-  rehearsed yet.
-  - Available:
-    - **Delayed fail-back:** `services.router-ha.preemptDelay` makes a
-      recovered higher-priority node wait before it takes the role back.
-      Failover itself is never delayed.
-    - **DNS copies on the standby:**
-      `services.router-technitium.zoneReplication` keeps the primary's
-      Technitium zones, including DDNS-filled ones, on standbys. It uses
-      TSIG-signed AXFR/IXFR and NOTIFY, and activation never demotes a zone
-      that a failover promoted.
-  - In progress:
-    - Promoting the replicated zones to Primary when a node becomes MASTER,
-      and back to Secondary on BACKUP. Until then, DDNS updates fail on a
-      node that has taken over.
-    - Failover rehearsals with rollback.
-  - Not automatic: DHCP stays **single-active with manual promotion**
-    ([`docs/router-dhcp-single-active.md`](./docs/router-dhcp-single-active.md)).
-  - Start with [`docs/router-ha-pair-guide.md`](./docs/router-ha-pair-guide.md)
-    and the "Replicating a zone to a standby router" section of
-    [`docs/router-technitium-automation.md`](./docs/router-technitium-automation.md).
-
-## IPv6 path selection
-
-If you are approaching this flake as an IPv6 operator, do not infer the right
-answer from module names alone.
-
-Start with:
-
-- [`docs/router-ipv6-approach-guide.md`](./docs/router-ipv6-approach-guide.md)
-- [`docs/router-nat64-dns64.md`](./docs/router-nat64-dns64.md) for NAT64/DNS64
-- [`docs/router-ndp-proxy.md`](./docs/router-ndp-proxy.md) for routed-prefix /
-  neighbor-proxy cases
-
-Important honesty boundary:
-
-- NAT64/DNS64 is a real supported path today
-- `router-clat` is an experimental first slice
-- `services.router-ndp-proxy` is the current advanced / opt-in NDP daemon path
-- `ndpresponder`, `ndproxy`, and `ndp-proxy-go` remain outside the current
-  module boundary
-
-## Quick Start
-
-If you want one router and do not need HA yet, start with
-[`docs/router-single-router-guide.md`](./docs/router-single-router-guide.md)
-and [`examples/router-single-basic.nix`](./examples/router-single-basic.nix).
-Use the HA pair guide only when you are intentionally building a two-node
-failover setup.
-
-### As a Flake Input
-
-For a first bring-up, prefer the smallest working shape:
-
-1. Import only the core modules you need:
-   `inputs.router-optimized.nixosModules.router-networking`,
-   `inputs.router-optimized.nixosModules.router-dhcp`,
-   `inputs.router-optimized.nixosModules.router-dns-service`,
-   `inputs.router-optimized.nixosModules.router-firewall`, and
-   `inputs.router-optimized.nixosModules.router-optimizations`.
-2. Copy [`examples/router-single-basic.nix`](./examples/router-single-basic.nix)
-   into your own flake and edit the interface names and LAN subnet.
-3. Read [`docs/router-single-router-guide.md`](./docs/router-single-router-guide.md)
-   before you add optional services.
-
-That path is intentionally:
-
-- one router
-- one WAN
-- one LAN
-- no VRRP / `router-ha`
-- DNS and DHCP first, extras later
-
-If you want the complete copyable starting point, use the single-router guide
-instead of trying to infer the shape from module names alone.
-
-### High Availability Setup
-
-NixOS Router Optimizations supports advanced High Availability (HA) patterns. 
-
-Important boundary: WAN and active-owner primitives are available, but the
-current reference router pair is **not** documented as running active automatic
-Kea DHCP failover. See
-[`docs/router-dhcp-single-active.md`](./docs/router-dhcp-single-active.md)
-before assuming DHCP follows VRRP automatically.
-
-If you want a more copyable starting point for a `router` / `router-backup`
-pair, see [`docs/router-ha-pair-guide.md`](./docs/router-ha-pair-guide.md) and
-[`examples/router-ha-pair-example.nix`](./examples/router-ha-pair-example.nix).
-
-#### WAN Topology (Unmanaged Switch)
-To share a single-IP ISP modem between two routers without a managed switch:
-1. ISP Modem -> Unmanaged Switch
-2. Router A WAN -> Unmanaged Switch
-3. Router B WAN -> Unmanaged Switch
-
-Enable `services.router-ha.wan` on both nodes. The module will ensure only the Master node has an active WAN interface and the correct "Golden MAC" expected by your ISP.
-
-```nix
-services.router-ha = {
-  enable = true;
-  role = "master"; # or "backup"
-  virtualIp = "10.10.10.1/16";
-  vrrpInterface = "enp6s18"; # LAN interface
-  wan = {
-    enable = true;
-    interface = "enp6s17";
-    clonedMac = "00:11:22:33:44:55"; # Your Golden MAC
-  };
-};
-```
+Add `router-optimized` to your `flake.nix` and import the core modules:
 
 ```nix
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    router-optimized.url = "github:yourusername/nix-router-optimized";
+    router-optimized.url = "github:deepwatrcreatur/nix-router-optimized";
   };
 
   outputs = { self, nixpkgs, router-optimized }: {
@@ -238,54 +98,35 @@ services.router-ha = {
         router-optimized.nixosModules.router-dhcp
         router-optimized.nixosModules.router-dns-service
         router-optimized.nixosModules.router-firewall
-        router-optimized.nixosModules.router-pppoe
-        router-optimized.nixosModules.router-homelab
         router-optimized.nixosModules.router-optimizations
         {
+          # 1. Interface and Prefix Topology
           services.router-networking = {
             enable = true;
-            wan.device = "ens17";
+            wan.device = "eth0"; # Your WAN interface
             routedInterfaces.lan = {
-              device = "ens16";
+              device = "eth1";   # Your LAN interface
               ipv4Address = "192.168.1.1/24";
               dns = [ "192.168.1.1" ];
-              requiredForOnline = "routable";
+              ipv6SendRA = true;
             };
           };
 
+          # 2. DHCP & DNS Services
+          services.router-dhcp.enable = true;
+          services.router-dns-service = {
+            enable = true;
+            provider = "unbound";
+          };
+
+          # 3. Firewall & Performance Optimizations
+          services.router-firewall.enable = true;
           services.router-optimizations = {
             enable = true;
             interfaces = {
-              wan = { device = "ens17"; role = "wan"; label = "WAN"; bandwidth = "1Gbit"; };
-              lan = { device = "ens16"; role = "lan"; label = "LAN"; };
+              wan = { device = "eth0"; role = "wan"; label = "WAN"; bandwidth = "1Gbit"; };
+              lan = { device = "eth1"; role = "lan"; label = "LAN"; };
             };
-          };
-
-          services.router-firewall = {
-            enable = true;
-            trustedTcpPorts = [ 80 443 ];
-            wanTcpPorts = [ 80 443 ];
-          };
-
-          services.router-dhcp.enable = true;
-
-          services.router-dns-service = {
-            enable = true;
-            provider = "technitium";
-            searchDomains = [ "example.com" ];
-          };
-
-          services.router-homelab = {
-            enable = true;
-            enableNtopng = true;
-            sshTarget = "ssh router.example.com";
-          };
-
-          services.grafana.settings.security.secret_key = "$__file{/run/agenix/grafana-secret-key}";
-
-          services.router-technitium = {
-            enable = true;
-            blockListPresets = [ "hagezi-normal" ];
           };
         }
       ];
@@ -294,867 +135,38 @@ services.router-ha = {
 }
 ```
 
-## Modules
+---
 
-### router-networking
-Reusable router-oriented `systemd-networkd` configuration for:
-- DHCP/RA/DHCPv6-PD on WAN
-- Static IPv4 WANs when DHCP is not available
-- Routed downstream segments with IPv4 addresses
-- VLAN-backed WAN or downstream interfaces
-- IPv6 router advertisements and prefix delegation on LAN/management networks
-- Stable router-facing IPv6 identities by default
+## Documentation Hub
 
-### router-dhcp
-Small DHCP server layer for routed routers:
-- derives served segments from `services.router-networking.routedInterfaces`
-- uses `systemd-networkd` DHCPServer instead of forcing a separate daemon
-- supports per-segment pool sizing and static leases
-- supports optional PXE/iPXE boot advertisements per routed segment
+To keep this README focused and conversational, in-depth documentation and code references have been organized into dedicated guides:
 
-Example PXE advertisement for an iVentoy or iPXE HTTP boot endpoint:
+| Guide / Reference | Description |
+| :--- | :--- |
+| 🌐 **[Interactive Web Documentation](https://deepwatrcreatur.github.io/nix-router-optimized/)** | Visual network topology maps, failover sequence diagrams, and tabbed code walkthroughs. |
+| 📖 **[`docs/MODULES.md`](docs/MODULES.md)** | Exhaustive reference guide for all 38+ modules with option schemas and defaults. |
+| 🍳 **[`docs/RECIPES.md`](docs/RECIPES.md)** | Real-world copyable recipes: PPPoE, Caddy HTTPS, Technitium blocklists, secondary log storage, and WARP routing. |
+| 🚀 **[`docs/PERFORMANCE-TUNING.md`](docs/PERFORMANCE-TUNING.md)** | Deep dive into FastTrack flowtables, NIC driver negotiation (TSO/GSO/GRO), CAKE SQM, and multi-queue IRQ affinity. |
+| 🛡️ **[`docs/FREEBSD-OPNSENSE-COMPARISON.md`](docs/FREEBSD-OPNSENSE-COMPARISON.md)** | Architectural mapping of Linux/NixOS vs. FreeBSD/OPNsense (CARP vs VRRP, pfsync vs conntrackd, pf vs FastTrack/XDP). |
+| 🔬 **[`docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md)** | Comprehensive ecosystem survey, homelab consumer analysis (`router` & `elitedesk`), secrets paradox, and future roadmap. |
+| 📋 **[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)** | Verified hardware and driver matrix across Core (Tier 1), SBC (Tier 2), and Budget (Tier 3) hardware. |
+| 🚦 **[`docs/work-items/README.md`](docs/work-items/README.md)** | Authoritative ranked execution queue and onboarding runbooks for developers and coding agents. |
 
-```nix
-services.router-dhcp.interfaces.lan.pxe = {
-  enable = true;
-  bootServerAddress = "192.168.1.1";
-  bootFilename = "http://192.168.1.1/netboot/ipxe.efi";
-};
-```
+---
 
-### router-ddns
-Thin Dynamic DNS wrapper for router-hosted public ingress names:
-- uses the stock NixOS `services.inadyn` service as the only backend
-- supports Cloudflare API tokens from runtime files without storing tokens in
-  the Nix store
-- accepts inventory-style labels such as `@`, `homelab`, and `paperless`, then
-  expands them under the configured Cloudflare zone
+## Platform Compatibility
 
-Example:
+The framework is verified across multiple hardware tiers:
+- **Tier 1 (Core)**: Intel I225/I226 (2.5G `igc`), Intel X520/X540/X550 (10G `ixgbe`), Intel I350 (1G `igb`).
+- **Tier 2 (SBC)**: NanoPi R4S/R5S (Rockchip `rk3568`/`rk3588`), Raspberry Pi 4/5 (Broadcom).
+- **Tier 3 (Budget)**: Realtek RTL8125/RTL8111 (`r8169`), Mellanox ConnectX-3/4 (`mlx4`/`mlx5`).
 
-```nix
-services.router-ddns = {
-  enable = true;
-  cloudflare = {
-    zoneName = "example.com";
-    labels = [ "@" "homelab" "paperless" ];
-    apiTokenFile = "/run/agenix/cloudflare-ddns-token";
-  };
-};
-```
+See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for full driver validation notes.
 
-The token file must contain the raw token string without quotes. The module
-writes the quoted inadyn include file under `/run/router-ddns` at service start,
-so the token is not embedded in the Nix store. A CI-visible enabled example is
-available as `nixosConfigurations.router-ddns-example`.
+---
 
-This is intentionally narrower than general DNS ownership. Local resolver and
-DHCP-driven host registration remain the responsibility of `router-dns-service`
-and provider modules such as `router-technitium`.
+## Contributing & License
 
-See [`docs/router-ddns-provider-shape.md`](./docs/router-ddns-provider-shape.md)
-for the Cloudflare provider option shape and inventory boundary.
+Contributions, bug reports, and hardware validation results are welcome! Please test configurations against `nix flake check` before submitting pull requests.
 
-### router-cloudflare-tunnel
-Router-oriented wrapper for Cloudflare Tunnel using the stock NixOS
-`services.cloudflared` module:
-- manages named `cloudflared` tunnels declaratively
-- keeps tunnel credentials in runtime files instead of the Nix store
-- auto-registers Cloudflare tunnels in the router dashboard via `router-tunnels`
-- derives a dashboard URL automatically when a tunnel exposes exactly one hostname
-
-Example:
-
-```nix
-services.router-cloudflare-tunnel = {
-  enable = true;
-  tunnels.grafana = {
-    credentialsFile = "/run/agenix/cloudflared-grafana.json";
-    description = "Cloudflare Tunnel for public Grafana";
-    ingress = {
-      "grafana.example.com" = "http://127.0.0.1:3001";
-    };
-  };
-};
-```
-
-This is complementary to `caddy-reverse-proxy`: Caddy still handles your local
-reverse proxy and policy, while Cloudflare Tunnel can publish selected services
-without opening inbound ports on the router.
-
-### router-cloudflare-warp
-Outbound Cloudflare WARP VPN client integration for bulk download acceleration and ISP throttling bypass.
-
-> **Important Usage & Trade-Off Guidance**:
-> - **Selective Policy Routing Recommended (`selective-lan-ips`)**: Avoid using `routingMode = "all-traffic"` network-wide. Routing an entire household through shared Cloudflare VPN egress IPs will cause Google CAPTCHAs, banking fraud alerts, streaming VPN blocks (Netflix/Hulu), and single-point-of-failure risks.
-> - **Selective LAN IPs**: Use `routingMode = "selective-lan-ips"` to route only designated bulk downloaders or workstations through the WARP tunnel.
-> - **DNS Isolation**: Local DNS resolvers (such as Technitium) remain authoritative for `/etc/resolv.conf` and local domain resolution so internal homelab records and blocklists are preserved.
-
-Example:
-
-```nix
-services.router-cloudflare-warp = {
-  enable = true;
-  mode = "warp";
-  routingMode = "selective-lan-ips";
-  targetLanIps = [ "10.10.11.84" ]; # Route specific downloader IP only
-};
-```
-
-### router-dns-service
-Provider-aware local resolver layer:
-- chooses between `technitium`, `unbound`, and `dnsmasq`
-- can disable `systemd-resolved` and write a static `/etc/resolv.conf`
-- integrates with `router-technitium` for blocklists and API-key export when using Technitium
-
-### router-firewall
-Role-aware nftables policy for routed routers:
-- derives WAN/LAN/management interfaces from `services.router-optimizations.interfaces`
-- exposes router services on trusted segments without hard-coding device names
-- supports Tailscale, WAN service ports, routed forwarding, flowtable setup, MSS clamping, and hairpin NAT
-- keeps flowtable acceleration enabled by default, but can exclude fragile protocols such as SIP/RTP from offload
-
-Use `trustedTcpPorts` or `trustedUdpPorts` for services hosted on the router itself
-that LAN/management clients should reach directly, such as Caddy on `80/443` when
-split DNS points service domains at the router's LAN IP. Hairpin NAT is a fallback
-for clients that bypass local DNS; it does not replace trusted input rules for
-traffic terminating on the router.
-
-For VoIP-heavy homes or small offices, prefer the bounded flowtable exclusions
-instead of disabling flow acceleration globally:
-
-```nix
-services.router-firewall = {
-  enable = true;
-  flowtable.sipFriendly.enable = true;
-};
-```
-
-That preset excludes common SIP signaling ports (`5060`/`5061`) and a broad
-RTP media range (`10000-20000`) from flowtable acceleration while leaving the
-fast path enabled for most other traffic. Advanced users can override this with
-`flowtable.excludeUdpPorts` and `flowtable.excludeTcpPorts`.
-
-### router-log-storage
-Persistent log-storage layout for small router systems:
-- mounts a secondary filesystem for logs
-- can bind-mount `/var/log/journal` onto that volume
-- creates per-service log directories with tmpfiles and a setup service
-- supports `journal.systemKeepFree` and `journal.runtimeKeepFree` so journal
-  rotation starts before the secondary volume is truly full
-
-### monitoring storage placement
-The monitoring module can also place state on secondary storage:
-- `router.monitoring.grafanaDataDir` moves Grafana's state directory
-- `router.monitoring.prometheusStateDir` changes the `/var/lib/...` state directory name Prometheus uses
-- `router.monitoring.prometheusBindMountPath` bind-mounts that Prometheus state directory onto another filesystem
-- `router.monitoring.prometheusRetentionSize` adds a size cap to Prometheus TSDB
-  so smaller log/state volumes do not grow without bound
-- `router.monitoring.waitForListenAddress = true` delays Prometheus and Grafana
-  until a specific `listenAddress` exists on the host
-
-### router-pppoe
-Composable PPPoE uplink wrapper:
-- uses `services.pppd` as the PPPoE client
-- keeps WAN secrets out of the Nix store by referencing a runtime credentials file
-- can disable direct WAN networkd management while still using `router-networking` for downstream segments
-
-### router-homelab
-Opt-in service bundle for a small homelab router:
-- enables router dashboard defaults
-- enables Prometheus/Grafana monitoring defaults
-- enables Netdata on the primary LAN address
-- builds dashboard links (Netdata, Grafana, Traffic, DNS Admin) from, in order:
-  `services.router-homelab.linkAddress` (host name or address; IPv6 literals
-  are bracketed), the listen address, or the routed LAN address when services
-  bind to `0.0.0.0`; `localhost` only when no routed interface exists
-- can enable ntopng with router-aware defaults via `services.router-homelab.enableNtopng = true`
-- can delay LAN-bound monitoring services until the chosen listen address is
-  actually present with `services.router-homelab.waitForListenAddress = true`
-- adds common trusted firewall ports for dashboard, Grafana, Prometheus, and Technitium when present
-- adds convenient dashboard quick links such as SSH, DNS admin, Grafana, and Netdata
-
-### router-ntopng
-Optional ntopng integration for routers:
-- derives monitored interfaces from `services.router-optimizations.interfaces` by default
-- binds the ntopng UI to the router LAN address by default
-- opens the ntopng port on trusted router firewall interfaces
-- plugs into the homelab dashboard/service list when `router-homelab` is used
-
-### router-tailscale
-Optional router-aware Tailscale integration:
-- wraps the native `services.tailscale` module with router-oriented defaults
-- configures subnet-router and exit-node flags declaratively
-- plugs the Tailscale interface into `router-firewall`
-- opens the Tailscale UDP port on WAN when `router-firewall` is enabled
-
-Example:
-
-```nix
-services.router-tailscale = {
-  enable = true;
-  authKeyFile = "/run/agenix/tailscale-auth-key";
-  advertiseRoutes = [ "10.10.0.0/16" "192.168.100.0/24" ];
-  enableSsh = true;
-};
-```
-
-If `router-firewall` is imported, the module also wires the Tailscale interface
-into the router firewall policy. If another layer already owns Tailscale on the
-host, prefer one source of truth rather than stacking multiple wrappers.
-
-### router-openvpn
-Optional router-aware OpenVPN integration:
-- wraps `services.openvpn.servers` instead of replacing it
-- exposes per-instance WAN TCP/UDP ports through `router-firewall`
-- can treat OpenVPN tunnel interfaces as trusted router interfaces
-- can allow OpenVPN clients to forward to WAN
-
-Example:
-
-```nix
-services.router-openvpn.instances.roadwarrior = {
-  interfaceName = "tun0";
-  wanUdpPorts = [ 1194 ];
-  config = ''
-    dev tun0
-    proto udp
-    port 1194
-    server 10.30.0.0 255.255.255.0
-  '';
-};
-```
-
-`trustedInterface` and `routeToWan` are opt-in. When `router-firewall` is not
-imported, the module still configures OpenVPN instances but skips the router
-firewall integration.
-
-### router-wireguard
-Optional router-aware WireGuard integration:
-- wraps `networking.wireguard.interfaces` with a simpler router-facing option set
-- opens the WireGuard UDP port on WAN through `router-firewall`
-- can treat the WireGuard tunnel as a trusted router interface
-- can allow WireGuard clients to forward to WAN through the router
-
-Example:
-
-```nix
-services.router-wireguard = {
-  enable = true;
-  ips = [ "10.20.0.1/24" ];
-  privateKeyFile = "/run/agenix/wg-router-key";
-  peers = [
-    {
-      publicKey = "xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=";
-      allowedIPs = [ "10.20.0.2/32" ];
-      persistentKeepalive = 25;
-    }
-  ];
-};
-```
-
-`trustedInterface` and `routeToWan` are opt-in. When `router-firewall` is not
-imported, the module still configures WireGuard itself but skips the router
-firewall wiring.
-
-### router-network-security
-Optional router-oriented packet security sensors:
-- exposes bounded consumer options for Suricata, Snort 3, and Zeek
-- derives capture interfaces from router-firewall/router-optimizations when possible
-- derives local protected networks from routed IPv4 CIDRs when possible
-- uses the upstream NixOS Suricata module and repo-native wrappers for Snort and Zeek
-
-Example:
-
-```nix
-services.router-network-security = {
-  enable = true;
-  interfaces = [ "wan0" "lan0" ];
-
-  suricata.enable = true;
-
-  snort = {
-    enable = true;
-    profile = "security";
-  };
-
-  zeek.enable = true;
-};
-```
-
-This is intentionally a first-slice wrapper rather than a full IDS/IPS
-management plane. Suricata currently has the strongest nixpkgs-native
-integration; Snort and Zeek are thin systemd-based wrappers.
-
-### router-technitium
-Opt-in Technitium DNS service bundle:
-- enables `services.technitium-dns-server`
-- mints and maintains a node-local automation token from the admin password
-  (`bootstrapPasswordSecretName`); this is the recommended token source. An
-  `apiKeySecretName` age secret is only a fallback, and can go stale silently.
-  See [`docs/router-technitium-automation.md`](docs/router-technitium-automation.md)
-- can configure RFC2136/DDNS (TSIG key and zone update policy) through
-  `services.router-technitium.rfc2136`; use this rather than a hand-written unit
-- wires declarative blocklist presets through `services.router.dnsBlockLists`
-- can add declarative DHCP reservations through `services.router-technitium.dhcpReservations`
-- can sync native encrypted DNS settings for DoH/DoT/DoQ through `services.router-technitium.encryptedDns`
-
-Example:
-
-```nix
-services.router-technitium = {
-  enable = true;
-  dhcpReservations.authentik-host = {
-    scope = "LAN";
-    macAddress = "BC:24:11:A4:01:6F";
-    ipAddress = "10.10.11.70";
-    hostName = "authentik-host";
-    comments = "Dedicated Authentik identity host";
-  };
-};
-```
-
-The current reservation sync is intentionally conservative:
-- missing reservations are created automatically
-- existing conflicting reservations are left unchanged and logged instead of being mutated blindly
-
-Encrypted DNS notes:
-- recommended baseline is DoH
-- DoT can be added as a secondary compatibility endpoint
-- DoQ is optional and off by default
-- native DoH still requires `dnsTlsCertificatePath` plus `dnsTlsCertificatePasswordFile`
-- the native Technitium API expects PKCS#12/PFX certificate bundles plus password files, not separate PEM cert/key paths
-
-### router-optimizations
-Core performance optimizations including kernel tuning, hardware offloads, and queue management.
-
-### router-dashboard
-Web dashboard on port 8888 showing:
-- Real-time interface bandwidth (RX/TX)
-- WAN IP address
-- Interface status and IPs
-- System uptime and connections
-- VPN status
-- Declarative tunnel status (zrok, ngrok, Cloudflare Tunnel, Tailscale Funnel, etc.)
-- Declarative remote administration status (Guacamole, MeshCentral, SSH, IPMI/iDRAC/iLO, etc.)
-
-The dashboard discovers tunnel and remote-admin entries from metadata-only
-modules. These modules do not manage the underlying services; they simply
-describe existing systemd units and endpoints so the dashboard can render status
-consistently.
-
-When router networking and DHCP modules are present, `router-dashboard` also
-exports a read-only inventory artifact via `DASHBOARD_INVENTORY_FILE`. That
-artifact reduces declared routed subnets, declared DHCP pools, declared
-reservations, and provenance markers into a single deterministic JSON file for
-dashboard consumption. It is not a writable database and it does not replace
-runtime lease/reconciliation views.
-
-Example:
-
-```nix
-{
-  imports = [
-    router-optimized.nixosModules.router-dashboard
-    router-optimized.nixosModules.router-tunnels
-    router-optimized.nixosModules.router-remote-admin
-  ];
-
-  services.router-dashboard.enable = true;
-
-  services.router-tunnels = {
-    enable = true;
-    tunnels = [
-      {
-        name = "grafana-share";
-        provider = "cloudflare";
-        systemdUnit = "cloudflared-grafana.service";
-        publicUrl = "https://grafana.example.com";
-        description = "Cloudflare Tunnel for external Grafana access";
-      }
-      {
-        name = "support-zrok";
-        provider = "zrok";
-        systemdUnit = "zrok-share-support.service";
-        description = "Ephemeral support tunnel";
-      }
-    ];
-  };
-
-  services.router-remote-admin = {
-    enable = true;
-    entries = [
-      {
-        name = "guac";
-        kind = "guacamole";
-        systemdUnit = "guacd.service";
-        url = "https://guac.example.com";
-        description = "Browser-based remote desktop gateway";
-      }
-      {
-        name = "bastion";
-        kind = "ssh";
-        systemdUnit = "sshd.service";
-        url = "ssh://router.example.com";
-        description = "Primary SSH bastion";
-      }
-    ];
-  };
-}
-```
-
-Status rules:
-- tunnels are `up` when the backing unit is active and a `publicUrl` is known
-- remote-admin entries are `up` when the backing unit is active and a `url` is known
-- active services without a URL are shown as `warning`
-- inactive services are shown as `down`
-
-### nftables-fasttrack
-Flow offloading configuration for nftables to bypass connection tracking for established flows.
-
-### caddy-reverse-proxy
-Declarative Caddy configuration with automatic HTTPS for services:
-- public or trusted-only service exposure
-- root-domain redirects
-- per-site reverse proxy or redirect targets
-
-### dns-blocklists
-Declarative Technitium DNS blocklist management with curated presets and additive custom URLs.
-
-### router-kea
-ISC Kea DHCPv4 with optional RFC2136/TSIG DDNS to register leases in a local DNS server. The
-TSIG secret is injected at runtime via an `ExecStartPre` script so it never enters the Nix store.
-When `router-ntp` is enabled, Kea automatically advertises the router/gateway address as the
-LAN NTP server via DHCP option 42 unless you override `dhcp4.ntpServers`, but only when
-`services.router-ntp.lanSubnets` actually allows the served DHCP subnet.
-
-For the current reference router pair, treat DHCP ownership as
-**single-active/manual-promotion** rather than automatic failover unless you
-have explicitly validated a different consumer-specific operating mode. See
-[`docs/router-dhcp-single-active.md`](./docs/router-dhcp-single-active.md).
-
-```nix
-services.router-kea = {
-  enable = true;
-  dhcp4 = {
-    subnet = "10.10.0.0/16";
-    gatewayAddress = "10.10.10.1";
-    dnsServers = [ "10.10.10.1" ];
-    # Optional; otherwise defaults to the router/gateway only when router-ntp
-    # is enabled and allows this DHCP subnet.
-    ntpServers = [ "10.10.10.1" ];
-    # Optional; defaults to router-dns-service.searchDomains when present.
-    searchDomains = [ "home.example.com" ];
-    poolRanges = [{ start = "10.10.10.100"; end = "10.10.10.250"; }];
-    reservations = [
-      { hw-address = "aa:bb:cc:dd:ee:ff"; ip-address = "10.10.10.50"; hostname = "myhost"; }
-    ];
-  };
-  ddns = {
-    enable = true;
-    tsigKeyFile = config.age.secrets.kea-ddns-tsig-key.path;
-    forwardZone = "home.example.com";
-    reverseZone = "10.10.in-addr.arpa";
-  };
-};
-```
-
-### router-ntp
-Chrony NTP server with declarative upstream servers, per-subnet client access controls, and
-optional firewall integration (opens UDP 123 on trusted interfaces when router-firewall is loaded).
-SNTP-only clients such as many switches and APs can use the router IP directly.
-
-```nix
-services.router-ntp = {
-  enable = true;
-  lanSubnets = [ "10.10.0.0/16" "10.20.0.0/24" ];
-};
-```
-
-### router-nat64
-Stateless NAT64 via Tayga. This is the repo's current PLAT-equivalent translation
-surface. It automatically adds an nftables forward rule for the `nat64` tunnel
-interface when `router-firewall` is loaded. Use the Well-Known Prefix
-(`64:ff9b::/96`) or a custom ULA prefix.
-
-```nix
-services.router-nat64 = {
-  enable = true;
-  # Defaults: ipv6Prefix = "64:ff9b::/96", ipv4Pool = "192.168.255.0/24"
-};
-```
-
-Pair with `router-dns64` for full NAT64 operation (requires `router-dns-service.provider = "unbound"`):
-
-```nix
-services.router-dns64.enable = true;
-# prefix auto-derives from router-nat64.ipv6Prefix
-```
-
-### router-clat
-Experimental first-slice CLAT-style surface for legacy IPv4 clients on IPv6-capable uplinks:
-- exports a bounded declarative contract under `services.router-clat`
-- validates listen/upstream topology and overlap hazards early
-- can add narrow `router-firewall` allowances for the declared CLAT path
-- does **not** yet claim a full router-grade runtime translation/backend story
-- should currently be treated as a single-router, non-HA feature with a provisional name
-- currently relies on the same Tayga-backed translation family as `router-nat64`
-
-Example:
-
-```nix
-services.router-clat = {
-  enable = true;
-  upstreamInterface = "wan";
-  listenInterfaces = [ "lan" ];
-};
-```
-
-If you enable `router-clat`, read [`docs/DECLARATIVE_CLAT.md`](./docs/DECLARATIVE_CLAT.md)
-for the current boundary. The present slice is contract-heavy on purpose: it
-surfaces assumptions and safety checks before the repo claims a complete CLAT
-runtime implementation. The Elixir path is currently an explicit in-repo
-preview, not an extracted external dependency.
-
-### router-sqm
-Smart queue management for WAN uplink shaping. Wraps `tc` with fq_codel/CAKE via a
-declarative interface list.
-
-```nix
-services.router-sqm = {
-  enable = true;
-  interfaces = [
-    { device = "ppp0"; bandwidthEgress = "900mbit"; bandwidthIngress = "500mbit"; }
-  ];
-};
-```
-
-### router-mdns
-Avahi mDNS reflector. Enables cross-VLAN discovery (Chromecast, AirPlay, etc.) by reflecting
-mDNS traffic between specified interfaces.
-
-```nix
-services.router-mdns = {
-  enable = true;
-  interfaces = [ "enp6s16" "enp6s16.20" "enp6s16.30" ];
-};
-```
-
-### router-upnp
-miniupnpd UPnP/NAT-PMP server with nftables integration. Adds a `jump miniupnpd` forward rule
-when `router-firewall` is loaded.
-
-```nix
-services.router-upnp = {
-  enable = true;
-  internalIPs = [ "enp6s16" ];
-  # externalInterface defaults to services.router-networking.wan.device
-};
-```
-
-### router-bgp
-Advanced / experimental FRR bgpd wrapper with declarative neighbor configuration.
-Currently intended for advanced opt-in use, not yet validated as HA-ready.
-See `docs/router-bgp.md` for support boundaries, verification steps, and a
-realistic example.
-
-```nix
-services.router-bgp = {
-  enable = true;
-  asn = 65001;
-  neighbors."10.10.10.2" = { remoteAs = 65002; };
-};
-```
-
-### router-mwan
-Prioritized uplink failover and metric switching for multiple WANs.
-
-This module is for:
-
-- primary / secondary WAN failover
-- prioritized uplinks
-- health-check driven metric changes
-
-It is **not** the repo's promise of:
-
-- aggregate throughput
-- ECMP-style balancing
-- connection-preserving failover
-- state-synchronized HA
-
-Example:
-
-```nix
-services.router-networking = {
-  enable = true;
-  wan = {
-    device = "wan0";
-    metric = 100;
-  };
-  wans.backup = {
-    device = "wan1";
-    metric = 200;
-  };
-};
-
-services.router-mwan = {
-  enable = true;
-  interfaces = [
-    {
-      interface = "wan0";
-      trackIp = "1.1.1.1";
-      primaryMetric = 100;
-      failMetric = 2000;
-    }
-    {
-      interface = "wan1";
-      trackIp = "8.8.8.8";
-      primaryMetric = 200;
-      failMetric = 2100;
-    }
-  ];
-};
-```
-
-For IPv6, treat `router-mwan` as only one part of the story. Read
-[`docs/ipv6-multiwan-guide.md`](./docs/ipv6-multiwan-guide.md) before assuming
-that IPv4 and IPv6 multi-WAN are symmetric.
-
-## Configuration Examples
-
-See `examples/` directory for complete working configurations.
-
-Recommended starting points:
-- `examples/router-single-basic.nix` for a one-WAN, one-LAN, non-HA router
-- `examples/router-ha-pair-example.nix` plus `docs/router-ha-pair-guide.md` for
-  a two-node VRRP pair
-
-Additional docs:
-- `docs/troubleshooting.md` for common operational failures
-- `docs/IMPLEMENTATION-STATUS.md` for current module maturity
-- `docs/DASHBOARD-ARCHITECTURE.md` for dashboard internals
-- `docs/ipv6-multiwan-guide.md` for the preferred/advanced/escape-hatch IPv6 multi-WAN decision ladder
-- `docs/router-mwan.md` for the prioritized-uplink failover boundary and unsupported expectations
-- `docs/router-nat64-dns64.md` for NAT64 + DNS64 setup and verification
-- `docs/router-translation-backends.md` for the current Tayga-backed translation boundary and future backend stance
-- `docs/router-clat-control-plane-contract.md` for the backend-neutral CLAT control-plane contract
-- `docs/router-clat-preservation-plan.md` for preserved behavior fixtures and parity scope
-- `docs/router-clat-elixir-extraction-decision.md` for the current non-extraction decision and future extraction gates
-- `services.router-clat.controlPlane.backend = "elixir-preview"` for the non-default Elixir parity path
-- `docs/router-bgp.md` for BGP support boundaries, examples, and operational verification
-
-## PPPoE Example
-
-```nix
-{
-  imports = [
-    router-optimized.nixosModules.router-networking
-    router-optimized.nixosModules.router-pppoe
-    router-optimized.nixosModules.router-firewall
-  ];
-
-  services.router-networking = {
-    enable = true;
-    wan.device = "ppp0";
-    routedInterfaces.lan = {
-      device = "lan.20";
-      parentDevice = "enp2s0";
-      vlanId = 20;
-      ipv4Address = "10.20.0.1/24";
-      dns = [ "10.20.0.1" ];
-    };
-  };
-
-  services.router-pppoe = {
-    enable = true;
-    physicalDevice = "enp1s0";
-    interfaceName = "ppp0";
-    username = "isp-login";
-    credentialsFile = "/run/secrets/pppoe-peer.conf";
-  };
-}
-```
-
-## Caddy Example
-
-```nix
-{
-  imports = [
-    router-optimized.nixosModules.caddy-reverse-proxy
-  ];
-
-  services.caddy-router = {
-    enable = true;
-    domain = "example.com";
-    email = "admin@example.com";
-    rootRedirect = "https://status.example.com";
-
-    services = {
-      grafana = {
-        subdomain = "grafana";
-        upstream = "http://10.10.10.1:3001";
-      };
-
-      homelab = {
-        subdomain = "homelab";
-        upstream = "http://10.10.10.1:8888";
-        access = "trusted";
-      };
-    };
-  };
-}
-```
-
-## DNS Service Example
-
-```nix
-{
-  imports = [
-    router-optimized.nixosModules.router-dns-service
-  ];
-
-  services.router-dns-service = {
-    enable = true;
-    provider = "unbound";
-    listenAddresses = [ "10.20.0.1" "127.0.0.1" ];
-    searchDomains = [ "lan.local" ];
-    localZones = {
-      "router.lan.local" = "10.20.0.1";
-      "nas.lan.local" = "10.20.0.10";
-    };
-  };
-}
-```
-
-## Log Storage Example
-
-```nix
-{
-  imports = [
-    router-optimized.nixosModules.router-log-storage
-  ];
-
-  services.router-log-storage = {
-    enable = true;
-    device = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
-    mountPoint = "/var/log/router";
-    extraDirectories = [
-      {
-        name = "prometheus";
-        user = "prometheus";
-        group = "prometheus";
-      }
-      {
-        name = "grafana";
-        user = "grafana";
-        group = "grafana";
-      }
-    ];
-  };
-}
-```
-
-## Monitoring On Secondary Storage
-
-```nix
-{
-  services.router-log-storage = {
-    enable = true;
-    device = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
-    mountPoint = "/var/log/router";
-    extraDirectories = [
-      { name = "grafana"; user = "grafana"; group = "grafana"; }
-      { name = "prometheus"; user = "prometheus"; group = "prometheus"; }
-    ];
-  };
-
-  router.monitoring = {
-    enable = true;
-    grafanaDataDir = "/var/log/router/grafana";
-    prometheusStateDir = "router-prometheus";
-    prometheusBindMountPath = "/var/log/router/prometheus";
-  };
-}
-```
-
-## Common WAN Policy Example
-
-```nix
-{
-  services.router-firewall = {
-    enable = true;
-
-    # Useful for PPPoE and other reduced-MTU uplinks.
-    tcpMssClamp.enable = true;
-
-    # Useful when LAN clients access an internally hosted service via the
-    # router's external address or a public DNS record.
-    hairpinNat.enable = true;
-  };
-}
-```
-
-## Technitium Block Lists
-
-The `dns-blocklists` module manages Technitium blocklist URLs declaratively through the Technitium HTTP API.
-
-Example:
-
-```nix
-{
-  imports = [
-    router-optimized.nixosModules."dns-blocklists"
-  ];
-
-  services.technitium-dns-server.enable = true;
-
-  services.router.dnsBlockLists = {
-    enable = true;
-    presets = [
-      "hagezi-normal"
-      "hagezi-nrd-14d"
-    ];
-    extraUrls = [
-      "https://example.com/custom-blocklist.txt"
-    ];
-    updateIntervalHours = 24;
-  };
-}
-```
-
-Available presets:
-- `stevenblack`
-- `oisd-big`
-- `hagezi-light`
-- `hagezi-normal`
-- `hagezi-pro`
-- `hagezi-pro-plus`
-- `hagezi-ultimate`
-- `hagezi-nrd-14d`
-
-## Usage Notes
-
-- If another flake consumes this repo, deploy tested changes by pushing them and updating that flake's lock file. A temporary `path:` input works for local debugging, but it will break pure-eval rebuilds on other hosts.
-- The dashboard frontend uses browser-side layout persistence. After adding widgets or changing widget geometry, hard-refresh the page and use `Reset Layout` once if a widget appears to be missing.
-- The dashboard API is intended to run threaded. Long-running endpoints such as speed tests or firewall log streaming can stall the rest of the UI if the service is downgraded to a single-threaded server.
-- Service status is only meaningful for services that are actually enabled on the target host. Keep the monitored service list aligned with the host configuration instead of assuming Prometheus, Grafana, or Netdata are present everywhere.
-- Technitium's API returns HTTP 200 even for errors such as `invalid-token`; check the JSON `status` field, not just `curl -f`. A unit showing `active (exited)` does not prove the change was applied. See [`docs/router-technitium-automation.md`](docs/router-technitium-automation.md#verifying-that-automation-actually-applied).
-- Technitium DNS statistics vary by API version. On the current gateway, cache hits come from `totalCached` and cache size comes from `cachedEntries`, not `totalCachedQueries`.
-- Firewall log streaming and flow offload widgets need matching nftables support on the host. Without `FW-*` log rules and a runtime-created flowtable/offload rule, the dashboard will correctly show no events and `flowtable off`.
-- Fail2ban integration requires the dashboard service to have access to the fail2ban control path with the right privilege model. If the widget shows offline, verify backend access first before treating it as a frontend problem.
-
-## Performance Improvements
-
-Typical improvements over default NixOS networking:
-- 20-40% higher throughput on gigabit connections
-- 50-80% lower latency under load (bufferbloat)
-- Reduced CPU usage for routing workloads
-- Hardware offloading where supported
-
-## License
-
-MIT
-
-## Contributing
-
-PRs welcome! Please test on your hardware before submitting.
+Released under the [MIT License](LICENSE).

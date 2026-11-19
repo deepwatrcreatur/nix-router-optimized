@@ -9,6 +9,13 @@ from module names alone.
 
 ## Start Here By Topic
 
+### Core References & Guides
+
+- [`MODULES.md`](./MODULES.md) — exhaustive reference for all 38+ router modules
+- [`RECIPES.md`](./RECIPES.md) — copyable configuration recipes (PPPoE, Caddy, Technitium, storage)
+- [`PERFORMANCE-TUNING.md`](./PERFORMANCE-TUNING.md) — FastTrack flowtable, NIC offloads, CAKE SQM, and multi-queue IRQ affinity
+- [`index.html`](./index.html) — interactive documentation portal and SVG network topology maps for GitHub Pages
+
 ### Deployment shapes
 
 - [`router-single-router-guide.md`](./router-single-router-guide.md) — copyable
