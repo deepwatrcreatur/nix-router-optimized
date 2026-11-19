@@ -52,7 +52,8 @@ Homelab tracking bead: `nch-sny.34` (nix-clan-homelab).
 | E10 | XDP, tc and bpf attachments on `enp1s0f1` | none | H3 disproven |
 | E11 | `ethtool -K enp1s0f1 ntuple on` (disables ATR), 400 TCP queries | 0/400; `fdir_match` stopped increasing | Supports H1 |
 | E12 | Control: ntuple off (ATR back on), 400 queries; then ntuple on again, 400 queries | 0/400 and 0/400 | Inconclusive. Failures come in bursts, and the toggle may flush a stale Flow Director table |
-| E13 | 2 h soak, ntuple on (ATR off), 1 TCP + 1 UDP query/s (unit `dns-soak-atr-off`) | at 45 min: 2400 TCP and 2400 UDP queries, 0 failures (about 85 expected at E2's rate) | Supports H1; final numbers to follow |
+| E13 | 2 h soak, ntuple on (ATR off), 1 TCP + 1 UDP query/s (07:50–09:50, unit `dns-soak-atr-off`) | 6920 TCP and 6920 UDP queries, **0 failures**. `fdir_match` frozen at 16875 for the whole run (`fdir_miss` 126100) | Strongly supports H1. At E2's 3.6% rate about 250 TCP failures were expected, and at least 69 even at 1% |
+| E14 | Control: 2 h soak, ntuple off (ATR on) again, same probe (from 09:51, unit `dns-soak-atr-on`) | running | If failures return, H1 is confirmed |
 
 ## Counters
 

@@ -23,9 +23,9 @@ LAN hosts are unaffected.
 3. The loss sticks to one connection instance, not to a 4-tuple (E7, E8).
 4. Router's listen-overflow counter belongs to router-dashboard :8888, not DNS
    (E5).
-5. With Flow Director ATR disabled (`ntuple on`), failures stopped: 0/400, and
-   0 failures in the first 45 min of a 2 h soak (E11, E13). An ATR-on control
-   of 400 queries was also clean (E12), so confirmation is pending.
+5. With Flow Director ATR disabled (`ntuple on`), 0 of 6920 TCP queries
+   failed over 2 h, and `fdir_match` stayed flat (E11, E13). A short ATR-on
+   control was clean (E12); a 2 h ATR-on control is running (E14).
 
 ## Navigation
 
