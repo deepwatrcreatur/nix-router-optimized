@@ -195,4 +195,131 @@ in
           };
         }
       ]);
+
+  router-technitium-zone-replication-ha-eval =
+    eval.mkNixosEvalCheck "router-technitium-zone-replication-ha"
+      (base ++ [
+        self.nixosModules.router-ha
+        {
+          services.router-ha = {
+            enable = true;
+            role = "backup";
+            virtualIp = "10.10.10.1/16";
+            vrrpInterface = "lan0";
+            vrrpPassword = "test";
+          };
+          services.router-technitium = {
+            rfc2136 = {
+              enable = true;
+              tsigKeyFile = "/run/secrets/kea-ddns";
+              zones = [ { name = "home.example"; } ];
+            };
+            zoneReplication = {
+              tsigKeyFile = "/run/secrets/zone-transfer";
+              secondary = {
+                zones = [ { name = "home.example"; } ];
+                primaryAddresses = [ "10.10.10.1" ];
+              };
+              ha = {
+                enable = true;
+                peers = [ "10.10.10.2" ];
+              };
+            };
+          };
+        }
+        ({ config, ... }:
+          let
+            services = config.systemd.services;
+            replication = unitScript config "technitium-zone-replication" "technitium-zone-replication";
+            rfc2136 = unitScript config "technitium-enable-rfc2136" "technitium-enable-rfc2136";
+            demote = builtins.readFile services.technitium-zone-ha-owner.serviceConfig.ExecStop;
+            promote = builtins.readFile services.technitium-zone-ha-owner.serviceConfig.ExecStart;
+            before = a: b: text:
+              let
+                parts = lib.splitString a text;
+              in
+              builtins.length parts > 1 && lib.hasInfix b (lib.concatStringsSep a (lib.tail parts));
+          in
+          {
+            assertions = [
+              {
+                assertion = lib.elem "technitium-zone-ha-owner.service" config.services.router-ha.singleActiveUnits;
+                message = "the owner unit must be a router-ha single-active unit.";
+              }
+              {
+                assertion = !(services.technitium-zone-ha-owner ? wantedBy) || services.technitium-zone-ha-owner.wantedBy == [ ];
+                message = "only router-ha may start the owner unit.";
+              }
+              {
+                assertion = config.systemd.timers ? technitium-zone-ha-reconcile;
+                message = "a reconcile timer must retry demotions.";
+              }
+              {
+                assertion = lib.all (lib.hasInfix "flock 9") [ replication promote demote ];
+                message = "replication, reconcile and the owner unit must share one lock.";
+              }
+              {
+                assertion = lib.hasInfix "zones/convert" promote && lib.hasInfix "notifyNameServers=10.10.10.2" promote;
+                message = "promotion converts to Primary and notifies the peers.";
+              }
+              {
+                assertion =
+                  before "if ! primary_answers \"$zone\"" "export_zone \"$zone\" \"$backup\"" demote
+                  && before "export_zone \"$zone\" \"$backup\"" "api/zones/delete" demote
+                  && lib.hasInfix "has(\"status\")" demote;
+                message = "demotion must check a primary answers, then export, then delete.";
+              }
+              {
+                assertion =
+                  lib.hasInfix "this node is VRRP MASTER" demote
+                  && lib.hasInfix "is_local_address \"$addr\"" demote
+                  && lib.hasInfix "export failed or returned no zone data" demote;
+                message = "demotion refuses on MASTER, ignores its own VIP, and aborts on a bad export.";
+              }
+              {
+                assertion = lib.hasInfix "! is_master; then" replication && lib.hasInfix "demote_zone home.example" replication;
+                message = "the replication run must demote a Primary on a node that is not MASTER.";
+              }
+              {
+                assertion = lib.hasInfix "not Primary on this node" rfc2136;
+                message = "RFC2136 settings skip zones this node does not hold as Primary.";
+              }
+            ];
+          })
+      ]);
+
+  router-technitium-zone-replication-ha-needs-peers-fails-eval =
+    eval.mkNixosEvalFailureCheck "router-technitium-zone-replication-ha-needs-peers"
+      (base ++ [
+        {
+          services.router-technitium.zoneReplication = {
+            tsigKeyFile = "/run/secrets/zone-transfer";
+            secondary = {
+              zones = [ { name = "home.example"; } ];
+              primaryAddresses = [ "10.10.10.1" ];
+            };
+            ha.enable = true;
+          };
+        }
+      ]);
+
+  # Removing the last HA zone must still evaluate, so cleanup can run.
+  router-technitium-zone-replication-ha-empty-eval =
+    eval.mkNixosEvalCheck "router-technitium-zone-replication-ha-empty"
+      (base ++ [
+        {
+          services.router-technitium.zoneReplication = {
+            tsigKeyFile = "/run/secrets/zone-transfer";
+            ha.enable = true;
+          };
+        }
+        ({ config, ... }: {
+          assertions = [
+            {
+              assertion = config.systemd.services ? technitium-zone-replication;
+              message = "the replication unit stays installed to prune the last HA zone.";
+            }
+          ];
+        })
+      ]);
 }
