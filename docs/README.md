@@ -27,7 +27,9 @@ from module names alone.
 
 - [`ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](./ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md) —
   comparative analysis of NixOS and open-source router implementations, real-world
-  homelab consumer invariants (`router` and `elitedesk`), secrets architecture, and phased roadmap
+  homelab consumer invariants (`router` and `elitedesk`), secrets architecture, and phased roadmap.
+  **§0 (revision 2, 2026-11-19) is the authoritative project state and priorities**;
+  see [discussion 21](./discussions/21-ecosystem-plan-review.md)
 - [`FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md) —
   detailed technical comparison between the Linux/NixOS declarative stack and
   FreeBSD/OPNsense (CARP vs VRRP, pfsync vs conntrackd, pf vs FastTrack/XDP)

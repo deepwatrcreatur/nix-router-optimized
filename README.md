@@ -149,7 +149,7 @@ To keep this README focused and conversational, in-depth documentation and code 
 | 🍳 **[`docs/RECIPES.md`](docs/RECIPES.md)** | Real-world copyable recipes: PPPoE, Caddy HTTPS, Technitium blocklists, secondary log storage, and WARP routing. |
 | 🚀 **[`docs/PERFORMANCE-TUNING.md`](docs/PERFORMANCE-TUNING.md)** | Deep dive into FastTrack flowtables, NIC driver negotiation (TSO/GSO/GRO), CAKE SQM, and multi-queue IRQ affinity. |
 | 🛡️ **[`docs/FREEBSD-OPNSENSE-COMPARISON.md`](docs/FREEBSD-OPNSENSE-COMPARISON.md)** | Architectural mapping of Linux/NixOS vs. FreeBSD/OPNsense (CARP vs VRRP, pfsync vs conntrackd, pf vs FastTrack/XDP). |
-| 🔬 **[`docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md)** | Comprehensive ecosystem survey, homelab consumer analysis (`router` & `elitedesk`), secrets paradox, and future roadmap. |
+| 🔬 **[`docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md)** | Comprehensive ecosystem survey, homelab consumer analysis (`router` & `elitedesk`), secrets paradox, and future roadmap. **Start at §0 (revision 2, 2026-11-19): project state, priorities and review findings.** |
 | 📋 **[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)** | Verified hardware and driver matrix across Core (Tier 1), SBC (Tier 2), and Budget (Tier 3) hardware. |
 | 🚦 **[`docs/work-items/README.md`](docs/work-items/README.md)** | Authoritative ranked execution queue and onboarding runbooks for developers and coding agents. |
 
