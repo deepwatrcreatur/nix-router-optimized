@@ -372,6 +372,7 @@ let
   };
   replication = cfg.zoneReplication;
   replicationEnabled = replication.primary.zones != [ ] || replication.secondary.zones != [ ];
+  hasStaticHostSync = config.systemd.services ? technitium-sync-static-hosts;
   # INVARIANT: settings/set replaces Technitium's whole TSIG key list, so every
   # script that registers a key must send all keys this module manages.
   tsigKeys =
@@ -385,7 +386,7 @@ let
       name = replication.tsigKeyName;
       file = replication.tsigKeyFile;
     };
-  registerTsigKeys = ''
+  registerTsigKeys = optionalString (tsigKeys != [ ]) ''
     tsig_keys=()
     ${concatMapStringsSep "\n" (key: ''
       if [ ! -f "${toString key.file}" ]; then
@@ -394,7 +395,9 @@ let
       fi
       tsig_keys+=("${key.name}|$(${pkgs.coreutils}/bin/tr -d '\r\n' < "${toString key.file}")|${key.algorithm}")
     '') tsigKeys}
-    tsig_list="$(IFS=,; printf '%s' "''${tsig_keys[*]}")"
+    # GOTCHA: Technitium parses tsigKeys as one pipe-separated stream of
+    # name|secret|algorithm triples; rows are joined with "|", not ",".
+    tsig_list="$(IFS='|'; printf '%s' "''${tsig_keys[*]}")"
     echo "Registering TSIG keys: ${concatMapStringsSep ", " (key: key.name) tsigKeys}"
     technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
       -H "Content-Type: application/x-www-form-urlencoded" \
@@ -607,7 +610,9 @@ let
             "${cfg.rfc2136.tsigKeyName}|*.${zone.name}|PTR,DHCID"
           else
             "${cfg.rfc2136.tsigKeyName}|*.${zone.name}|A,AAAA,DHCID";
-        updateSecurityPolicies = concatStringsSep ","
+        # GOTCHA: policy rows are pipe-separated like tsigKeys; commas only
+        # separate record types inside a row.
+        updateSecurityPolicies = concatStringsSep "|"
           (if zone.updateSecurityPolicies != [ ] then zone.updateSecurityPolicies else [ defaultUpdateSecurityPolicy ]);
       in ''
       echo "Enabling RFC2136 updates for zone ${zone.name}..."
@@ -709,6 +714,40 @@ let
           ;;
       esac
     '') replication.secondary.zones}
+
+    # INVARIANT: prune only secondaries this unit created and that are still
+    # Secondary; a zone promoted to Primary after a failover is never touched.
+    owned_file=/var/lib/technitium-zone-replication/owned-secondaries
+    declared=(${concatMapStringsSep " " (zone: escapeShellArg (toLower zone.name)) replication.secondary.zones})
+    owned=()
+    if [ -f "$owned_file" ]; then
+      mapfile -t owned < "$owned_file"
+    fi
+    for zone in "''${owned[@]}"; do
+      [ -n "$zone" ] || continue
+      case " ''${declared[*]} " in *" $zone "*) continue ;; esac
+      if [ "$(zone_type "$zone")" = "Secondary" ]; then
+        echo "Deleting secondary zone $zone, which left the configuration"
+        technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          --data-urlencode "token=$TOKEN" \
+          --data-urlencode "zone=$zone" \
+          "http://127.0.0.1:5380/api/zones/delete" \
+          >/dev/null
+      else
+        echo "Zone $zone left the configuration but is not Secondary; leaving it" >&2
+      fi
+    done
+    ZONES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/zones/list")"
+    : > "$owned_file.tmp"
+    for zone in "''${declared[@]}"; do
+      if [ "$(zone_type "$zone")" = "Secondary" ]; then
+        printf '%s\n' "$zone" >> "$owned_file.tmp"
+      fi
+    done
+    mv "$owned_file.tmp" "$owned_file"
 
     echo "Technitium zone replication configured"
   '';
@@ -1646,21 +1685,30 @@ in
       '';
     };
 
-    systemd.services.technitium-zone-replication = mkIf replicationEnabled {
+    # WHY: with no zones declared the unit stays installed (when a token
+    # source exists) so it can prune secondaries an earlier generation created.
+    systemd.services.technitium-zone-replication = mkIf (replicationEnabled || hasTokenSource) {
       description = "Configure Technitium zone transfers";
       after = [
         "technitium-dns-server.service"
         "agenix.service"
       ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service"
-        ++ optional cfg.rfc2136.enable "technitium-enable-rfc2136.service";
+        ++ optional cfg.rfc2136.enable "technitium-enable-rfc2136.service"
+        ++ optional hasStaticHostSync "technitium-sync-static-hosts.service";
       wants = [
         "technitium-dns-server.service"
-      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service";
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service"
+        ++ optional hasStaticHostSync "technitium-sync-static-hosts.service";
       wantedBy = [ "multi-user.target" ];
+      unitConfig = optionalAttrs (!replicationEnabled) {
+        ConditionPathExists = "/var/lib/technitium-zone-replication/owned-secondaries";
+      };
 
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        StateDirectory = "technitium-zone-replication";
+        StateDirectoryMode = "0700";
       };
 
       script = ''

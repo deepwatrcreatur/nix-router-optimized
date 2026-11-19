@@ -149,6 +149,9 @@ secondaries with that key and sends them NOTIFY on every change.
 - **The unit never demotes a zone.** If the standby promoted its copy to
   Primary during a failover, activation leaves it alone. Converting it back
   to a secondary is a manual (or failover-script) step.
+- **Removed secondaries are pruned.** The unit records the secondaries it
+  created in `/var/lib/technitium-zone-replication/owned-secondaries` and
+  deletes one that leaves the configuration, if it is still Secondary.
 - **TSIG keys share one list.** Technitium's `settings/set` replaces the whole
   key list, so the RFC2136 and replication units each register every key the
   module manages. Key names must differ.

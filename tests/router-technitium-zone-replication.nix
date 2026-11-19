@@ -45,6 +45,8 @@ in
     eval.mkNixosEvalCheck "router-technitium-zone-replication-secondary"
       (base ++ [
         {
+          # Stub for the dns-zone sync unit that creates declared zones.
+          systemd.services.technitium-sync-static-hosts.script = "true";
           services.router-technitium.zoneReplication = {
             tsigKeyFile = "/run/secrets/zone-transfer";
             secondary = {
@@ -71,8 +73,15 @@ in
                 message = "the replication script must create a TSIG-authenticated secondary zone.";
               }
               {
-                assertion = lib.hasInfix "leaving it unchanged" script && !(lib.hasInfix "zones/delete" script);
-                message = "the replication script must never delete or demote an existing zone.";
+                assertion =
+                  lib.hasInfix "leaving it unchanged" script
+                  && lib.hasInfix "owned-secondaries" script
+                  && lib.hasInfix ''if [ "$(zone_type "$zone")" = "Secondary" ]; then'' script;
+                message = "the script may delete only owned zones that are still Secondary.";
+              }
+              {
+                assertion = lib.elem "technitium-sync-static-hosts.service" config.systemd.services.technitium-zone-replication.after;
+                message = "replication must run after declarative zone creation.";
               }
             ];
           })
@@ -106,6 +115,10 @@ in
           {
             assertions = [
               {
+                assertion = lib.hasInfix "IFS='|'" rfc2136 && lib.hasInfix "IFS='|'" replication;
+                message = "Technitium parses tsigKeys as pipe-separated triples; rows must be joined with |.";
+              }
+              {
                 assertion = hasBothKeys rfc2136 && hasBothKeys replication;
                 message = "settings/set replaces the TSIG key list, so each script must register every managed key.";
               }
@@ -129,5 +142,20 @@ in
             primaryAddresses = [ "10.10.10.1" ];
           };
         }
+      ]);
+
+  router-technitium-zone-replication-prune-only-eval =
+    eval.mkNixosEvalCheck "router-technitium-zone-replication-prune-only"
+      (base ++ [
+        ({ config, ... }: {
+          assertions = [
+            {
+              assertion =
+                config.systemd.services.technitium-zone-replication.unitConfig.ConditionPathExists
+                == "/var/lib/technitium-zone-replication/owned-secondaries";
+              message = "with no zones declared the unit must still run when it owns secondaries, to prune them.";
+            }
+          ];
+        })
       ]);
 }
