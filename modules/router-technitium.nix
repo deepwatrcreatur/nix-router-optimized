@@ -686,10 +686,14 @@ let
         fi
         # GOTCHA: dig prints connection errors on stdout; require exit 0 and
         # a well-formed SOA (seven fields, numeric serial).
-        if out="$(${pkgs.dnsutils}/bin/dig +tcp +short +time=2 +tries=1 "@$addr" "$1" SOA 2>/dev/null)" \
-          && printf '%s\n' "$out" | ${pkgs.gnugrep}/bin/grep -qE '^[^ ]+ [^ ]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+$'; then
-          return 0
-        fi
+        # WHY: a lone TCP query timed out about 1 in 20 times on a live pair;
+        # retry before treating the primary as gone.
+        for _try in 1 2 3; do
+          if out="$(${pkgs.dnsutils}/bin/dig +tcp +short +time=2 +tries=1 "@$addr" "$1" SOA 2>/dev/null)" \
+            && printf '%s\n' "$out" | ${pkgs.gnugrep}/bin/grep -qE '^[^ ]+ [^ ]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+$'; then
+            return 0
+          fi
+        done
       done
       return 1
     }
