@@ -408,9 +408,11 @@ let
   '';
   replicationZoneModule = types.submodule {
     options.name = mkOption {
-      type = types.str;
+      # WHY: Technitium stores names without surrounding dots; a trailing
+      # dot would never match its zone list and break ownership tracking.
+      type = types.strMatching "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*";
       example = "home.example";
-      description = "Zone name.";
+      description = "Zone name, without a trailing dot.";
     };
   };
   commonShellHelpers = ''

@@ -159,4 +159,18 @@ in
           ];
         })
       ]);
+
+  router-technitium-zone-replication-trailing-dot-fails-eval =
+    eval.mkNixosEvalFailureCheck "router-technitium-zone-replication-trailing-dot"
+      (base ++ [
+        {
+          services.router-technitium.zoneReplication = {
+            tsigKeyFile = "/run/secrets/zone-transfer";
+            secondary = {
+              zones = [ { name = "home.example."; } ];
+              primaryAddresses = [ "10.10.10.1" ];
+            };
+          };
+        }
+      ]);
 }
