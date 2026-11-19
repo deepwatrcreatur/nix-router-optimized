@@ -653,42 +653,68 @@ let
       --data-urlencode "notify=SpecifiedNameServers" \
       --data-urlencode "notifyNameServers=${concatStringsSep "," addresses}" \
       "http://127.0.0.1:5380/api/zones/options/set" \
-      >/dev/null
-  '';
+      >/dev/null'';
   # Shell helpers for zones whose primary role follows VRRP (zoneReplication.ha).
   haHelpers = optionalString haEnabled ''
     is_master() {
       [ "$(${pkgs.coreutils}/bin/cat ${escapeShellArg replication.ha.roleFile} 2>/dev/null)" = master ]
     }
 
-    # INVARIANT: demote only while a primary answers SOA for the zone, so the
-    # recreated Secondary can transfer it back; otherwise keep the data.
+    owned_file=${haStateDir}/owned-secondaries
+    promoted=0
+
+    is_local_address() {
+      ${pkgs.iproute2}/bin/ip -o addr show | ${pkgs.gnugrep}/bin/grep -qF " $1/"
+    }
+
+    # INVARIANT: demote only while another node's primary answers SOA for the
+    # zone, so the recreated Secondary can transfer it back; else keep data.
     primary_answers() {
-      local addr
+      local addr out
       for addr in ${concatMapStringsSep " " escapeShellArg replication.secondary.primaryAddresses}; do
-        if [ -n "$(${pkgs.dnsutils}/bin/dig +tcp +short +time=2 +tries=1 "@$addr" "$1" SOA 2>/dev/null)" ]; then
+        # GOTCHA: while this node still holds the VIP it would answer itself.
+        if is_local_address "$addr"; then
+          continue
+        fi
+        # GOTCHA: dig prints connection errors on stdout; require exit 0 and
+        # a well-formed SOA (seven fields, numeric serial).
+        if out="$(${pkgs.dnsutils}/bin/dig +tcp +short +time=2 +tries=1 "@$addr" "$1" SOA 2>/dev/null)" \
+          && printf '%s\n' "$out" | ${pkgs.gnugrep}/bin/grep -qE '^[^ ]+ [^ ]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+$'; then
           return 0
         fi
       done
       return 1
     }
 
+    # Every step checks its own status: callers use `||`, which disables set -e.
     demote_zone() {
-      local zone="$1"
+      local zone="$1" backup="${haStateDir}/$1.demoted.zone"
+      if is_master; then
+        echo "Not demoting $zone: this node is VRRP MASTER" >&2
+        return 1
+      fi
       if ! primary_answers "$zone"; then
-        echo "Not demoting $zone: no primary answers SOA; keeping the Primary copy" >&2
+        echo "Not demoting $zone: no other primary answers SOA; keeping the Primary copy" >&2
         return 1
       fi
       # WHY: Technitium cannot convert Primary to Secondary; delete and
       # recreate it, keeping an export in case the transfer then fails.
-      ${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
-        "http://127.0.0.1:5380/api/zones/export" > "${haStateDir}/$zone.demoted.zone"
+      if ! ${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
+          "http://127.0.0.1:5380/api/zones/export" > "$backup.tmp" \
+        || [ ! -s "$backup.tmp" ] \
+        || ${pkgs.jq}/bin/jq -e 'type == "object" and has("status")' "$backup.tmp" >/dev/null 2>&1 \
+        || ! ${pkgs.gnugrep}/bin/grep -q 'SOA' "$backup.tmp"; then
+        echo "Not demoting $zone: export failed or returned no zone data" >&2
+        rm -f "$backup.tmp"
+        return 1
+      fi
+      mv "$backup.tmp" "$backup" || return 1
       echo "Demoting $zone to Secondary of ${concatStringsSep ", " replication.secondary.primaryAddresses}"
       technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
         --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
-        "http://127.0.0.1:5380/api/zones/delete" >/dev/null
-      technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+        "http://127.0.0.1:5380/api/zones/delete" >/dev/null || return 1
+      if ! technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
         --data-urlencode "token=$TOKEN" \
         --data-urlencode "zone=$zone" \
@@ -696,7 +722,10 @@ let
         --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," replication.secondary.primaryAddresses}" \
         --data-urlencode "zoneTransferProtocol=Tcp" \
         --data-urlencode "tsigKeyName=${replication.tsigKeyName}" \
-        "http://127.0.0.1:5380/api/zones/create" >/dev/null
+        "http://127.0.0.1:5380/api/zones/create" >/dev/null; then
+        echo "Recreating $zone as Secondary failed; the export is at $backup" >&2
+        return 1
+      fi
     }
 
     promote_zone() {
@@ -708,7 +737,7 @@ let
             -H "Content-Type: application/x-www-form-urlencoded" \
             --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
             --data-urlencode "type=Primary" \
-            "http://127.0.0.1:5380/api/zones/convert" >/dev/null
+            "http://127.0.0.1:5380/api/zones/convert" >/dev/null || return 1
           ;;
         "")
           echo "No copy of $zone to promote; creating an empty Primary" >&2
@@ -716,10 +745,14 @@ let
             -H "Content-Type: application/x-www-form-urlencoded" \
             --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
             --data-urlencode "type=Primary" \
-            "http://127.0.0.1:5380/api/zones/create" >/dev/null
+            "http://127.0.0.1:5380/api/zones/create" >/dev/null || return 1
+          # WHY: the unit created it, so it may prune it once undeclared.
+          printf '%s\n' "''${zone,,}" >> "$owned_file" || return 1
+          owned+=("''${zone,,}")
           ;;
       esac
-      ${replicatedPrimarySettings "$zone" replication.ha.peers}
+      promoted=1
+      ${replicatedPrimarySettings "$zone" replication.ha.peers} || return 1
     }
   '';
 
@@ -883,6 +916,11 @@ let
     done
     ${pkgs.coreutils}/bin/mv "$owned_file.tmp" "$owned_file"
 
+    ${optionalString (haEnabled && cfg.rfc2136.enable) ''
+      if [ "$promoted" = 1 ]; then
+        ${pkgs.systemd}/bin/systemctl --no-block restart technitium-enable-rfc2136.service
+      fi
+    ''}
     echo "Technitium zone replication configured"
   '';
 
@@ -905,6 +943,7 @@ let
       ' <<<"$ZONES_JSON"
     }
 
+    owned=()
     ${haHelpers}
 
     rc=0

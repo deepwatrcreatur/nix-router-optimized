@@ -265,6 +265,13 @@ in
                 message = "demotion must check a primary answers, then export, then delete.";
               }
               {
+                assertion =
+                  lib.hasInfix "this node is VRRP MASTER" demote
+                  && lib.hasInfix "is_local_address \"$addr\"" demote
+                  && lib.hasInfix "export failed or returned no zone data" demote;
+                message = "demotion refuses on MASTER, ignores its own VIP, and aborts on a bad export.";
+              }
+              {
                 assertion = lib.hasInfix "! is_master; then" replication && lib.hasInfix "demote_zone home.example" replication;
                 message = "the replication run must demote a Primary on a node that is not MASTER.";
               }
