@@ -63,32 +63,35 @@ let
     else
       "localhost";
 
+  # GOTCHA: an IPv6 literal must be bracketed inside a URL with a port.
+  urlHost = if lib.hasInfix ":" linkHost && !(lib.hasPrefix "[" linkHost) then "[${linkHost}]" else linkHost;
+
   dashboardLinks =
     (optionals cfg.enableNetdata [
       {
         label = "Netdata";
-        url = "http://${linkHost}:19999/";
+        url = "http://${urlHost}:19999/";
         icon = "📊";
       }
     ])
     ++ (optionals cfg.enableMonitoring [
       {
         label = "Grafana";
-        url = "http://${linkHost}:${toString cfg.grafanaPort}/";
+        url = "http://${urlHost}:${toString cfg.grafanaPort}/";
         icon = "📈";
       }
     ])
     ++ (optionals (config.services.router-ntopng.enable or false) [
       {
         label = "Traffic";
-        url = "http://${linkHost}:${toString config.services.router-ntopng.port}/";
+        url = "http://${urlHost}:${toString config.services.router-ntopng.port}/";
         icon = "🛰️";
       }
     ])
     ++ (optionals (config.services.technitium-dns-server.enable or false) [
       {
         label = "DNS Admin";
-        url = "http://${linkHost}:5380/";
+        url = "http://${urlHost}:5380/";
         icon = "🌍";
       }
     ])

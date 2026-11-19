@@ -54,4 +54,24 @@ in
       ];
     })
   ];
+
+  router-homelab-ipv6-link-address-eval = eval.mkNixosEvalCheck "router-homelab-ipv6-link-address" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-homelab
+    networking
+    {
+      services.router-homelab = {
+        enable = true;
+        linkAddress = "fd12:3456::1";
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = lib.elem "http://[fd12:3456::1]:19999/" (linkUrls config);
+          message = "IPv6 link hosts must be bracketed in URLs.";
+        }
+      ];
+    })
+  ];
 }
