@@ -679,7 +679,13 @@ let
       fi
     '') replication.primary.zones}
 
-    created=()
+    owned_file=/var/lib/technitium-zone-replication/owned-secondaries
+    declared=(${concatMapStringsSep " " (zone: escapeShellArg (toLower zone.name)) replication.secondary.zones})
+    owned=()
+    if [ -f "$owned_file" ]; then
+      mapfile -t owned < "$owned_file"
+    fi
+
     ${concatMapStringsSep "\n" (zone: ''
       type="$(zone_type ${escapeShellArg zone.name})"
       case "$type" in
@@ -695,7 +701,10 @@ let
             --data-urlencode "tsigKeyName=${replication.tsigKeyName}" \
             "http://127.0.0.1:5380/api/zones/create" \
             >/dev/null
-          created+=(${escapeShellArg (toLower zone.name)})
+          # WHY: record ownership at once, so a later failure in this run
+          # cannot orphan a zone the unit created.
+          printf '%s\n' ${escapeShellArg (toLower zone.name)} >> "$owned_file"
+          owned+=(${escapeShellArg (toLower zone.name)})
           ;;
         Secondary)
           echo "Updating secondary zone ${zone.name}"
@@ -719,12 +728,6 @@ let
 
     # INVARIANT: prune only secondaries this unit created and that are still
     # Secondary; a zone promoted to Primary after a failover is never touched.
-    owned_file=/var/lib/technitium-zone-replication/owned-secondaries
-    declared=(${concatMapStringsSep " " (zone: escapeShellArg (toLower zone.name)) replication.secondary.zones})
-    owned=()
-    if [ -f "$owned_file" ]; then
-      mapfile -t owned < "$owned_file"
-    fi
     for zone in "''${owned[@]}"; do
       [ -n "$zone" ] || continue
       case " ''${declared[*]} " in *" $zone "*) continue ;; esac
@@ -746,7 +749,7 @@ let
     # WHY: ownership covers only zones this unit created; a pre-existing
     # Secondary that happens to be declared is never recorded or pruned.
     : > "$owned_file.tmp"
-    for zone in "''${owned[@]}" "''${created[@]}"; do
+    for zone in "''${owned[@]}"; do
       [ -n "$zone" ] || continue
       case " ''${declared[*]} " in *" $zone "*) ;; *) continue ;; esac
       if [ "$(zone_type "$zone")" = "Secondary" ] && ! ${pkgs.gnugrep}/bin/grep -qxF "$zone" "$owned_file.tmp"; then
