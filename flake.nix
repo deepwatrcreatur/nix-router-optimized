@@ -159,6 +159,7 @@
         router-upnp = import ./modules/router-upnp.nix;
         router-bgp = import ./modules/router-bgp.nix;
         router-ha = import ./modules/router-ha.nix;
+        router-alerting = import ./modules/router-alerting.nix;
         router-mwan = import ./modules/router-mwan.nix;
         router-nptv6 = import ./modules/router-nptv6.nix;
         router-ndp-proxy = import ./modules/router-ndp-proxy.nix;

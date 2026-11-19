@@ -91,6 +91,10 @@ let
     inherit self lib eval;
   };
 
+  routerAlertingChecks = import ./router-alerting.nix {
+    inherit self lib pkgs nixpkgs system eval;
+  };
+
   routerNdppdChecks = import ./router-ndppd.nix {
     inherit self lib eval;
   };
@@ -190,6 +194,7 @@ in
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
 // routerHaBoundaryChecks
+// routerAlertingChecks
 // routerHomelabLinkChecks
 // routerTechnitiumZoneReplicationChecks
 // routerHaLabChecks

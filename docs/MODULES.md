@@ -174,6 +174,12 @@ Systemd resource slice hierarchy:
 - `router-observability.slice`: Constrains Netdata, Prometheus, and logging agents so telemetry spikes never starve routing.
 - `router-applications.slice`: Isolates user applications and auxiliary services.
 
+### `router-alerting`
+Alert delivery for the router's Prometheus ([guide](router-alerting.md)):
+- Alertmanager with ntfy, email, webhook and any native receiver (Telegram, Discord, Pushover, ...), secrets as `*File` options.
+- Dead-man watchdog for healthchecks.io-style services, so "router down" is reported too.
+- Optional notification when a new device gets its first DHCP lease (Kea `run_script` hook).
+
 ### `router-dashboard`
 Lightweight web dashboard on port 8888:
 - Real-time interface bandwidth (RX/TX speeds and totals).
