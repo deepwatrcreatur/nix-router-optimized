@@ -255,6 +255,10 @@ in
                 message = "a reconcile timer must retry demotions.";
               }
               {
+                assertion = lib.all (lib.hasInfix "flock 9") [ replication promote demote ];
+                message = "replication, reconcile and the owner unit must share one lock.";
+              }
+              {
                 assertion = lib.hasInfix "zones/convert" promote && lib.hasInfix "notifyNameServers=10.10.10.2" promote;
                 message = "promotion converts to Primary and notifies the peers.";
               }
@@ -297,5 +301,25 @@ in
             ha.enable = true;
           };
         }
+      ]);
+
+  # Removing the last HA zone must still evaluate, so cleanup can run.
+  router-technitium-zone-replication-ha-empty-eval =
+    eval.mkNixosEvalCheck "router-technitium-zone-replication-ha-empty"
+      (base ++ [
+        {
+          services.router-technitium.zoneReplication = {
+            tsigKeyFile = "/run/secrets/zone-transfer";
+            ha.enable = true;
+          };
+        }
+        ({ config, ... }: {
+          assertions = [
+            {
+              assertion = config.systemd.services ? technitium-zone-replication;
+              message = "the replication unit stays installed to prune the last HA zone.";
+            }
+          ];
+        })
       ]);
 }

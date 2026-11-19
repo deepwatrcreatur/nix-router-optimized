@@ -767,6 +767,11 @@ let
   zoneReplicationScript = pkgs.writeShellScript "technitium-zone-replication" ''
     set -euo pipefail
 
+    # INVARIANT: replication, reconcile and the HA owner share owned-secondaries
+    # and zone state; one lock serializes them.
+    exec 9>/run/technitium-zone-replication.lock
+    ${pkgs.util-linux}/bin/flock 9
+
     ${commonShellHelpers}
 
     if ! resolve_api_token_file >/dev/null; then
@@ -955,6 +960,11 @@ let
 
   haOwnerScript = action: pkgs.writeShellScript "technitium-zone-ha-${action}" ''
     set -euo pipefail
+
+    # INVARIANT: replication, reconcile and the HA owner share owned-secondaries
+    # and zone state; one lock serializes them.
+    exec 9>/run/technitium-zone-replication.lock
+    ${pkgs.util-linux}/bin/flock 9
 
     ${commonShellHelpers}
 
@@ -1755,8 +1765,10 @@ in
         message = "services.router-technitium.zoneReplication.secondary.primaryAddresses must not be empty when secondary zones are listed.";
       }
       {
-        assertion = !haEnabled || (replication.secondary.zones != [ ] && replication.ha.peers != [ ] && replication.primary.zones == [ ]);
-        message = "services.router-technitium.zoneReplication.ha needs secondary.zones and ha.peers, and replaces primary.zones (leave it empty).";
+        # WHY: an empty zone list stays valid so removing the last zone still
+        # runs the HA cleanup.
+        assertion = !haEnabled || ((replication.secondary.zones == [ ] || replication.ha.peers != [ ]) && replication.primary.zones == [ ]);
+        message = "services.router-technitium.zoneReplication.ha needs ha.peers when zones are listed, and replaces primary.zones (leave it empty).";
       }
       {
         # WHY: Technitium lowercases key names and strips a trailing dot.
