@@ -100,6 +100,29 @@ rather than full maturity claims.
   [`docs/DECLARATIVE_CLAT.md`](./docs/DECLARATIVE_CLAT.md) for the current
   design boundary and maturity language.
 
+- **Router failover (VRRP)** is being built out and tested on a reference
+  homelab pair. A standby router runs today, but no live failover has been
+  rehearsed yet.
+  - Available:
+    - **Delayed fail-back:** `services.router-ha.preemptDelay` makes a
+      recovered higher-priority node wait before it takes the role back.
+      Failover itself is never delayed.
+    - **DNS copies on the standby:**
+      `services.router-technitium.zoneReplication` keeps the primary's
+      Technitium zones, including DDNS-filled ones, on standbys. It uses
+      TSIG-signed AXFR/IXFR and NOTIFY, and activation never demotes a zone
+      that a failover promoted.
+  - In progress:
+    - Promoting the replicated zones to Primary when a node becomes MASTER,
+      and back to Secondary on BACKUP. Until then, DDNS updates fail on a
+      node that has taken over.
+    - Failover rehearsals with rollback.
+  - Not automatic: DHCP stays **single-active with manual promotion**
+    ([`docs/router-dhcp-single-active.md`](./docs/router-dhcp-single-active.md)).
+  - Start with [`docs/router-ha-pair-guide.md`](./docs/router-ha-pair-guide.md)
+    and the "Replicating a zone to a standby router" section of
+    [`docs/router-technitium-automation.md`](./docs/router-technitium-automation.md).
+
 ## IPv6 path selection
 
 If you are approaching this flake as an IPv6 operator, do not infer the right
