@@ -44,9 +44,10 @@ High Availability (HA) failover is **actively being implemented and validated on
 * **Available Today**:
   * **Delayed Fail-Back**: `services.router-ha.preemptDelay` allows a recovered higher-priority node to wait as BACKUP before reclaiming the VIP, preventing failover oscillation.
   * **Secondary Technitium DNS Replication**: `services.router-technitium.zoneReplication` keeps the primary's Technitium zones, including dynamic DDNS records, synchronized on standby nodes via TSIG-signed AXFR/IXFR and NOTIFY.
+  * **DNS Zones Follow VRRP**: `zoneReplication.ha` promotes the replicated zones to Primary on the MASTER (so DDNS keeps working) and demotes them on BACKUP/FAULT. It is new and not yet exercised in a live failover; see [`docs/router-technitium-automation.md`](docs/router-technitium-automation.md#following-vrrp-zonereplicationha).
   * **Golden MAC ISP Modem Cloning**: Clones the ISP-expected MAC address onto the active master node, allowing two routers to share a single dynamic lease over an unmanaged switch.
 * **Actively In Progress**:
-  * Automatic promotion of replicated Technitium zones to Primary on MASTER, and demotion back to Secondary on BACKUP.
+  * Live failover rehearsals of the zone promotion below on the reference pair.
   * Integration of netfilter connection tracking synchronization (`router-conntrackd`) to preserve active TCP/UDP sessions across failover.
   * Non-disruptive networkd reconfiguration (`networkctl reconfigure`) replacing daemon restarts.
 * **Honest Operational Boundary**:

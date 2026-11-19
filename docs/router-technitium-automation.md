@@ -158,6 +158,43 @@ secondaries with that key and sends them NOTIFY on every change.
 - **Secondaries are read-only.** RFC2136 updates sent to a standby fail until
   its zone is promoted.
 
+### Following VRRP (`zoneReplication.ha`)
+
+With `services.router-ha`, every node holds the zones as Secondary of the
+virtual IP, and the MASTER promotes its copy:
+
+```nix
+services.router-technitium.zoneReplication = {
+  tsigKeyFile = config.age.secrets.technitium-zone-transfer.path;
+  secondary = {
+    zones = [ { name = "home.example"; } ];
+    primaryAddresses = [ "10.10.10.1" ]; # the VRRP virtual IP
+  };
+  ha = {
+    enable = true;
+    peers = [ "10.10.10.4" ]; # the other nodes' own addresses
+  };
+};
+```
+
+- **Promotion.** `technitium-zone-ha-owner.service` is added to
+  `services.router-ha.singleActiveUnits`. On MASTER it converts each zone to
+  Primary, allows transfers and sends NOTIFY to `ha.peers`, then re-runs the
+  RFC2136 unit so DDNS updates are accepted.
+- **Demotion.** Technitium cannot convert Primary to Secondary. On BACKUP or
+  FAULT the zone is exported to `/var/lib/technitium-zone-replication`,
+  deleted and recreated as a Secondary of the virtual IP, but only once a
+  primary there answers SOA for it. Otherwise the Primary copy is kept and
+  `technitium-zone-ha-reconcile.timer` (every `ha.reconcileInterval`)
+  retries. The same reconcile run demotes a stale Primary after a reboot
+  during which this node was MASTER.
+- **Fail-back window.** With `services.router-ha.preemptDelay`, a recovering
+  node waits as BACKUP and transfers the current zone before it takes the
+  role back. Updates made in that last moment before the handover can be
+  lost, so keep the delay longer than a zone refresh.
+- **RFC2136** settings are applied only on the node holding the zone as
+  Primary.
+
 Verify on the standby:
 
 ```sh

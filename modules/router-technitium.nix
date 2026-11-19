@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -617,6 +618,12 @@ let
         updateSecurityPolicies = concatStringsSep "|"
           (if zone.updateSecurityPolicies != [ ] then zone.updateSecurityPolicies else [ defaultUpdateSecurityPolicy ]);
       in ''
+      if ${if haEnabled then "true" else "false"} && [ "$(${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" "http://127.0.0.1:5380/api/zones/list" \
+          | ${pkgs.jq}/bin/jq -r --arg z ${escapeShellArg zone.name} '.response.zones[]? | select((.name|ascii_downcase) == ($z|ascii_downcase)) | .type')" != Primary ]; then
+        # WHY: under zoneReplication.ha only the VRRP owner holds the zone as
+        # Primary; promotion re-runs this unit.
+        echo "Skipping RFC2136 settings for ${zone.name}: not Primary on this node"
+      else
       echo "Enabling RFC2136 updates for zone ${zone.name}..."
       technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
@@ -627,9 +634,93 @@ let
         --data-urlencode "updateSecurityPolicies=${updateSecurityPolicies}" \
         "http://127.0.0.1:5380/api/zones/options/set" \
         >/dev/null
+      fi
     '') cfg.rfc2136.zones}
 
     echo "Technitium RFC2136 configuration synchronized"
+  '';
+
+  haEnabled = replication.ha.enable;
+  haStateDir = "/var/lib/technitium-zone-replication";
+  replicatedPrimarySettings = zoneVar: addresses: ''
+    technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "token=$TOKEN" \
+      --data-urlencode "zone=${zoneVar}" \
+      --data-urlencode "zoneTransfer=UseSpecifiedNetworkACL" \
+      --data-urlencode "zoneTransferNetworkACL=${concatStringsSep "," addresses}" \
+      --data-urlencode "zoneTransferTsigKeyNames=${replication.tsigKeyName}" \
+      --data-urlencode "notify=SpecifiedNameServers" \
+      --data-urlencode "notifyNameServers=${concatStringsSep "," addresses}" \
+      "http://127.0.0.1:5380/api/zones/options/set" \
+      >/dev/null
+  '';
+  # Shell helpers for zones whose primary role follows VRRP (zoneReplication.ha).
+  haHelpers = optionalString haEnabled ''
+    is_master() {
+      [ "$(${pkgs.coreutils}/bin/cat ${escapeShellArg replication.ha.roleFile} 2>/dev/null)" = master ]
+    }
+
+    # INVARIANT: demote only while a primary answers SOA for the zone, so the
+    # recreated Secondary can transfer it back; otherwise keep the data.
+    primary_answers() {
+      local addr
+      for addr in ${concatMapStringsSep " " escapeShellArg replication.secondary.primaryAddresses}; do
+        if [ -n "$(${pkgs.dnsutils}/bin/dig +tcp +short +time=2 +tries=1 "@$addr" "$1" SOA 2>/dev/null)" ]; then
+          return 0
+        fi
+      done
+      return 1
+    }
+
+    demote_zone() {
+      local zone="$1"
+      if ! primary_answers "$zone"; then
+        echo "Not demoting $zone: no primary answers SOA; keeping the Primary copy" >&2
+        return 1
+      fi
+      # WHY: Technitium cannot convert Primary to Secondary; delete and
+      # recreate it, keeping an export in case the transfer then fails.
+      ${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
+        "http://127.0.0.1:5380/api/zones/export" > "${haStateDir}/$zone.demoted.zone"
+      echo "Demoting $zone to Secondary of ${concatStringsSep ", " replication.secondary.primaryAddresses}"
+      technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
+        "http://127.0.0.1:5380/api/zones/delete" >/dev/null
+      technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data-urlencode "token=$TOKEN" \
+        --data-urlencode "zone=$zone" \
+        --data-urlencode "type=Secondary" \
+        --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," replication.secondary.primaryAddresses}" \
+        --data-urlencode "zoneTransferProtocol=Tcp" \
+        --data-urlencode "tsigKeyName=${replication.tsigKeyName}" \
+        "http://127.0.0.1:5380/api/zones/create" >/dev/null
+    }
+
+    promote_zone() {
+      local zone="$1" type="$2"
+      case "$type" in
+        Secondary)
+          echo "Promoting $zone to Primary"
+          technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
+            --data-urlencode "type=Primary" \
+            "http://127.0.0.1:5380/api/zones/convert" >/dev/null
+          ;;
+        "")
+          echo "No copy of $zone to promote; creating an empty Primary" >&2
+          technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
+            --data-urlencode "type=Primary" \
+            "http://127.0.0.1:5380/api/zones/create" >/dev/null
+          ;;
+      esac
+      ${replicatedPrimarySettings "$zone" replication.ha.peers}
+    }
   '';
 
   zoneReplicationScript = pkgs.writeShellScript "technitium-zone-replication" ''
@@ -661,6 +752,8 @@ let
       ' <<<"$ZONES_JSON"
     }
 
+    ${haHelpers}
+
     ${concatMapStringsSep "\n" (zone: ''
       type="$(zone_type ${escapeShellArg zone.name})"
       if [ "$type" != "Primary" ]; then
@@ -689,9 +782,17 @@ let
     fi
 
     ${concatMapStringsSep "\n" (zone: ''
+      # One pass per zone, so a branch can `continue` to the next zone.
+      for _zone in ${escapeShellArg zone.name}; do
       type="$(zone_type ${escapeShellArg zone.name})"
       case "$type" in
         "")
+          ${optionalString haEnabled ''
+            if is_master; then
+              promote_zone ${escapeShellArg zone.name} "" || echo "Creating ${zone.name} failed" >&2
+              continue
+            fi
+          ''}
           echo "Creating secondary zone ${zone.name} from ${concatStringsSep ", " replication.secondary.primaryAddresses}"
           technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
             -H "Content-Type: application/x-www-form-urlencoded" \
@@ -709,6 +810,12 @@ let
           owned+=(${escapeShellArg (toLower zone.name)})
           ;;
         Secondary)
+          ${optionalString haEnabled ''
+            if is_master; then
+              promote_zone ${escapeShellArg zone.name} Secondary || echo "Promoting ${zone.name} failed" >&2
+              continue
+            fi
+          ''}
           echo "Updating secondary zone ${zone.name}"
           technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
             -H "Content-Type: application/x-www-form-urlencoded" \
@@ -721,11 +828,24 @@ let
             >/dev/null
           ;;
         *)
-          # WHY: a standby that took over may have promoted its copy to
-          # Primary; activation must never demote or delete live data.
-          echo "Zone ${zone.name} is $type, not Secondary; leaving it unchanged" >&2
+          ${if haEnabled then ''
+            # WHY: a node that is not MASTER (for example after rebooting
+            # while it was) must hand authority back to the VRRP owner.
+            if [ "$type" = Primary ] && ! is_master; then
+              demote_zone ${escapeShellArg zone.name} || true
+            elif [ "$type" = Primary ]; then
+              ${replicatedPrimarySettings zone.name replication.ha.peers}
+            else
+              echo "Zone ${zone.name} is $type; leaving it unchanged" >&2
+            fi
+          '' else ''
+            # WHY: a standby that took over may have promoted its copy to
+            # Primary; activation must never demote or delete live data.
+            echo "Zone ${zone.name} is $type, not Secondary; leaving it unchanged" >&2
+          ''}
           ;;
       esac
+      done
     '') replication.secondary.zones}
 
     # INVARIANT: prune only secondaries this unit created and that are still
@@ -754,13 +874,56 @@ let
     for zone in "''${owned[@]}"; do
       [ -n "$zone" ] || continue
       case " ''${declared[*]} " in *" $zone "*) ;; *) continue ;; esac
-      if [ "$(zone_type "$zone")" = "Secondary" ] && ! ${pkgs.gnugrep}/bin/grep -qxF "$zone" "$owned_file.tmp"; then
+      zt="$(zone_type "$zone")"
+      # WHY: under ha, a promoted zone is still ours; demotion recreates it.
+      if { [ "$zt" = "Secondary" ] || { ${if haEnabled then "true" else "false"} && [ "$zt" = "Primary" ]; }; } \
+        && ! ${pkgs.gnugrep}/bin/grep -qxF "$zone" "$owned_file.tmp"; then
         printf '%s\n' "$zone" >> "$owned_file.tmp"
       fi
     done
     ${pkgs.coreutils}/bin/mv "$owned_file.tmp" "$owned_file"
 
     echo "Technitium zone replication configured"
+  '';
+
+  haOwnerScript = action: pkgs.writeShellScript "technitium-zone-ha-${action}" ''
+    set -euo pipefail
+
+    ${commonShellHelpers}
+
+    wait_for_technitium
+    TOKEN="$(read_api_token)"
+    ZONES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/zones/list")"
+    zone_type() {
+      ${pkgs.jq}/bin/jq -r --arg zone "$1" '
+        .response.zones // []
+        | map(select((.name | ascii_downcase) == ($zone | ascii_downcase)))
+        | first
+        | .type // empty
+      ' <<<"$ZONES_JSON"
+    }
+
+    ${haHelpers}
+
+    rc=0
+    ${concatMapStringsSep "\n" (zone:
+      if action == "promote" then ''
+        type="$(zone_type ${escapeShellArg zone.name})"
+        if [ "$type" = Secondary ] || [ -z "$type" ]; then
+          promote_zone ${escapeShellArg zone.name} "$type" || rc=1
+        fi
+      '' else ''
+        if [ "$(zone_type ${escapeShellArg zone.name})" = Primary ]; then
+          # A failed demotion is retried by technitium-zone-ha-reconcile.
+          demote_zone ${escapeShellArg zone.name} || rc=1
+        fi
+      '') replication.secondary.zones}
+    ${optionalString (action == "promote" && cfg.rfc2136.enable) ''
+      ${pkgs.systemd}/bin/systemctl --no-block restart technitium-enable-rfc2136.service || rc=1
+    ''}
+    exit "$rc"
   '';
 
   ntpSyncScript = pkgs.writeShellScript "technitium-sync-ntp-option" ''
@@ -1381,6 +1544,40 @@ in
           description = "Addresses of the primary name servers to transfer from.";
         };
       };
+
+      ha = {
+        enable = mkEnableOption ''
+          VRRP-driven ownership of the secondary zones: every node lists them
+          under `secondary.zones` with the virtual IP as `primaryAddresses`;
+          the MASTER promotes its copy to Primary and a node leaving MASTER
+          demotes it again (registered in `services.router-ha.singleActiveUnits`)
+        '';
+
+        peers = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          example = [ "10.10.10.4" ];
+          description = ''
+            Own addresses of the other router nodes. While MASTER, this node
+            allows them to transfer the zones and sends them NOTIFY.
+          '';
+        };
+
+        roleFile = mkOption {
+          type = types.str;
+          default = "/run/router-ha/role";
+          description = "File holding this node's VRRP role, as written by router-ha.";
+        };
+
+        reconcileInterval = mkOption {
+          type = types.str;
+          default = "5min";
+          description = ''
+            How often to reconcile zone types with the VRRP role, retrying a
+            demotion that failed because no primary answered.
+          '';
+        };
+      };
     };
 
     scopes = mkOption {
@@ -1432,7 +1629,11 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
+  config = mkMerge [
+  (optionalAttrs (options ? services.router-ha.singleActiveUnits) {
+    services.router-ha.singleActiveUnits = mkIf (cfg.enable && haEnabled) [ "technitium-zone-ha-owner.service" ];
+  })
+  (mkIf cfg.enable {
     assertions = [
       {
         assertion = cfg.scopes == { } || hasTokenSource;
@@ -1484,6 +1685,10 @@ in
       {
         assertion = replication.secondary.zones == [ ] || replication.secondary.primaryAddresses != [ ];
         message = "services.router-technitium.zoneReplication.secondary.primaryAddresses must not be empty when secondary zones are listed.";
+      }
+      {
+        assertion = !haEnabled || (replication.secondary.zones != [ ] && replication.ha.peers != [ ] && replication.primary.zones == [ ]);
+        message = "services.router-technitium.zoneReplication.ha needs secondary.zones and ha.peers, and replaces primary.zones (leave it empty).";
       }
       {
         # WHY: Technitium lowercases key names and strips a trailing dot.
@@ -1731,5 +1936,43 @@ in
         ${zoneReplicationScript}
       '';
     };
-  };
+
+    # Started by router-ha on MASTER, stopped on BACKUP/FAULT.
+    systemd.services.technitium-zone-ha-owner = mkIf haEnabled {
+      description = "Hold replicated Technitium zones as Primary while VRRP MASTER";
+      after = [ "technitium-dns-server.service" "technitium-zone-replication.service" ];
+      wants = [ "technitium-dns-server.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = haOwnerScript "promote";
+        ExecStop = haOwnerScript "demote";
+        StateDirectory = "technitium-zone-replication";
+        StateDirectoryMode = "0700";
+      };
+    };
+
+    # WHY: covers a reboot while MASTER (no stop hook ran) and demotions that
+    # had to wait for the new primary to answer.
+    systemd.services.technitium-zone-ha-reconcile = mkIf haEnabled {
+      description = "Reconcile replicated Technitium zones with the VRRP role";
+      after = [ "technitium-dns-server.service" "technitium-zone-replication.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        StateDirectory = "technitium-zone-replication";
+        StateDirectoryMode = "0700";
+      };
+      script = ''
+        ${zoneReplicationScript}
+      '';
+    };
+    systemd.timers.technitium-zone-ha-reconcile = mkIf haEnabled {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = replication.ha.reconcileInterval;
+        OnUnitActiveSec = replication.ha.reconcileInterval;
+      };
+    };
+  })
+  ];
 }
