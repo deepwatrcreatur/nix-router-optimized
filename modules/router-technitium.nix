@@ -686,6 +686,20 @@ let
       return 1
     }
 
+    # Writes a validated zone file export to $2; fails on transport errors,
+    # empty output, Technitium HTTP-200 error JSON, or data without an SOA.
+    export_zone() {
+      if ! ${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" --data-urlencode "zone=$1" \
+          "http://127.0.0.1:5380/api/zones/export" > "$2.tmp" \
+        || [ ! -s "$2.tmp" ] \
+        || ${pkgs.jq}/bin/jq -e 'type == "object" and has("status")' "$2.tmp" >/dev/null 2>&1 \
+        || ! ${pkgs.gnugrep}/bin/grep -q 'SOA' "$2.tmp"; then
+        rm -f "$2.tmp"
+        return 1
+      fi
+      mv "$2.tmp" "$2"
+    }
+
     # Every step checks its own status: callers use `||`, which disables set -e.
     demote_zone() {
       local zone="$1" backup="${haStateDir}/$1.demoted.zone"
@@ -699,16 +713,10 @@ let
       fi
       # WHY: Technitium cannot convert Primary to Secondary; delete and
       # recreate it, keeping an export in case the transfer then fails.
-      if ! ${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
-          "http://127.0.0.1:5380/api/zones/export" > "$backup.tmp" \
-        || [ ! -s "$backup.tmp" ] \
-        || ${pkgs.jq}/bin/jq -e 'type == "object" and has("status")' "$backup.tmp" >/dev/null 2>&1 \
-        || ! ${pkgs.gnugrep}/bin/grep -q 'SOA' "$backup.tmp"; then
+      if ! export_zone "$zone" "$backup"; then
         echo "Not demoting $zone: export failed or returned no zone data" >&2
-        rm -f "$backup.tmp"
         return 1
       fi
-      mv "$backup.tmp" "$backup" || return 1
       echo "Demoting $zone to Secondary of ${concatStringsSep ", " replication.secondary.primaryAddresses}"
       technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
@@ -881,6 +889,7 @@ let
       done
     '') replication.secondary.zones}
 
+    retain=()
     # INVARIANT: prune only secondaries this unit created and that are still
     # Secondary; a zone promoted to Primary after a failover is never touched.
     for zone in "''${owned[@]}"; do
@@ -898,15 +907,17 @@ let
       elif [ "$(zone_type "$zone")" = "Primary" ]; then
         # WHY: under ha an owned zone is Primary on the MASTER; dropping its
         # declaration must remove it there too. Keep an export first.
-        if ${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
-            "http://127.0.0.1:5380/api/zones/export" > "${haStateDir}/$zone.removed.zone"; then
-          echo "Deleting owned Primary zone $zone, which left the configuration"
-          technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+        if export_zone "$zone" "${haStateDir}/$zone.removed.zone" \
+          && echo "Deleting owned Primary zone $zone, which left the configuration" \
+          && technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
             -H "Content-Type: application/x-www-form-urlencoded" \
             --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
-            "http://127.0.0.1:5380/api/zones/delete" >/dev/null
+            "http://127.0.0.1:5380/api/zones/delete" >/dev/null; then
+          :
         else
-          echo "Export of $zone failed; not deleting it" >&2
+          # WHY: keep ownership so the next run retries the removal.
+          echo "Removing $zone failed; keeping it owned to retry" >&2
+          retain+=("$zone")
         fi
       ''}
       else
@@ -928,6 +939,9 @@ let
         && ! ${pkgs.gnugrep}/bin/grep -qxF "$zone" "$owned_file.tmp"; then
         printf '%s\n' "$zone" >> "$owned_file.tmp"
       fi
+    done
+    for zone in "''${retain[@]}"; do
+      printf '%s\n' "$zone" >> "$owned_file.tmp"
     done
     ${pkgs.coreutils}/bin/mv "$owned_file.tmp" "$owned_file"
 

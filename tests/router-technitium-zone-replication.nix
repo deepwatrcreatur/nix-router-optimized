@@ -260,8 +260,9 @@ in
               }
               {
                 assertion =
-                  before "primary_answers \"$zone\"" "api/zones/export" demote
-                  && before "api/zones/export" "api/zones/delete" demote;
+                  before "if ! primary_answers \"$zone\"" "export_zone \"$zone\" \"$backup\"" demote
+                  && before "export_zone \"$zone\" \"$backup\"" "api/zones/delete" demote
+                  && lib.hasInfix "has(\"status\")" demote;
                 message = "demotion must check a primary answers, then export, then delete.";
               }
               {
