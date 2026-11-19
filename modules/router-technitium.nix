@@ -606,6 +606,14 @@ let
 
     ${registerTsigKeys}
 
+    ${optionalString haEnabled ''
+      # GOTCHA: an HTTP-200 error here must fail the unit, not read as
+      # "not Primary" and skip the zone.
+      RFC_ZONES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+        --data-urlencode "token=$TOKEN" \
+        "http://127.0.0.1:5380/api/zones/list")"
+    ''}
+
     ${concatMapStringsSep "\n" (zone:
       let
         defaultUpdateSecurityPolicy =
@@ -618,8 +626,8 @@ let
         updateSecurityPolicies = concatStringsSep "|"
           (if zone.updateSecurityPolicies != [ ] then zone.updateSecurityPolicies else [ defaultUpdateSecurityPolicy ]);
       in ''
-      if ${if haEnabled then "true" else "false"} && [ "$(${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" "http://127.0.0.1:5380/api/zones/list" \
-          | ${pkgs.jq}/bin/jq -r --arg z ${escapeShellArg zone.name} '.response.zones[]? | select((.name|ascii_downcase) == ($z|ascii_downcase)) | .type')" != Primary ]; then
+      if ${if haEnabled then "true" else "false"} && [ "$(${pkgs.jq}/bin/jq -r --arg z ${escapeShellArg zone.name} \
+          '.response.zones[]? | select((.name|ascii_downcase) == ($z|ascii_downcase)) | .type' <<<"$RFC_ZONES_JSON")" != Primary ]; then
         # WHY: under zoneReplication.ha only the VRRP owner holds the zone as
         # Primary; promotion re-runs this unit.
         echo "Skipping RFC2136 settings for ${zone.name}: not Primary on this node"
