@@ -140,13 +140,19 @@ in
     PY
     python3 fake.py 18081 ntfy.log & F1=$!
     CREDENTIALS_DIRECTORY=$PWD/creds ${bridge} 18082 & B=$!
-    for i in $(seq 50); do curl -s -o /dev/null http://127.0.0.1:18082/ -d '{}' && break; sleep 0.1; done
+    # GOTCHA: wait for both listeners, or the relay can answer 502 because the
+    # fake ntfy server is not up yet.
+    for port in 18081 18082; do
+      for i in $(seq 100); do (exec 3<>/dev/tcp/127.0.0.1/$port) 2>/dev/null && break; sleep 0.1; done
+    done
+    rm -f ntfy.log
     curl -fsS http://127.0.0.1:18082/ -d '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"RouterNicCarrierLost","severity":"critical","instance":"localhost:9100","host":"r1"},"annotations":{"summary":"lan0 has no carrier"}}]}'
     jq -e 'select(.title == "RouterNicCarrierLost on r1" and .priority == "5" and .body == "lan0 has no carrier")' ntfy.log >/dev/null
 
     echo "== new-device hook"
     python3 fake.py 18093 am.log & F2=$!
-    sleep 0.5
+    for i in $(seq 100); do (exec 3<>/dev/tcp/127.0.0.1/18093) 2>/dev/null && break; sleep 0.1; done
+    rm -f am.log
     printf 'address,hwaddr,client_id\n10.99.0.101,aa:bb:cc:00:00:01,\n' > leases
     printf 'address,hwaddr,client_id\n10.99.0.104,aa:bb:cc:00:00:04,\n' > leases.2
     script=$(mktemp); sed -e "s|/var/lib/kea/dhcp4.leases|$PWD/leases|; s|/var/lib/kea/router-alerting-seen-macs|$PWD/seen|; s|127.0.0.1:9093|127.0.0.1:18093|" ${hook.parameters.name} > $script; chmod +x $script
@@ -159,11 +165,11 @@ in
     env -i LEASES4_SIZE=1 LEASES4_AT0_HWADDR=AA:BB:CC:00:00:03 LEASES4_AT0_ADDRESS=10.99.0.103 LEASES4_AT0_HOSTNAME=phone. $script leases4_committed || true
     ! grep -qx aa:bb:cc:00:00:03 seen
     python3 fake.py 18093 am.log & F2=$!
-    sleep 0.5
+    for i in $(seq 100); do (exec 3<>/dev/tcp/127.0.0.1/18093) 2>/dev/null && break; sleep 0.1; done
     env -i LEASE4_HWADDR=aa:bb:cc:00:00:03 LEASE4_ADDRESS=10.99.0.103 LEASE4_HOSTNAME=phone. $script lease4_renew
     env -i LEASE4_HWADDR=aa:bb:cc:00:00:03 LEASE4_ADDRESS=10.99.0.103 $script lease4_renew
     test "$(wc -l < am.log)" = 1
-    jq -e '.path == "/api/v2/alerts" and (.body | fromjson | .[0].labels.mac == "aa:bb:cc:00:00:03" and (.[0].annotations.summary | contains("phone (aa:bb:cc:00:00:03)")))' am.log >/dev/null
+    jq -e '.path == "/api/v2/alerts" and (.body | fromjson | .[0].labels.mac == "aa:bb:cc:00:00:03" and (.[0].labels.host == "router-check") and (.[0].annotations.summary | contains("phone (aa:bb:cc:00:00:03)")))' am.log >/dev/null
     kill $F1 $F2 $B
     touch $out
   '';

@@ -116,7 +116,7 @@ let
     ${pkgs.gnugrep}/bin/grep -qxF "$mac" "$seen" && exit 0
     now=$(${pkgs.coreutils}/bin/date -u +%Y-%m-%dT%H:%M:%SZ)
     ends=$(${pkgs.coreutils}/bin/date -u -d '+${toString cfg.newDhcpDevices.alertMinutes} minutes' +%Y-%m-%dT%H:%M:%SZ)
-    ${pkgs.jq}/bin/jq -n --arg mac "$mac" --arg ip "$ip" --arg name "''${name%.}" --arg host "$(${pkgs.hostname}/bin/hostname)" \
+    ${pkgs.jq}/bin/jq -n --arg mac "$mac" --arg ip "$ip" --arg name "''${name%.}" --arg host ${escapeShellArg (config.services.prometheus.globalConfig.external_labels.host or config.networking.hostName)} \
       --arg now "$now" --arg ends "$ends" \
       '[{labels: {alertname: "RouterNewDhcpDevice", severity: "info", mac: $mac, host: $host},
          annotations: {summary: ("New device " + (if $name == "" then $mac else $name + " (" + $mac + ")" end) + " got " + $ip)},
@@ -354,7 +354,7 @@ in
                     # WHY: one notification per device; the alert expires by itself.
                     matchers = [ ''alertname="RouterNewDhcpDevice"'' ];
                     receiver = "default";
-                    group_by = [ "mac" ];
+                    group_by = [ "host" "mac" ];
                     group_wait = "10s";
                     repeat_interval = "8760h";
                   }
