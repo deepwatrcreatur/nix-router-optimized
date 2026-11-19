@@ -41,7 +41,9 @@ let
         notes = alert.get("annotations", {})
         name = labels.get("alertname", "alert")
         severity = labels.get("severity", "warning")
-        host = labels.get("instance") or labels.get("hostname") or ""
+        # WHY: instance is the scrape target (localhost:9100); host is the
+        # router's name, added to every alert as a Prometheus external label.
+        host = labels.get("host") or labels.get("hostname") or labels.get("instance") or ""
         title = ("Resolved: " if status == "resolved" else "") + name + (f" on {host}" if host else "")
         body = notes.get("summary") or notes.get("description") or name
         if notes.get("description") and notes.get("summary"):
@@ -116,7 +118,7 @@ let
     ends=$(${pkgs.coreutils}/bin/date -u -d '+${toString cfg.newDhcpDevices.alertMinutes} minutes' +%Y-%m-%dT%H:%M:%SZ)
     ${pkgs.jq}/bin/jq -n --arg mac "$mac" --arg ip "$ip" --arg name "''${name%.}" --arg host "$(${pkgs.hostname}/bin/hostname)" \
       --arg now "$now" --arg ends "$ends" \
-      '[{labels: {alertname: "RouterNewDhcpDevice", severity: "info", mac: $mac, instance: $host},
+      '[{labels: {alertname: "RouterNewDhcpDevice", severity: "info", mac: $mac, host: $host},
          annotations: {summary: ("New device " + (if $name == "" then $mac else $name + " (" + $mac + ")" end) + " got " + $ip)},
          startsAt: $now, endsAt: $ends}]' \
       | ${pkgs.curl}/bin/curl -fsS -m 5 -H 'Content-Type: application/json' --data-binary @- \
@@ -323,6 +325,7 @@ in
       ];
 
       services.prometheus = {
+        globalConfig.external_labels.host = mkDefault config.networking.hostName;
         alertmanagers = [ { static_configs = [ { targets = [ amAddress ]; } ]; } ];
         ruleFiles = optional (cfg.watchdog.pingUrlFile != null) watchdogRules;
         alertmanager = {
@@ -334,7 +337,7 @@ in
           configuration = {
             route = {
               receiver = "default";
-              group_by = [ "alertname" "instance" ];
+              group_by = [ "alertname" "host" "instance" ];
               group_wait = "30s";
               group_interval = "5m";
               repeat_interval = "12h";

@@ -76,7 +76,10 @@ in
     ({ config, ... }: {
       assertions = [
         {
-          assertion = config.services.prometheus.alertmanagers != [ ] && config.services.prometheus.alertmanager.listenAddress == "127.0.0.1";
+          assertion =
+            config.services.prometheus.alertmanagers != [ ]
+            && config.services.prometheus.alertmanager.listenAddress == "127.0.0.1"
+            && config.services.prometheus.globalConfig.external_labels.host == "router-check";
           message = "Prometheus must send to a loopback-only Alertmanager.";
         }
         {
@@ -138,7 +141,7 @@ in
     python3 fake.py 18081 ntfy.log & F1=$!
     CREDENTIALS_DIRECTORY=$PWD/creds ${bridge} 18082 & B=$!
     for i in $(seq 50); do curl -s -o /dev/null http://127.0.0.1:18082/ -d '{}' && break; sleep 0.1; done
-    curl -fsS http://127.0.0.1:18082/ -d '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"RouterNicCarrierLost","severity":"critical","instance":"r1"},"annotations":{"summary":"lan0 has no carrier"}}]}'
+    curl -fsS http://127.0.0.1:18082/ -d '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"RouterNicCarrierLost","severity":"critical","instance":"localhost:9100","host":"r1"},"annotations":{"summary":"lan0 has no carrier"}}]}'
     jq -e 'select(.title == "RouterNicCarrierLost on r1" and .priority == "5" and .body == "lan0 has no carrier")' ntfy.log >/dev/null
 
     echo "== new-device hook"

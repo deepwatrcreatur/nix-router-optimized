@@ -10,6 +10,10 @@ Delivers the router's Prometheus alerts to people. It runs Alertmanager on
 | **webhook** | `extraWebhooks` | Any HTTP endpoint (Gotify, Matrix bridges, home automation). |
 | **anything native** | `extraReceiverConfig`, `extraCredentials` | Telegram, Discord, Pushover, Slack, ... merged into the default receiver. Secrets are read from `/run/credentials/alertmanager.service/<name>`. |
 
+Every alert carries a `host` label (Prometheus `external_labels`, defaulting to
+`networking.hostName`). Notifications are titled `<alert> on <host>` and grouped
+per host, so alerts from two routers never merge.
+
 Every secret is a `*File` option loaded as a systemd credential, so agenix,
 sops-nix and clan vars all work, and nothing lands in the Nix store.
 
