@@ -21,6 +21,16 @@ Typed Topology  ──▶  Derived Config  ──▶  Reproducible Deploy  ─�
 
 See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for the verified platform and driver validation matrices across Core (Tier 1), SBC (Tier 2), and Budget (Tier 3) tiers.
 
+## Why Linux & NixOS? (Comparison with FreeBSD & OPNsense)
+
+Operators comparing DIY routers often ask whether a FreeBSD appliance like OPNsense or pfSense is preferable, or whether Linux lacks high-availability (CARP/pfsync) and firewall features:
+
+- **High Availability & State Sync**: Keepalived (VRRP, RFC 5798) is the direct equivalent of CARP; `conntrackd` (FTFW mode) is the direct equivalent of `pfsync`. Both guarantee floating VIP election and stateful connection survival without session drops.
+- **Forwarding Performance**: Linux `nftables` with Netfilter Flowtables (FastTrack) offloads established flows for line-rate forwarding at low CPU utilization. Furthermore, Linux supports eBPF/XDP for kernel-bypass packet filtering directly in NIC ring buffers—capabilities FreeBSD lacks.
+- **Declarative Fleet GitOps vs. Imperative Web UI**: Rather than configuring a single appliance via PHP web forms and mutable XML files (`config.xml`), `nix-router-optimized` treats the router as code within an immutable, bit-reproducible NixOS fleet with atomic GRUB generation rollbacks and compile-time topology validation.
+
+For the comprehensive architectural breakdown and protocol mapping, see [`docs/FREEBSD-OPNSENSE-COMPARISON.md`](docs/FREEBSD-OPNSENSE-COMPARISON.md). For broader ecosystem research and the ongoing architectural roadmap, see [`docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md).
+
 ## Agent Work Queue
 
 If you are assigning or running agents against this repo, start with:

@@ -16,6 +16,15 @@ from module names alone.
 - [`router-ha-pair-guide.md`](./router-ha-pair-guide.md) — copyable two-node
   VRRP pair starting point for flake consumers
 
+### Architecture and ecosystem research
+
+- [`ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](./ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md) —
+  comparative analysis of NixOS and open-source router implementations, real-world
+  homelab consumer invariants (`router` and `elitedesk`), secrets architecture, and phased roadmap
+- [`FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md) —
+  detailed technical comparison between the Linux/NixOS declarative stack and
+  FreeBSD/OPNsense (CARP vs VRRP, pfsync vs conntrackd, pf vs FastTrack/XDP)
+
 ### IPv6 and translation
 
 - [`router-ipv6-approach-guide.md`](./router-ipv6-approach-guide.md) — first stop

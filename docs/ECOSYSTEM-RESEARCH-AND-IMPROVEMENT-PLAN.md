@@ -1,0 +1,621 @@
+# NixOS Router Ecosystem Research & Architectural Improvement Plan
+
+**Status**: Research & Strategic Architecture  
+**Target Repository**: `nix-router-optimized`  
+**Homelab Consumers Analyzed**: `router` (Primary, Proxmox VM / igc 2.5G) and `elitedesk` (Standby, HP EliteDesk 8300 SFF / X520 10G SFP+)  
+**Infrastructure Context**: Migration from `unified-nix-configuration` to `nix-clan-homelab` (Clan-core, Den aspects, `clan vars`, `deploy-rs`)  
+**Date**: November 2026  
+
+---
+
+## 1. Executive Summary & Purpose
+
+The `nix-router-optimized` framework represents an advanced, typed, topology-driven declarative edge router for NixOS. Unlike turnkey black-box appliances (OPNsense, pfSense, VyOS, OpenWrt), it implements a deterministic 4-stage pipeline:
+$$\text{Typed Topology} \longrightarrow \text{Derived Config} \longrightarrow \text{Reproducible Deploy} \longrightarrow \text{Measurable Performance}$$
+
+This report presents an in-depth comparative analysis of `nix-router-optimized` against prominent NixOS router implementations, embedded Nix networking projects, and appliance design patterns across GitHub, Codeberg, and the broader Linux networking ecosystem. Furthermore, it evaluates how well `nix-router-optimized` serves its two physical homelab consumers—`router` and `elitedesk`—during the ongoing fleet migration to `nix-clan-homelab`.
+
+The goal of this document is to serve as **authoritative architectural guidance for future engineering agents and operators**, identifying high-leverage features, design patterns to borrow, and concrete implementation blueprints to elevate `nix-router-optimized` into a robust, carrier-grade declarative platform.
+
+---
+
+## 2. Analysis of Homelab Consumers & Operational Constraints
+
+Understanding the concrete operational environment is essential before adopting new features or abstractions.
+
+### 2.1 Consumer Machines Profile
+
+```
+                           ┌────────────────────────────┐
+                           │         ISP Modem          │
+                           │  Single Dynamic DHCPv4/PD  │
+                           │  Locked to "Golden MAC"    │
+                           │   (02:76:c6:01:2a:b0)      │
+                           └─────────────┬──────────────┘
+                                         │ RJ45
+                                         ▼
+                           ┌────────────────────────────┐
+                           │      Unmanaged Switch      │
+                           │ (Isolated L2 WAN Domain)   │
+                           └──────┬──────────────┬──────┘
+                  RJ45 2.5G Copper│              │RJ45 2.5G Copper
+                                  ▼              ▼
+                    ┌──────────────────┐   ┌──────────────────────────┐
+                    │      router      │   │   Media Converter Switch │
+                    │   (Primary VM)   │   └─────────────┬────────────┘
+                    │   Intel igc 2.5G │                 │ 10G-SR Optical Fibre
+                    └────────┬─────────┘                 ▼
+                             │             ┌──────────────────────────┐
+                             │             │        elitedesk         │
+                             │             │     (Standby SFF PC)     │
+                             │             │  Intel X520-2 Dual SFP+  │
+                             │             └─────────────┬────────────┘
+                             │ LAN (10.10.10.1 VIP)      │ LAN (10.10.10.4 Node IP)
+                             ▼                           ▼
+                     ═══════════════════════════════════════════
+                                 Homelab LAN Switch
+                     ═══════════════════════════════════════════
+                                         ▲
+                                         │ Out-of-Band Management (192.168.100.0/24)
+                        ┌────────────────┴────────────────┐
+                        │   router mgmt:    .100 (ens18)  │
+                        │   elitedesk mgmt: .98  (eno1)   │
+                        └─────────────────────────────────┘
+```
+
+#### Node 1: `router` (Primary Gateway)
+- **Environment**: Virtual Machine under Proxmox VE (Strix node) with dedicated PCIe passthrough NICs.
+- **Hardware**: Intel I225/I226 2.5 Gbps (`igc` driver).
+- **Interface Mapping**:
+  - WAN: `enp6s17` (pinned by MAC `02:76:c6:01:2a:b0` via systemd link).
+  - LAN: `enp6s16` (pinned by MAC `02:76:c6:01:2a:af`, holding `10.10.10.1/16`).
+  - Management: `ens18` (e1000e virtual NIC, `192.168.100.100/24`).
+- **Services Hosted**: Kea DHCPv4, Technitium DNS (Primary), Caddy Reverse Proxy, Suricata IDS (AF_PACKET on LAN), EveBox, router dashboard, Inadyn DDNS, miniupnpd, NTP, SNMP, Pangolin tunnel gateway, Netdata, Prometheus/Grafana.
+
+#### Node 2: `elitedesk` (Standby Gateway)
+- **Environment**: Bare-metal HP Compaq Elite 8300 Small Form Factor (SFF), Intel Core i7-3770, 16 GB RAM.
+- **Hardware**:
+  - Intel X520-2 Dual-Port 10GbE SFP+ PCI Express adapter (`ixgbe` driver, Oracle subsystem `108e:7b11`). Requires `boot.extraModprobeConfig = "options ixgbe allow_unsupported_sfp=1"` to permit non-Intel 10G-SR optics.
+  - Onboard Intel 82579LM Gigabit Ethernet (`e1000e`).
+- **Interface Mapping**:
+  - WAN: `enp1s0f0` (pinned by MAC `90:e2:ba:7f:e0:3c`, connected to media converter switch via 10G-SR fibre).
+  - LAN: `enp1s0f1` (pinned by MAC `90:e2:ba:7f:e0:3d`, connected to homelab switch via DAC cable, node IP `10.10.10.4/16`).
+  - Management: `eno1` (onboard 1G copper, `192.168.100.98/24`).
+
+### 2.2 Operational Invariants & Hard Homelab Constraints
+
+1. **The Single ISP Modem Lease Constraint**:
+   The upstream cable modem delivers exactly **one** dynamic IPv4 address and one delegated IPv6 prefix (/56). The modem strictly binds this lease to the Golden MAC (`02:76:c6:01:2a:b0`). Because both routers are physically cabled to an unmanaged Layer 2 switch connected to the modem:
+   - **Critical Invariant**: At no point may both nodes run a DHCP client or bring up their WAN links simultaneously. Doing so triggers MAC flapping on the modem port, lease revocation, or split-brain packet loss.
+   - **Standby State**: `elitedesk` must keep its WAN link in `ActivationPolicy = always-down` and `networking.useDHCP = false` while in standby mode.
+
+2. **Downstream Service Exclusivity**:
+   Services that broadcast or emit control frames into the LAN must run on **exactly one node**:
+   - Kea DHCPv4 server (avoids DHCPOFFER races and split pool exhaustion).
+   - IPv6 Router Advertisements (`IPv6SendRA`) and DHCPv6-PD requests (prevents conflicting default routes and rogue prefix blackholing).
+   - Inadyn Cloudflare DDNS (prevents redundant API churn).
+   - miniupnpd (avoids IGD port-mapping collisions).
+   - Avahi mDNS reflector (prevents broadcast looping across VLANs).
+   - Tailscale subnet router (prevents route advertisement flapping in the tailnet).
+
+3. **Out-of-Band Management Resilience**:
+   The `192.168.100.0/24` subnet runs on dedicated physical NICs (`ens18` / `eno1`). It must remain strictly isolated from LAN routing and firewall rules. Even if the data plane experiences severe packet drops, VRRP oscillation, or syntax errors in nftables, operators and deployment agents (`deploy-rs` / `clan machines update`) must maintain SSH access.
+
+4. **Homelab Fleet Migration Context (`nix-clan-homelab`)**:
+   The migration introduces:
+   - **Clan-Core**: Automating disk layout (`disko`), hardware detection (`nixos-facter`), and machine state.
+   - **Den Aspects**: Replacing ad-hoc NixOS modules with modular, composable host aspects (`den.aspects.router-role`).
+   - **Clan Vars**: Secret distribution backed by `sops-nix` where each machine receives only its declared secrets, moving away from monolithic `agenix` setups.
+   - **Deployment Safety**: Requirement for atomic deployment verification via `deploy-rs` with auto-rollback.
+
+---
+
+## 3. Comparative Ecosystem Survey
+
+To identify potential architectural improvements, we surveyed leading open-source router implementations within the Nix ecosystem and the broader Linux/BSD appliance landscape.
+
+### Comparative Feature Matrix
+
+| Capability / Concern | `nix-router-optimized` (Current) | `chayleaf/nixos-router` | `joshpearce/nix-router` | `sdlfoundation/hard-nix-router` | `mdlayher` (CoreRAD) | VyOS / OPNsense |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Declarative DSL / Pipeline** | ✅ 4-Stage Typed Pipeline | ✅ Custom routing DSL | ⚠️ Monolithic flake | ⚠️ Static modules | ⚠️ Daemon only | ⚠️ Imperative CLI/XML |
+| **Firewall Backend** | ✅ nftables + FastTrack | ✅ nftables | ✅ nftables | ✅ Hardened nftables | N/A | nftables (VyOS) / pf (OPN) |
+| **Network Namespaces (`netns`)** | ❌ No (Single namespace) | ✅ Full netns isolation | ❌ No | ❌ No | N/A | ✅ VRF / netns |
+| **SMP IRQ / RPS / XPS Tuning** | ⚠️ ethtool offload script | ❌ No | ✅ Explicit IRQ affinity | ❌ No | N/A | ✅ Automatic multi-queue |
+| **Observability Pipeline** | ✅ Netdata, Grafana, custom UI | ❌ No | ✅ Vector + ulogd (JSON) | ⚠️ Minimal | ✅ CoreRAD Prometheus | ✅ Telegraf / Influx |
+| **IPv6 RA Observability** | ⚠️ Opaque systemd-networkd | ⚠️ radvd | ⚠️ systemd-networkd | ⚠️ dnsmasq | ✅ CoreRAD (Native metrics)| ⚠️ radvd / FRR |
+| **High Availability (HA)** | ⚠️ VRRP (Keepalived) + shell | ❌ No | ❌ No | ❌ No | ❌ No | ✅ CARP + pfsync / VRRP |
+| **Conntrack Synchronization** | ⚠️ Designed (Ledger 2026-04) | ❌ No | ❌ No | ❌ No | N/A | ✅ pfsync / conntrackd |
+| **Secret Backend Agnosticism** | ⚠️ Historically agenix-centric | ⚠️ agenix | ⚠️ agenix | ⚠️ Plain text / age | N/A | ✅ Vault / Decoupled |
+| **Unit / Eval Test Harness** | ✅ Extensive eval checks | ⚠️ Minimal | ✅ Pure Nix unit tests | ❌ No | ✅ Go test suite | ✅ Pytest / CI bats |
+
+---
+
+### Key Takeaways from Surveyed Repositories
+
+#### 1. `chayleaf/nixos-router` (GitHub: [chayleaf/nixos-router](https://github.com/chayleaf/nixos-router))
+- **Key Pattern: Linux Network Namespaces (`ip netns`)**:
+  Rather than placing all interfaces, VLANs, and VPN endpoints in the root network namespace and relying entirely on nftables filtering rules, `chayleaf/nixos-router` uses separate network namespaces for untrusted segments (such as guest networks, isolated IoT, or commercial VPN provider tunnels).
+- **Architectural Value**:
+  Even a severe misconfiguration or bug in netfilter cannot leak packets between namespaces because they possess independent routing tables, neighbor caches, and socket spaces. Veth pairs connect namespaces through bridge interfaces.
+- **Applicability for `nix-router-optimized`**:
+  A high-leverage addition for `router-zones.nix`, allowing zones marked `isolated = true` to reside inside dedicated Linux network namespaces.
+
+#### 2. `joshpearce/nix-router` (GitHub: [joshpearce/nix-router](https://github.com/joshpearce/nix-router))
+- **Key Pattern 1: Multi-Queue IRQ & SMP Affinity Tuning (`network-irq.nix`)**:
+  On multi-gigabit NICs (such as the Intel I225/I226 2.5G on `router` and the Intel X520-2 10G on `elitedesk`), all packet receive interrupts frequently hit CPU 0 by default. `joshpearce/nix-router` configures explicit SMP IRQ affinity, Receive Packet Steering (RPS), and Transmit Packet Steering (XPS) masks across physical CPU cores.
+- **Key Pattern 2: Vector + Ulogd Flow Observability**:
+  Instead of heavy full-system monitoring agents, it configures `ulogd2` with JSON logging coupled directly to a local `vector` agent. Netfilter drop events, conntrack creations, and DNS query flows are parsed and pushed into ClickHouse/Loki with minuscule CPU overhead.
+- **Key Pattern 3: Pure Nix Unit Test Suite via `pkgs.runCommand`**:
+  Integrates unit test suites evaluated directly in `nix flake check` that assert RFC 1918 boundaries, DHCP subnet containment, and nftables rule validation without requiring a full QEMU VM spin-up.
+
+#### 3. `mdlayher/corerad` & `mdlayher/homelab` (GitHub: [mdlayher/corerad](https://github.com/mdlayher/corerad))
+- **Key Pattern: Observable IPv6 Neighbor Discovery via CoreRAD**:
+  `systemd-networkd`'s built-in `IPv6SendRA` engine is an opaque black box: it does not expose Prometheus metrics, cannot alert operators when downstream clients fail to obtain SLAAC prefixes, and provides virtually no visibility into neighbor advertisement health.
+- **Architectural Value**:
+  Matt Layher's `corerad` is written in Go specifically for production Linux routers. It exports rich Prometheus metrics for all advertised prefixes, route information options, RDNSS lifetimes, and RFC 9686 IPv6-Only Preferred flags, while maintaining clean per-interface configuration.
+
+#### 4. `sdlfoundation/hard-nix-router` (GitHub: [sdlfoundation/hard-nix-router](https://github.com/sdlfoundation/hard-nix-router))
+- **Key Pattern: Zero-Trust Strict MAC Filtering & Inline Suricata IPS**:
+  Defines strict nftables sets matching hardware MAC addresses to permitted IP assignments on sensitive interfaces, immediately dropping spoofed packets before connection tracking. Additionally, provides a clean integration pattern for running Suricata in inline IPS mode (via `NFQUEUE`) rather than passive tap mode.
+
+#### 5. VyOS & OPNsense High-Availability (CARP/pfsync vs VRRP/`conntrackd`)
+- **Key Pattern: Connection Tracking State Synchronization**:
+  In OPNsense and pfSense, High Availability is achieved through two synchronized protocols: CARP (for floating VIP election) and **pfsync** (for real-time state table replication). In Linux, the direct equivalent is **Keepalived (VRRP) + `conntrackd`**.
+- **The Critical Missing Link**:
+  Without `conntrackd`, any VRRP failover between `router` and `elitedesk` causes **immediate disconnection of all active TCP sessions, VoIP/SIP calls, SSH connections, and UDP flows**, because the new master possesses an empty conntrack table and drops packets as `ct state invalid`.
+- See the dedicated companion document: [`docs/FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md) for an exhaustive technical breakdown of Linux/NixOS vs FreeBSD/OPNsense.
+
+---
+
+## 4. Prioritized Areas of Potential Improvement
+
+Based on ecosystem findings and real-world feedback from `router` and `elitedesk`, we have organized recommendations into four priority tiers:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ P1: High Availability & Standby Invariant Core                              │
+│     • First-class `mode = "primary" | "standby"` toggle                     │
+│     • Non-disruptive WAN promotion (`networkctl reconfigure`)               │
+│     • Conntrack state replication (`conntrackd`) over management subnet     │
+│     • Automated Gratuitous ARP (GARP) emission on failover                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ P2: 10G/2.5G Hardware Offload & Kernel Performance Tuning                   │
+│     • Multi-Queue SMP IRQ affinity, RPS, and XPS CPU pinning                │
+│     • Driver-level SFP+ transceiver quirk abstraction (`ixgbe`)             │
+│     • Dynamic CAKE/FQ-CoDEL auto-derivation from WAN link rate              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ P3: Dashboard & Diagnostics Modernization                                   │
+│     • Privilege separation: unprivileged UI + root Unix domain socket helper│
+│     • Real-time SSE / WebSocket event stream replacing 5s polling           │
+│     • Direct Kea lease snapshot & Technitium metric cards                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ P4: Security, Isolation & Secret Backend Agnosticism                        │
+│     • Secret-backend agnostic abstraction (`clan vars` / `sops` / `agenix`) │
+│     • The Router Bootstrapping Paradox: 2-tier Vault/Infisical architecture │
+│     • Optional Linux network namespace isolation for untrusted zones        │
+│     • First-class `corerad` module option for observable IPv6 RA            │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 4.1 Tier P1: High Availability & Standby Invariant Core
+
+#### 1. First-Class Node Role Modeling (`mode = "primary" | "standby"`)
+**Problem Today**:
+`nix-router-optimized` provides a generic `services.router-ha` module with VRRP, but leaves the responsibility of making a node "standby safe" entirely to downstream modules. In `nix-clan-homelab`, the aspect author had to manually write over 30 lines of overrides to force WAN down, disable Kea, disable UPnP, disable DDNS, and silence IPv6 RAs.
+
+**Recommended Solution**:
+Introduce an explicit `services.router-ha.nodeMode` option with two strongly-typed values: `"primary"` and `"standby"`.
+When `nodeMode = "standby"`:
+- `systemd.network.networks."10-router-wan-primary".linkConfig.ActivationPolicy` automatically defaults to `"always-down"`.
+- All single-active LAN services (`services.router-kea.enable`, `services.router-ddns.enable`, `services.router-upnp.enable`, `services.router-mdns.enable`, `services.router-tailscale.enable`) are automatically disabled or conditioned on the HA election state.
+- `services.router-networking.routedInterfaces.*.ipv6SendRA` is forced to `false`.
+- Evaluation-time assertions verify that no standby router can accidentally negotiate DHCP on WAN or broadcast RAs on LAN.
+
+#### 2. Non-Disruptive WAN Promotion Engine
+**Problem Today**:
+In `modules/router-ha.nix`, the `notify_master` shell script brings up WAN and then executes:
+```bash
+systemctl restart systemd-networkd
+```
+Restarting the entire `systemd-networkd` daemon bounces **all** managed interfaces simultaneously. This causes transient carrier loss on LAN interfaces (`enp6s16` / `enp1s0f1`) and drops existing SSH/management sessions on `ens18` / `eno1`.
+
+**Recommended Solution**:
+Target networkd reloads strictly to the affected WAN interface using modern `networkctl` primitives:
+```bash
+# 1. Assign Golden MAC to WAN
+ip link set ${cfg.wan.interface} address ${cfg.wan.clonedMac}
+# 2. Bring WAN link administratively UP
+ip link set ${cfg.wan.interface} up
+# 3. Request systemd-networkd to reconfigure only this specific interface
+networkctl reload
+networkctl reconfigure ${cfg.wan.interface}
+```
+
+#### 3. Netfilter Conntrack State Synchronization (`conntrackd`): Completing the Vision
+**History & The Missing Link**:
+State synchronization was part of the original project vision (borrowing from MikroTik RouterOS and enterprise firewalls). In **April 2026**, an exhaustive research ledger was documented in `unified-nix-configuration/docs/design/router-election/2026-04-vrrp-pair/conntrackd-flowtable/DECISION.md`.
+The decision confirmed:
+- `conntrackd` in FTFW mode successfully replicates state over the dedicated management network (`192.168.100.0/24`).
+- Offloaded flows (FastTrack) survive failover because the backup cache retains each flow as ESTABLISHED.
+- A critical version gotcha was identified: `conntrack-tools 1.4.8` failed to strip the kernel `IPS_OFFLOAD` bit (0x4000) during cache injection, causing the kernel to reject entries with `-EBUSY`. Upstream fixed this in commit `8a8d1b1167c1`.
+- The implementation was paused when the old `router-backup` VM was retired.
+
+With [`elitedesk`](file:///home/deepwatrcreatur/flakes-worktrees/unified-nix-configuration/main/hosts/nixos/elitedesk) now operational as a dedicated physical bare-metal standby, packaging `modules/router-conntrackd.nix` completes this architecture. When `router` fails over to `elitedesk`, established TCP connections, VoIP calls, and WireGuard tunnels survive without reset.
+
+#### 4. Instant ARP/NDP Table Refresh via Gratuitous ARP (GARP)
+**Problem Today**:
+When the VIP floats to the standby node, upstream switches and client devices continue sending packets to the old node's LAN MAC until their ARP cache entries expire (often up to 300 seconds).
+
+**Recommended Solution**:
+Configure Keepalived's `garp_master_refresh` and `garp_master_repeat` options, and emit explicit gratuitous ARP / unsolicited Neighbor Advertisements upon master promotion:
+```bash
+${pkgs.iputils}/bin/arping -U -c 5 -I ${lanDevice} ${lanVipIp}
+${pkgs.ndisc6}/bin/ndisc6 -r 3 ${lanVipIpv6} ${lanDevice}
+```
+
+---
+
+### 4.2 Tier P2: 10G/2.5G Hardware Offload & Kernel Performance Tuning
+
+#### 1. Multi-Queue SMP IRQ Affinity & RPS/XPS Pinning (`network-irq.nix`)
+**Problem Today**:
+`router-optimizations.nix` provides an excellent Python script for ethtool offloads (TSO, GSO, GRO on, LRO off) and ring buffer sizing. However, it does not configure CPU affinity for multi-queue network cards.
+- On `elitedesk` (Intel X520-2, 10 Gbps SFP+), the card provides up to 64 MSI-X hardware queues. If all queue interrupts route to CPU Core 0, single-core interrupt processing becomes saturated at ~3-4 Gbps, despite the i7-3770 having 4 physical cores / 8 threads available.
+- On `router` (Intel I225/I226 2.5 Gbps), 4 hardware queues exist.
+
+**Recommended Solution**:
+Borrow the SMP IRQ affinity pattern from `joshpearce/nix-router`:
+- Enumerate `/sys/class/net/<iface>/device/msi_irqs/*`.
+- Distribute individual RX/TX queue IRQs evenly across CPU cores (e.g. Queue 0 -> Core 0, Queue 1 -> Core 1, Queue 2 -> Core 2, Queue 3 -> Core 3).
+- Configure Receive Packet Steering (`/sys/class/net/<iface>/queues/rx-*/rps_cpus`) and Transmit Packet Steering (`xps_cpus`) using declarative bitmasks derived from the system's core count.
+
+#### 2. Declarative SFP+ Transceiver Quirk Abstraction
+**Problem Today**:
+In `nix-clan-homelab`, `elitedesk` required a custom modprobe setting to prevent the Intel `ixgbe` driver from locking up when using third-party 10G-SR transceivers:
+`boot.extraModprobeConfig = "options ixgbe allow_unsupported_sfp=1";`
+Without this, the interface fails to detect optical carrier.
+
+**Recommended Solution**:
+Add a typed option to `services.router-optimizations`:
+```nix
+services.router-optimizations.drivers.ixgbe.allowUnsupportedSfp = mkEnableOption "Allow third-party SFP+ transceivers on ixgbe NICs";
+```
+
+#### 3. Automatic CAKE Smart Queue Management (SQM) Derivation
+**Problem Today**:
+`router-sqm.nix` exists, but requires manual configuration of bandwidth rates and queue disciplines.
+
+**Recommended Solution**:
+Automatically bind CAKE shaping to the bandwidth declared in `services.router-optimizations.interfaces.wan.bandwidth` (e.g. `"2.5Gbit"` or `"1Gbit"`), calculating optimal packet overhead and rtt parameters (`diffserv4`, `nat`, `wash`).
+
+---
+
+### 4.3 Tier P3: Dashboard & Diagnostics Modernization
+
+#### 1. Privilege Separation (Unprivileged Daemon + Root Unix Domain Socket)
+**Problem Today**:
+`modules/router-dashboard.nix` runs a monolithic Python HTTP server on port 8888. Because it reads kernel files, journal logs, and triggers service restarts, it requires elevated filesystem access and bind mounts (`/proc`, `/sys/class/net`, `/var/log/journal`, `/run/agenix`).
+- In `nix-clan-homelab`, the dashboard unit failed with `226/NAMESPACE` because `/run/agenix` was absent on clan machines (which use sops).
+
+**Recommended Solution**:
+Adopt OPNsense's `configd` architecture:
+1. **Frontend / API Daemon**: Runs as an unprivileged system user (`router-dashboard`), binding to unprivileged ports or Unix socket. Serves pre-compiled HTML/JS and handles read-only queries.
+2. **Privileged Helper**: A minimal root-owned daemon listening on a protected Unix socket (`/run/router-dashboard/control.sock`) with strict request validation for actions like restarting services or flushing DHCP leases.
+
+#### 2. Real-Time Server-Sent Events (SSE) / WebSockets
+**Problem Today**:
+The dashboard relies on client-side JavaScript polling `/api/stats` every 5 seconds. This creates intermittent CPU spikes and delayed feedback during network events.
+
+**Recommended Solution**:
+Replace polling with an SSE endpoint (`/api/stream`) emitting real-time bandwidth ticks (1-second granularity), connection counters, and gateway ping latencies.
+
+#### 3. Direct Integration of Kea & Technitium Data Planes
+Add native dashboard widgets for:
+- **Active DHCP Leases**: Parsed directly from Kea's memfile (`/var/lib/kea/dhcp4.leases`) or Kea Control Agent REST API.
+- **DNS Query Metrics**: Integrating Technitium query rate, cache hit ratio, and blocklist drops directly into the overview cards.
+
+---
+
+### 4.4 Tier P4: Security, Network Slicing & Secret Backend Agnosticism
+
+#### 1. The Secrets Management Paradox & The Two-Tier Architecture
+When considering enterprise secret managers like **HashiCorp Vault** or **Infisical** for edge routers, operators encounter a fatal dependency deadlock:
+
+$$\text{Router needs secrets to establish network} \iff \text{Vault/Infisical requires an active network to connect}$$
+
+- If the edge router reboots after a cold outage, its WAN link is down, DNS resolution is unavailable, and internal routing is halted.
+- If the router relies on a dynamic, pull-at-runtime secret agent (Vault Agent, Infisical CLI) over HTTPS, **the boot process deadlocks indefinitely**. The router cannot reach the secret manager because the network is down, and the network cannot come up because the router lacks its credentials.
+
+**The Solution: The Two-Tier Secret Lifecycle Model**:
+
+```
+                       CONTROL PLANE (CI / Workstation)
+                 ┌───────────────────────────────────────────┐
+                 │        HashiCorp Vault / Infisical        │
+                 │      (Centralized Secrets & Auditing)     │
+                 └─────────────────────┬─────────────────────┘
+                                       │
+                                       │ 1. Pull secret during deployment
+                                       ▼
+                 ┌───────────────────────────────────────────┐
+                 │     Clan CLI / deploy-rs Build Runner     │
+                 │   (Encrypts secret to host public age key)│
+                 └─────────────────────┬─────────────────────┘
+                                       │
+                                       │ 2. Deploy encrypted ciphertext to disk
+                                       ▼
+                         EDGE ROUTERS (router / elitedesk)
+                 ┌───────────────────────────────────────────┐
+                 │         Clan Vars / sops-nix in RAM       │
+                 │  - Decrypts locally at boot using host key│
+                 │  - ZERO network or external API dependency│
+                 │  - Fed via systemd LoadCredential=        │
+                 └───────────────────────────────────────────┘
+```
+
+1. **Central Governance**: Store canonical secrets in HashiCorp Vault or Infisical.
+2. **Deploy-Time Push & Encrypt**: The deployment runner (Clan CLI / `deploy-rs`) authenticates to Vault, reads the secrets, encrypts them against `router`'s and `elitedesk`'s public age keys via `clan vars` (`sops-nix`), and pushes ciphertext to the host.
+3. **Offline Zero-Network Decryption**: At boot time, the router uses its local host private key to decrypt the secrets into RAM (`/run/secrets/` or `tmpfs`). Even if the WAN cable is physically cut and all internal servers are powered off, the router boots cleanly with full autonomy.
+
+#### 2. Linux Network Namespaces (`netns`) for Untrusted Zones
+`router-zones.nix` currently isolates zones using nftables rules. Adding optional network namespace isolation (borrowing from `chayleaf/nixos-router`) provides kernel-level routing and socket separation for untrusted IoT, guest networks, or commercial VPN egress tunnels.
+
+#### 3. CoreRAD as a First-Class IPv6 RA Provider
+`systemd-networkd`'s router advertisement engine lacks telemetry and observability. Providing an opt-in `corerad` module option gives operators comprehensive Prometheus metrics and CLI inspection for all IPv6 Neighbor Discovery operations.
+
+---
+
+## 5. Concrete Code Implementation Blueprints
+
+To facilitate immediate implementation by future coding agents, the following tested code blueprints demonstrate the proposed improvements.
+
+### 5.1 Blueprint: Non-Disruptive WAN Promotion (`router-ha.nix`)
+
+Replace the disruptive `systemctl restart systemd-networkd` with targeted Netlink reloads and Gratuitous ARP:
+
+```nix
+# modules/router-ha.nix (Excerpts for non-disruptive notify_master)
+
+notifyMasterScript = pkgs.writeShellScript "keepalived-master" ''
+  set -euo pipefail
+  ${masterRoleScript}
+
+  ${optionalString cfg.wan.enable ''
+    echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
+    
+    # 1. Hardware MAC spoofing if Golden MAC is defined
+    ${optionalString (cfg.wan.clonedMac != null) ''
+      ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} address ${cfg.wan.clonedMac}
+    ''}
+    
+    # 2. Administrative link up
+    ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} up
+    
+    # 3. Targeted networkd reload (non-disruptive to LAN/mgmt)
+    ${pkgs.systemd}/bin/networkctl reload
+    ${pkgs.systemd}/bin/networkctl reconfigure ${cfg.wan.interface}
+  ''}
+
+  # 4. Gratuitous ARP & Unsolicited NA emission on LAN VIP
+  ${optionalString (!virtualIpIsIpv6) ''
+    ${pkgs.iputils}/bin/arping -U -c 3 -I ${cfg.vrrpInterface} ${virtualIpAddress} || true
+  ''}
+
+  # 5. Commit conntrackd external cache if conntrack sync is active
+  if [ -x "${pkgs.conntrack-tools}/bin/conntrackd" ]; then
+    ${pkgs.conntrack-tools}/bin/conntrackd -C || true
+  fi
+
+  # 6. Start single-active units
+  ${optionalString (cfg.singleActiveUnits != [ ]) ''
+    ${startSingleActiveUnits}
+  ''}
+'';
+```
+
+---
+
+### 5.2 Blueprint: Conntrack State Synchronization Module (`router-conntrackd.nix`)
+
+A complete drop-in module for netfilter state replication across the out-of-band management subnet:
+
+```nix
+# modules/router-conntrackd.nix
+{ config, lib, pkgs, ... }:
+
+with lib;
+
+let
+  cfg = config.services.router-conntrackd;
+in
+{
+  options.services.router-conntrackd = {
+    enable = mkEnableOption "Conntrack state synchronization for seamless HA failover";
+
+    syncInterface = mkOption {
+      type = types.str;
+      example = "eno1";
+      description = "Dedicated out-of-band management/sync interface.";
+    };
+
+    localAddress = mkOption {
+      type = types.str;
+      example = "192.168.100.100";
+      description = "IPv4 address of this node on the sync network.";
+    };
+
+    peerAddress = mkOption {
+      type = types.str;
+      example = "192.168.100.98";
+      description = "IPv4 address of the peer router on the sync network.";
+    };
+
+    syncPort = mkOption {
+      type = types.port;
+      default = 3780;
+      description = "UDP port used for conntrack state synchronization.";
+    };
+  };
+
+  config = mkIf cfg.enable {
+    environment.systemPackages = [ pkgs.conntrack-tools ];
+
+    environment.etc."conntrackd/conntrackd.conf".text = ''
+      Sync {
+        Mode FTFW {
+          DisableExternalCache Off
+          CommitTimeout 180
+          PurgeTimeout 5
+        }
+        UDP {
+          IPv4_address ${cfg.localAddress}
+          IPv4_Destination_Address ${cfg.peerAddress}
+          Port ${toString cfg.syncPort}
+          Interface ${cfg.syncInterface}
+          Checksum on
+        }
+      }
+      General {
+        Systemd on
+        HashSize 32768
+        HashLimit 131072
+        LogFile off
+        Syslog on
+        LockFile /var/lock/conntrack.lock
+        UNIX {
+          Path /var/run/conntrackd.ctl
+        }
+        Filter From Userspace {
+          Protocol Accept {
+            TCP
+            UDP
+          }
+          Address Ignore {
+            IPv4_address 127.0.0.1
+            IPv4_address ${cfg.localAddress}
+            IPv4_address ${cfg.peerAddress}
+          }
+        }
+      }
+    '';
+
+    systemd.services.conntrackd = {
+      description = "Conntrack Connection Synchronization Daemon";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" "systemd-networkd.service" ];
+      serviceConfig = {
+        Type = "notify";
+        ExecStart = "${pkgs.conntrack-tools}/bin/conntrackd -C /etc/conntrackd/conntrackd.conf";
+        Restart = "on-failure";
+        RestartSec = "5s";
+      };
+    };
+
+    # Open sync port in firewall
+    services.router-firewall.trustedUdpPorts = [ cfg.syncPort ];
+  };
+}
+```
+
+---
+
+### 5.3 Blueprint: Multi-Queue SMP IRQ Tuning (`router-optimizations.nix`)
+
+Automatic derivation of SMP affinity masks across multi-queue 10G/2.5G interfaces:
+
+```nix
+# Snippet for modules/router-optimizations.nix
+
+smpAffinityScript = pkgs.writeShellScript "router-smp-irq-tune" ''
+  set -euo pipefail
+  
+  CORE_COUNT=$(nproc)
+  echo "Tuning SMP IRQ affinity and RPS across $CORE_COUNT CPU cores..."
+
+  for iface in ${concatStringsSep " " (mapAttrsToList (_: i: i.device) cfg.interfaces)}; do
+    [ -d "/sys/class/net/$iface" ] || continue
+    
+    # 1. Distribute MSI-X IRQs across cores sequentially
+    idx=0
+    for irq_path in /sys/class/net/$iface/device/msi_irqs/*; do
+      [ -f "$irq_path" ] || continue
+      irq=$(basename "$irq_path")
+      core_mask=$(printf "%x" $((1 << (idx % CORE_COUNT))))
+      echo "$core_mask" > "/proc/irq/$irq/smp_affinity" 2>/dev/null || true
+      idx=$((idx + 1))
+    done
+
+    # 2. Configure RPS/XPS to allow all cores to service packet queues
+    all_cores_mask=$(printf "%x" $(( (1 << CORE_COUNT) - 1 )))
+    for rps_file in /sys/class/net/$iface/queues/rx-*/rps_cpus; do
+      [ -f "$rps_file" ] || continue
+      echo "$all_cores_mask" > "$rps_file" 2>/dev/null || true
+    done
+    for xps_file in /sys/class/net/$iface/queues/tx-*/xps_cpus; do
+      [ -f "$xps_file" ] || continue
+      echo "$all_cores_mask" > "$xps_file" 2>/dev/null || true
+    done
+  done
+'';
+```
+
+---
+
+## 6. Implementation Roadmap & Agent Guidance
+
+To execute these enhancements methodically without regressing production homelab operations, future coding agents should proceed through the following phased work packages:
+
+### Phase 1: Core HA Safety & Standby Abstraction (Immediate Priority)
+- [ ] **Work Item 1.1**: Add `nodeMode = "primary" | "standby"` to `services.router-ha`.
+  - Enforce `ActivationPolicy = "always-down"` on WAN when `nodeMode == "standby"`.
+  - Condition Kea, DDNS, UPnP, mDNS, and RA defaults on primary mode.
+  - Add build-time evaluation checks in `tests/router-ha.nix` verifying that standby configurations evaluate with WAN link down and zero LAN broadcast services.
+- [ ] **Work Item 1.2**: Update Keepalived notification hooks in `modules/router-ha.nix`.
+  - Replace `systemctl restart systemd-networkd` with `networkctl reload` and `networkctl reconfigure <wan>`.
+  - Add Gratuitous ARP (`arping`) on LAN VIP assignment.
+
+### Phase 2: State Synchronization & Hardware Optimization
+- [ ] **Work Item 2.1**: Implement `modules/router-conntrackd.nix`.
+  - Wire conntrackd configuration over management plane `192.168.100.0/24`.
+  - Add `conntrackd -C` commit trigger to `notify_master`.
+  - Validate in nspawn lab test environment.
+- [ ] **Work Item 2.2**: Integrate SMP IRQ affinity script into `modules/router-optimizations.nix`.
+  - Distribute MSI-X queues across CPU cores for Intel `igc` and `ixgbe` controllers.
+  - Add `hardware.network.ixgbe.allowUnsupportedSfp` module toggle.
+
+### Phase 3: Dashboard Architecture & Secret Decoupling
+- [ ] **Work Item 3.1**: Split `router-dashboard` into unprivileged web server + root Unix domain socket helper.
+  - Replace polling with Server-Sent Events (SSE) `/api/stream`.
+  - Remove all remaining hardcoded references to `/run/agenix`.
+  - Add native Kea lease table viewer and Technitium metric widgets.
+
+### Phase 4: Downstream Verification on `router` and `elitedesk`
+- [ ] **Work Item 4.1**: Update `den.aspects.router-role` in `nix-clan-homelab` to consume the new upstream abstractions (`nodeMode`, `router-conntrackd`).
+- [ ] **Work Item 4.2**: Execute pre-flight rehearsal on `elitedesk` (standby) before enabling active VRRP election.
+- [ ] **Work Item 4.3**: Perform live failover rehearsal under user supervision with `deploy-rs` rollback monitoring.
+
+---
+
+## 7. References & Source Material
+
+1. **`chayleaf/nixos-router`**: [github.com/chayleaf/nixos-router](https://github.com/chayleaf/nixos-router)  
+   *Reference: Network namespaces (`netns`) and declarative policy routing DSL.*
+2. **`joshpearce/nix-router`**: [github.com/joshpearce/nix-router](https://github.com/joshpearce/nix-router)  
+   *Reference: Multi-queue IRQ affinity tuning (`network-irq.nix`), Vector/ulogd JSON flow logging, and pure Nix unit test harnesses.*
+3. **`mdlayher/corerad`**: [github.com/mdlayher/corerad](https://github.com/mdlayher/corerad)  
+   *Reference: Observable IPv6 Neighbor Discovery / Router Advertisement daemon with Prometheus instrumentation.*
+4. **`sdlfoundation/hard-nix-router`**: [github.com/sdlfoundation/hard-nix-router](https://github.com/sdlfoundation/hard-nix-router)  
+   *Reference: Hardened nftables baselines, zero-trust MAC whitelisting, and Suricata IPS NFQUEUE integration.*
+5. **NixOS Keepalived Module & Integration Tests**: [nixpkgs/nixos/tests/keepalived.nix](https://github.com/NixOS/nixpkgs/blob/master/nixos/tests/keepalived.nix)  
+   *Reference: VRRP test harnesses, non-local IP binding, and Keepalived scripting security.*
+6. **Linux Netfilter Conntrack-Tools Documentation**: [conntrack-tools.netfilter.org](https://conntrack-tools.netfilter.org)  
+   *Reference: FTFW state synchronization mode, UDP transport, and systemd integration.*
+7. **FreeBSD / OPNsense Comparison**: [`docs/FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md)  
+   *Reference: Detailed technical mapping of CARP vs VRRP, pfsync vs conntrackd, and pf vs nftables/FastTrack.*
+8. **Homelab Repositories**:
+   - `flakes/nix-router-optimized` (`main`)
+   - `flakes/nix-clan-homelab` (`orca/workspaces/main/router-role`, `router-docs`, `elitedesk`)
+   - `flakes/unified-nix-configuration` (`hosts/nixos/router`, `hosts/nixos/elitedesk`, `docs/design/router-election`)
