@@ -627,7 +627,7 @@ let
           (if zone.updateSecurityPolicies != [ ] then zone.updateSecurityPolicies else [ defaultUpdateSecurityPolicy ]);
       in ''
       if ${if haEnabled then "true" else "false"} && [ "$(${pkgs.jq}/bin/jq -r --arg z ${escapeShellArg zone.name} \
-          '.response.zones[]? | select((.name|ascii_downcase) == ($z|ascii_downcase)) | .type' <<<"$RFC_ZONES_JSON")" != Primary ]; then
+          '.response.zones[]? | select((.name|ascii_downcase) == ($z|ascii_downcase|rtrimstr("."))) | .type' <<<"$RFC_ZONES_JSON")" != Primary ]; then
         # WHY: under zoneReplication.ha only the VRRP owner holds the zone as
         # Primary; promotion re-runs this unit.
         echo "Skipping RFC2136 settings for ${zone.name}: not Primary on this node"
