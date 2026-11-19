@@ -1486,7 +1486,12 @@ in
         message = "services.router-technitium.zoneReplication.secondary.primaryAddresses must not be empty when secondary zones are listed.";
       }
       {
-        assertion = !(cfg.rfc2136.enable && replicationEnabled && cfg.rfc2136.tsigKeyName == replication.tsigKeyName);
+        # WHY: Technitium lowercases key names and strips a trailing dot.
+        assertion =
+          let
+            canonical = name: toLower (removeSuffix "." name);
+          in
+          !(cfg.rfc2136.enable && replicationEnabled && canonical cfg.rfc2136.tsigKeyName == canonical replication.tsigKeyName);
         message = "services.router-technitium.zoneReplication.tsigKeyName must differ from rfc2136.tsigKeyName.";
       }
       {

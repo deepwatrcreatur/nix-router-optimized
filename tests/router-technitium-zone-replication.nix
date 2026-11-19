@@ -173,4 +173,26 @@ in
           };
         }
       ]);
+
+  router-technitium-zone-replication-key-collision-fails-eval =
+    eval.mkNixosEvalFailureCheck "router-technitium-zone-replication-key-collision"
+      (base ++ [
+        {
+          services.router-technitium = {
+            rfc2136 = {
+              enable = true;
+              tsigKeyFile = "/run/secrets/kea-ddns";
+              zones = [ { name = "home.example"; } ];
+            };
+            zoneReplication = {
+              tsigKeyName = "KEA-DDNS.";
+              tsigKeyFile = "/run/secrets/zone-transfer";
+              primary = {
+                zones = [ { name = "home.example"; } ];
+                secondaries = [ "10.10.10.4" ];
+              };
+            };
+          };
+        }
+      ]);
 }
