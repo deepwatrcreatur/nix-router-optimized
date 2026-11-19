@@ -87,6 +87,10 @@ let
     inherit self lib eval;
   };
 
+  routerHomelabLinkChecks = import ./router-homelab-links.nix {
+    inherit self lib eval;
+  };
+
   routerNdppdChecks = import ./router-ndppd.nix {
     inherit self lib eval;
   };
@@ -186,6 +190,7 @@ in
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
 // routerHaBoundaryChecks
+// routerHomelabLinkChecks
 // routerTechnitiumZoneReplicationChecks
 // routerHaLabChecks
 // routerNdppdChecks

@@ -431,6 +431,10 @@ Opt-in service bundle for a small homelab router:
 - enables router dashboard defaults
 - enables Prometheus/Grafana monitoring defaults
 - enables Netdata on the primary LAN address
+- builds dashboard links (Netdata, Grafana, Traffic, DNS Admin) from, in order:
+  `services.router-homelab.linkAddress` (host name or address; IPv6 literals
+  are bracketed), the listen address, or the routed LAN address when services
+  bind to `0.0.0.0`; `localhost` only when no routed interface exists
 - can enable ntopng with router-aware defaults via `services.router-homelab.enableNtopng = true`
 - can delay LAN-bound monitoring services until the chosen listen address is
   actually present with `services.router-homelab.waitForListenAddress = true`
