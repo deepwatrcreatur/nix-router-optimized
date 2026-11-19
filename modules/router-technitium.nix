@@ -370,6 +370,51 @@ let
       };
     };
   };
+  replication = cfg.zoneReplication;
+  replicationEnabled = replication.primary.zones != [ ] || replication.secondary.zones != [ ];
+  hasStaticHostSync = config.systemd.services ? technitium-sync-static-hosts;
+  # INVARIANT: settings/set replaces Technitium's whole TSIG key list, so every
+  # script that registers a key must send all keys this module manages.
+  tsigKeys =
+    optional cfg.rfc2136.enable {
+      inherit (cfg.rfc2136) algorithm;
+      name = cfg.rfc2136.tsigKeyName;
+      file = cfg.rfc2136.tsigKeyFile;
+    }
+    ++ optional replicationEnabled {
+      inherit (replication) algorithm;
+      name = replication.tsigKeyName;
+      file = replication.tsigKeyFile;
+    };
+  registerTsigKeys = optionalString (tsigKeys != [ ]) ''
+    tsig_keys=()
+    ${concatMapStringsSep "\n" (key: ''
+      if [ ! -f "${toString key.file}" ]; then
+        echo "Technitium TSIG key file not found at ${toString key.file}" >&2
+        exit 1
+      fi
+      tsig_keys+=("${key.name}|$(${pkgs.coreutils}/bin/tr -d '\r\n' < "${toString key.file}")|${key.algorithm}")
+    '') tsigKeys}
+    # GOTCHA: Technitium parses tsigKeys as one pipe-separated stream of
+    # name|secret|algorithm triples; rows are joined with "|", not ",".
+    tsig_list="$(IFS='|'; printf '%s' "''${tsig_keys[*]}")"
+    echo "Registering TSIG keys: ${concatMapStringsSep ", " (key: key.name) tsigKeys}"
+    technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "token=$TOKEN" \
+      --data-urlencode "tsigKeys=$tsig_list" \
+      "http://127.0.0.1:5380/api/settings/set" \
+      >/dev/null
+  '';
+  replicationZoneModule = types.submodule {
+    options.name = mkOption {
+      # WHY: Technitium stores names without surrounding dots; a trailing
+      # dot would never match its zone list and break ownership tracking.
+      type = types.strMatching "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*";
+      example = "home.example";
+      description = "Zone name, without a trailing dot.";
+    };
+  };
   commonShellHelpers = ''
     resolve_api_token_file() {
       if [ -f "${runtimeApiTokenPath}" ]; then
@@ -554,23 +599,11 @@ let
       exit 1
     fi
 
-    if [ ! -f "${cfg.rfc2136.tsigKeyFile}" ]; then
-      echo "Technitium TSIG key file not found at ${cfg.rfc2136.tsigKeyFile}" >&2
-      exit 1
-    fi
-
     wait_for_technitium
 
     TOKEN="$(read_api_token)"
-    SECRET="$(${pkgs.coreutils}/bin/tr -d '\r\n' < "${cfg.rfc2136.tsigKeyFile}")"
 
-    echo "Registering TSIG key ${cfg.rfc2136.tsigKeyName} in Technitium..."
-    technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
-      -H "Content-Type: application/x-www-form-urlencoded" \
-      --data-urlencode "token=$TOKEN" \
-      --data-urlencode "tsigKeys=${cfg.rfc2136.tsigKeyName}|$SECRET|${cfg.rfc2136.algorithm}" \
-      "http://127.0.0.1:5380/api/settings/set" \
-      >/dev/null
+    ${registerTsigKeys}
 
     ${concatMapStringsSep "\n" (zone:
       let
@@ -579,7 +612,9 @@ let
             "${cfg.rfc2136.tsigKeyName}|*.${zone.name}|PTR,DHCID"
           else
             "${cfg.rfc2136.tsigKeyName}|*.${zone.name}|A,AAAA,DHCID";
-        updateSecurityPolicies = concatStringsSep ","
+        # GOTCHA: policy rows are pipe-separated like tsigKeys; commas only
+        # separate record types inside a row.
+        updateSecurityPolicies = concatStringsSep "|"
           (if zone.updateSecurityPolicies != [ ] then zone.updateSecurityPolicies else [ defaultUpdateSecurityPolicy ]);
       in ''
       echo "Enabling RFC2136 updates for zone ${zone.name}..."
@@ -595,6 +630,137 @@ let
     '') cfg.rfc2136.zones}
 
     echo "Technitium RFC2136 configuration synchronized"
+  '';
+
+  zoneReplicationScript = pkgs.writeShellScript "technitium-zone-replication" ''
+    set -euo pipefail
+
+    ${commonShellHelpers}
+
+    if ! resolve_api_token_file >/dev/null; then
+      echo "Technitium API token file not found; cannot configure zone replication" >&2
+      exit 1
+    fi
+
+    wait_for_technitium
+
+    TOKEN="$(read_api_token)"
+
+    ${registerTsigKeys}
+
+    ZONES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/zones/list")"
+
+    zone_type() {
+      ${pkgs.jq}/bin/jq -r --arg zone "$1" '
+        .response.zones // []
+        | map(select((.name | ascii_downcase) == ($zone | ascii_downcase)))
+        | first
+        | .type // empty
+      ' <<<"$ZONES_JSON"
+    }
+
+    ${concatMapStringsSep "\n" (zone: ''
+      type="$(zone_type ${escapeShellArg zone.name})"
+      if [ "$type" != "Primary" ]; then
+        echo "Zone ${zone.name} is ''${type:-absent}, not Primary; skipping transfer settings" >&2
+      else
+        echo "Allowing TSIG zone transfers of ${zone.name} to ${concatStringsSep ", " replication.primary.secondaries}"
+        technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          --data-urlencode "token=$TOKEN" \
+          --data-urlencode "zone=${zone.name}" \
+          --data-urlencode "zoneTransfer=UseSpecifiedNetworkACL" \
+          --data-urlencode "zoneTransferNetworkACL=${concatStringsSep "," replication.primary.secondaries}" \
+          --data-urlencode "zoneTransferTsigKeyNames=${replication.tsigKeyName}" \
+          --data-urlencode "notify=SpecifiedNameServers" \
+          --data-urlencode "notifyNameServers=${concatStringsSep "," replication.primary.secondaries}" \
+          "http://127.0.0.1:5380/api/zones/options/set" \
+          >/dev/null
+      fi
+    '') replication.primary.zones}
+
+    owned_file=/var/lib/technitium-zone-replication/owned-secondaries
+    declared=(${concatMapStringsSep " " (zone: escapeShellArg (toLower zone.name)) replication.secondary.zones})
+    owned=()
+    if [ -f "$owned_file" ]; then
+      mapfile -t owned < "$owned_file"
+    fi
+
+    ${concatMapStringsSep "\n" (zone: ''
+      type="$(zone_type ${escapeShellArg zone.name})"
+      case "$type" in
+        "")
+          echo "Creating secondary zone ${zone.name} from ${concatStringsSep ", " replication.secondary.primaryAddresses}"
+          technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "token=$TOKEN" \
+            --data-urlencode "zone=${zone.name}" \
+            --data-urlencode "type=Secondary" \
+            --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," replication.secondary.primaryAddresses}" \
+            --data-urlencode "zoneTransferProtocol=Tcp" \
+            --data-urlencode "tsigKeyName=${replication.tsigKeyName}" \
+            "http://127.0.0.1:5380/api/zones/create" \
+            >/dev/null
+          # WHY: record ownership at once, so a later failure in this run
+          # cannot orphan a zone the unit created.
+          printf '%s\n' ${escapeShellArg (toLower zone.name)} >> "$owned_file"
+          owned+=(${escapeShellArg (toLower zone.name)})
+          ;;
+        Secondary)
+          echo "Updating secondary zone ${zone.name}"
+          technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "token=$TOKEN" \
+            --data-urlencode "zone=${zone.name}" \
+            --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," replication.secondary.primaryAddresses}" \
+            --data-urlencode "primaryZoneTransferProtocol=Tcp" \
+            --data-urlencode "primaryZoneTransferTsigKeyName=${replication.tsigKeyName}" \
+            "http://127.0.0.1:5380/api/zones/options/set" \
+            >/dev/null
+          ;;
+        *)
+          # WHY: a standby that took over may have promoted its copy to
+          # Primary; activation must never demote or delete live data.
+          echo "Zone ${zone.name} is $type, not Secondary; leaving it unchanged" >&2
+          ;;
+      esac
+    '') replication.secondary.zones}
+
+    # INVARIANT: prune only secondaries this unit created and that are still
+    # Secondary; a zone promoted to Primary after a failover is never touched.
+    for zone in "''${owned[@]}"; do
+      [ -n "$zone" ] || continue
+      case " ''${declared[*]} " in *" $zone "*) continue ;; esac
+      if [ "$(zone_type "$zone")" = "Secondary" ]; then
+        echo "Deleting secondary zone $zone, which left the configuration"
+        technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          --data-urlencode "token=$TOKEN" \
+          --data-urlencode "zone=$zone" \
+          "http://127.0.0.1:5380/api/zones/delete" \
+          >/dev/null
+      else
+        echo "Zone $zone left the configuration but is not Secondary; leaving it" >&2
+      fi
+    done
+    ZONES_JSON="$(technitium_request ${pkgs.curl}/bin/curl -fsS -G \
+      --data-urlencode "token=$TOKEN" \
+      "http://127.0.0.1:5380/api/zones/list")"
+    # WHY: ownership covers only zones this unit created; a pre-existing
+    # Secondary that happens to be declared is never recorded or pruned.
+    : > "$owned_file.tmp"
+    for zone in "''${owned[@]}"; do
+      [ -n "$zone" ] || continue
+      case " ''${declared[*]} " in *" $zone "*) ;; *) continue ;; esac
+      if [ "$(zone_type "$zone")" = "Secondary" ] && ! ${pkgs.gnugrep}/bin/grep -qxF "$zone" "$owned_file.tmp"; then
+        printf '%s\n' "$zone" >> "$owned_file.tmp"
+      fi
+    done
+    ${pkgs.coreutils}/bin/mv "$owned_file.tmp" "$owned_file"
+
+    echo "Technitium zone replication configured"
   '';
 
   ntpSyncScript = pkgs.writeShellScript "technitium-sync-ntp-option" ''
@@ -1155,6 +1321,68 @@ in
       };
     };
 
+    zoneReplication = {
+      tsigKeyName = mkOption {
+        type = types.str;
+        default = "zone-transfer";
+        description = "TSIG key name that authenticates zone transfers.";
+      };
+
+      tsigKeyFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = ''
+          File containing the base64 TSIG secret for zone transfers. Every
+          primary and secondary must use the same secret.
+        '';
+      };
+
+      algorithm = mkOption {
+        type = types.str;
+        default = "hmac-sha256";
+        description = "TSIG algorithm for zone transfers.";
+      };
+
+      primary = {
+        zones = mkOption {
+          type = types.listOf replicationZoneModule;
+          default = [ ];
+          example = literalExpression ''[ { name = "home.example"; } ]'';
+          description = ''
+            Existing primary zones to serve to secondaries over TSIG-signed
+            AXFR/IXFR. Each zone also sends NOTIFY to the secondaries.
+          '';
+        };
+
+        secondaries = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          example = [ "10.10.10.4" ];
+          description = "Addresses of secondaries allowed to transfer and sent NOTIFY.";
+        };
+      };
+
+      secondary = {
+        zones = mkOption {
+          type = types.listOf replicationZoneModule;
+          default = [ ];
+          example = literalExpression ''[ { name = "home.example"; } ]'';
+          description = ''
+            Zones to create as secondaries. A zone that already exists as any
+            type other than Secondary (for example, one promoted to Primary
+            after a failover) is left unchanged.
+          '';
+        };
+
+        primaryAddresses = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          example = [ "10.10.10.1" ];
+          description = "Addresses of the primary name servers to transfer from.";
+        };
+      };
+    };
+
     scopes = mkOption {
       type = types.attrsOf scopeModule;
       default = { };
@@ -1240,6 +1468,31 @@ in
       {
         assertion = (!cfg.rfc2136.enable) || cfg.rfc2136.zones != [ ];
         message = "services.router-technitium.rfc2136.zones must not be empty when RFC2136 support is enabled.";
+      }
+      {
+        assertion = (!replicationEnabled) || hasTokenSource;
+        message = "services.router-technitium.zoneReplication requires a Technitium API token or bootstrap password secret.";
+      }
+      {
+        assertion = (!replicationEnabled) || replication.tsigKeyFile != null;
+        message = "services.router-technitium.zoneReplication.tsigKeyFile must be set when zones are replicated.";
+      }
+      {
+        assertion = replication.primary.zones == [ ] || replication.primary.secondaries != [ ];
+        message = "services.router-technitium.zoneReplication.primary.secondaries must not be empty when primary zones are listed.";
+      }
+      {
+        assertion = replication.secondary.zones == [ ] || replication.secondary.primaryAddresses != [ ];
+        message = "services.router-technitium.zoneReplication.secondary.primaryAddresses must not be empty when secondary zones are listed.";
+      }
+      {
+        # WHY: Technitium lowercases key names and strips a trailing dot.
+        assertion =
+          let
+            canonical = name: toLower (removeSuffix "." name);
+          in
+          !(cfg.rfc2136.enable && replicationEnabled && canonical cfg.rfc2136.tsigKeyName == canonical replication.tsigKeyName);
+        message = "services.router-technitium.zoneReplication.tsigKeyName must differ from rfc2136.tsigKeyName.";
       }
       {
         assertion =
@@ -1445,6 +1698,37 @@ in
 
       script = ''
         ${rfc2136Script}
+      '';
+    };
+
+    # WHY: with no zones declared the unit stays installed (when a token
+    # source exists) so it can prune secondaries an earlier generation created.
+    systemd.services.technitium-zone-replication = mkIf (replicationEnabled || hasTokenSource) {
+      description = "Configure Technitium zone transfers";
+      after = [
+        "technitium-dns-server.service"
+        "agenix.service"
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service"
+        ++ optional cfg.rfc2136.enable "technitium-enable-rfc2136.service"
+        ++ optional hasStaticHostSync "technitium-sync-static-hosts.service";
+      wants = [
+        "technitium-dns-server.service"
+      ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service"
+        ++ optional hasStaticHostSync "technitium-sync-static-hosts.service";
+      wantedBy = [ "multi-user.target" ];
+      unitConfig = optionalAttrs (!replicationEnabled) {
+        ConditionPathExists = "/var/lib/technitium-zone-replication/owned-secondaries";
+      };
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        StateDirectory = "technitium-zone-replication";
+        StateDirectoryMode = "0700";
+      };
+
+      script = ''
+        ${zoneReplicationScript}
       '';
     };
   };
