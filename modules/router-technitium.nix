@@ -894,6 +894,21 @@ let
           --data-urlencode "zone=$zone" \
           "http://127.0.0.1:5380/api/zones/delete" \
           >/dev/null
+      ${optionalString haEnabled ''
+      elif [ "$(zone_type "$zone")" = "Primary" ]; then
+        # WHY: under ha an owned zone is Primary on the MASTER; dropping its
+        # declaration must remove it there too. Keep an export first.
+        if ${pkgs.curl}/bin/curl -fsS -G --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
+            "http://127.0.0.1:5380/api/zones/export" > "${haStateDir}/$zone.removed.zone"; then
+          echo "Deleting owned Primary zone $zone, which left the configuration"
+          technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
+            "http://127.0.0.1:5380/api/zones/delete" >/dev/null
+        else
+          echo "Export of $zone failed; not deleting it" >&2
+        fi
+      ''}
       else
         echo "Zone $zone left the configuration but is not Secondary; leaving it" >&2
       fi
