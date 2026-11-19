@@ -31,6 +31,7 @@ Homelab tracking bead: `nch-sny.34` (nix-clan-homelab).
 | --- | --- | --- | --- |
 | H0 | Router's Technitium TCP listen queue overflows | - | **Disproven** (E5) |
 | H1 | X520 Flow Director ATR mis-steers or drops RX for some TCP flows on elitedesk | High | Open; supported by E9, E11 |
+| H1b | ATR signature filters accumulate (stale entries, hash collisions) and mis-steer new flows hours after a flush; a toggle resets it | Medium | Open; E14 and timing evidence |
 | H2 | L2 problem: switch MAC-table flapping or an ARP mix-up between the shared LAN and management segment | Low | Open; E6 weakens it |
 | H3 | A filter that runs before tcpdump drops the packets (XDP, tc) | - | **Disproven** (E10) |
 | H4 | Driver or firmware fault on this card, related to the PCIe dropout (`nch-sny.31`) | Medium | Open |
@@ -53,7 +54,8 @@ Homelab tracking bead: `nch-sny.34` (nix-clan-homelab).
 | E11 | `ethtool -K enp1s0f1 ntuple on` (disables ATR), 400 TCP queries | 0/400; `fdir_match` stopped increasing | Supports H1 |
 | E12 | Control: ntuple off (ATR back on), 400 queries; then ntuple on again, 400 queries | 0/400 and 0/400 | Inconclusive. Failures come in bursts, and the toggle may flush a stale Flow Director table |
 | E13 | 2 h soak, ntuple on (ATR off), 1 TCP + 1 UDP query/s (07:50–09:50, unit `dns-soak-atr-off`) | 6920 TCP and 6920 UDP queries, **0 failures**. `fdir_match` frozen at 16875 for the whole run (`fdir_miss` 126100) | Strongly supports H1. At E2's 3.6% rate about 250 TCP failures were expected, and at least 69 even at 1% |
-| E14 | Control: 2 h soak, ntuple off (ATR on) again, same probe (from 09:51, unit `dns-soak-atr-on`) | running | If failures return, H1 is confirmed |
+| E14 | Control: ntuple off (ATR on) again from 09:51 (unit `dns-soak-atr-on`); 2 h | interim at 10:44: 3000 TCP and 3000 UDP queries, 0 failures, while `fdir_match` rose from 16875 to 29807, so ATR is steering | Inconclusive so far. The E2/E7 failures started more than 5 h after boot (00:38), and every ntuple toggle flushes the Flow Director table. Suggests H1b |
+| E15 | Long control: ATR on, untouched, 12 h after E14 (unit `dns-soak-atr-on-long`, starts about 11:55) | running | H1b predicts failures returning after hours of table accumulation |
 
 ## Counters
 
