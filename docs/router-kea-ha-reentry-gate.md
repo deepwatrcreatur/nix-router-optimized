@@ -119,20 +119,24 @@ output, not memory) and linked from the incident or work-item history.
 
 The `vm-router-kea-ha` check (`tests/vm/router-kea-ha.nix`) runs evidence
 items A–E against two VMs with the module defaults (load-balancing,
-10 s heartbeat, 60 s `max-response-delay`) and `router-firewall` enabled:
+5 s heartbeat, 15 s `max-response-delay`, `max-unacked-clients` 0) and
+`router-firewall` enabled:
 
 | Step | Result in the VM |
 |---|---|
-| Both nodes reach `load-balancing` | about 20–30 s after boot |
+| Both nodes reach `load-balancing` | about 10–30 s after boot |
 | Fresh clients from 8 MACs | both servers answer a share; every lease appears on both nodes |
 | HA port 8000 | reachable from the peer, refused to a LAN client |
-| Primary's Kea stopped | secondary reaches `partner-down` after about 55–60 s, then serves every client |
-| Primary restarted | it pulls the leases it missed and both are back in `load-balancing` within about 20 s; no duplicate leases |
+| Primary's Kea stopped | secondary reaches `partner-down` about 13 s after the primary stops (the 15 s timer starts at the last answered heartbeat), then serves every client |
+| Primary restarted | it pulls the leases it missed and both are back in `load-balancing` within about 10–20 s; no duplicate leases |
 
 What clients notice when one node fails: clients that already have a lease
 keep it and renew later, so they see nothing. A new or rebinding client whose
 MAC hashes to the failed node gets no answer until the survivor reaches
-`partner-down`, so up to about a minute of DHCP retries.
+`partner-down`, so up to about 20 s of DHCP retries. Tune this with
+`dhcp4.ha.heartbeatDelaySec`, `maxResponseDelaySec` and
+`maxUnackedClients` (raise the last when the HA link is a separate network
+that can fail while the peer still serves clients).
 
 Run it with `nix build .#checks.x86_64-linux.vm-router-kea-ha -L`.
 

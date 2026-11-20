@@ -119,6 +119,7 @@ mkRouterTest {
 
   testScript = ''
     import json
+    import time
 
     routers = [router1, router2]
 
@@ -197,7 +198,10 @@ mkRouterTest {
 
     with subtest("primary stops: secondary goes partner-down and serves everyone"):
         router1.succeed("systemctl stop kea-dhcp4-server")
-        wait_state(router2, "partner-down", timeout=180)
+        t0 = time.monotonic()
+        # Defaults: 15 s max-response-delay plus up to one 5 s heartbeat.
+        wait_state(router2, "partner-down", timeout=40)
+        print(f"takeover after {time.monotonic() - t0:.1f} s")
         for mac in failover_macs:
             got = lease(mac)
             assert got, f"no lease for {mac} during failover"

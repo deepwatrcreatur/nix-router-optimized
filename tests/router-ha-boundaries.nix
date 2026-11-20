@@ -116,11 +116,31 @@ in
               message = "Kea HA peer URLs must use the configured addresses.";
             }
             {
+              assertion =
+                let
+                  ha = builtins.head haHook.parameters.high-availability;
+                in
+                ha.heartbeat-delay == 5000 && ha.max-response-delay == 15000 && ha.max-unacked-clients == 0;
+              message = "Kea HA must default to a 5 s heartbeat and 15 s takeover.";
+            }
+            {
               assertion = lib.any (lib.hasInfix "keaSync is deprecated") config.warnings;
               message = "keaSync must warn that it is deprecated.";
             }
           ];
         })
+    ]
+  );
+
+  router-kea-ha-timing-fails-eval = eval.mkNixosEvalFailureCheck "router-kea-ha-timing" (
+    keaHaPair { }
+    ++ [
+      {
+        services.router-kea.dhcp4.ha = {
+          heartbeatDelaySec = 20;
+          maxResponseDelaySec = 15;
+        };
+      }
     ]
   );
 
