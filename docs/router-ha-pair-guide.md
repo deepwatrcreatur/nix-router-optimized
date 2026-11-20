@@ -20,6 +20,51 @@ currently validated pattern, not every possible topology.
 - lets the promoted node start specific single-owner systemd units
 - keeps selected services shared on both nodes
 
+## WAN Ownership
+
+Only the VRRP master has its WAN link up. router-ha sets
+`ActivationPolicy=manual` on the WAN's `.network` (detected automatically
+for `router-networking` WANs, otherwise set `services.router-ha.wan.network`),
+so systemd-networkd never raises the WAN by itself, at boot or when it
+restarts during a `nixos-rebuild switch`.
+
+- **Promotion:** set the cloned MAC (while the link is down), then
+  `networkctl up` and `networkctl reconfigure` on the WAN only. DHCPv4,
+  DHCPv6 and prefix delegation start fresh with the cloned MAC.
+- **Demotion and fault:** `networkctl down` on the WAN.
+- LAN, management and systemd-networkd itself are never restarted. Earlier
+  versions restarted systemd-networkd on promotion, which bounced every link
+  at the moment of failover.
+
+Evaluation checks that `wan.network` names a network whose
+`matchConfig.Name` is `wan.interface` (a typo would otherwise create a new,
+empty network and leave the real WAN automatic), and that the network does
+not set `MACAddress` to something other than `clonedMac`: `networkctl
+reconfigure` re-applies it and would undo the clone before DHCP starts.
+
+A failed `networkctl reconfigure` does not demote the node: keepalived stays
+MASTER without a working WAN, as it did with the earlier networkd restart.
+Tracking WAN health in VRRP priority is not implemented yet.
+
+Do not set `ActivationPolicy=always-down` on the WAN of an HA node (a common
+way to park a cold standby): `networkctl up` refuses always-down links, and
+the module system reports the conflicting definition.
+
+The VM test `vm-router-ha-wan-failover` checks all of this on two routers
+with a simulated ISP (DHCPv4 tied to the cloned MAC, DHCPv6 with prefix
+delegation): election, failover, fail-back, a networkd restart on the
+standby, and no link or static-address change on LAN or management. A planned
+failover there takes about 4 s from `systemctl stop keepalived` to the new
+master holding the VIP, the IPv4 lease and a delegated prefix.
+
+IPv6 note: the DHCPv6 DUID differs per node, so an ISP that pins the
+delegated prefix to the DUID may hand the new master a different prefix,
+and LAN clients then renumber. DHCPv6 and prefix delegation also start only
+after the new master hears a Router Advertisement; most ISPs answer the
+router solicitation at once, but one that only sends slow periodic RAs
+delays IPv6 after a failover. `DHCPv6Config.WithoutRA = "solicit"` on the
+WAN network removes that dependency.
+
 ## What This Pattern Does Not Do Automatically
 
 - it does **not** make every LAN-facing service follow promotion by default

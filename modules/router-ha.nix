@@ -79,10 +79,14 @@ let
     ${optionalString cfg.wan.enable ''
       echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
       ${optionalString (cfg.wan.clonedMac != null) ''
-        ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} address ${cfg.wan.clonedMac}
+        ${pkgs.iproute2}/bin/ip link set dev ${escapeShellArg cfg.wan.interface} down
+        ${pkgs.iproute2}/bin/ip link set dev ${escapeShellArg cfg.wan.interface} address ${escapeShellArg cfg.wan.clonedMac}
       ''}
-      ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} up
-      ${pkgs.systemd}/bin/systemctl restart systemd-networkd
+      # WHY: only the WAN link changes; restarting systemd-networkd here
+      # bounced LAN and management at the moment of failover.
+      ${pkgs.systemd}/bin/networkctl up ${escapeShellArg cfg.wan.interface}
+      # Fresh DHCPv4/DHCPv6/PD with the (possibly cloned) MAC.
+      ${pkgs.systemd}/bin/networkctl reconfigure ${escapeShellArg cfg.wan.interface}
     ''}
     ${optionalString bgpSingleActiveOwner ''
       ${bgpPromoteScript}
@@ -99,7 +103,8 @@ let
     ${roleScript}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning away from MASTER: Bringing down WAN ${cfg.wan.interface}..."
-      ${pkgs.iproute2}/bin/ip link set ${cfg.wan.interface} down
+      ${pkgs.systemd}/bin/networkctl down ${escapeShellArg cfg.wan.interface} \
+        || ${pkgs.iproute2}/bin/ip link set dev ${escapeShellArg cfg.wan.interface} down
     ''}
     ${optionalString bgpSingleActiveOwner ''
       ${bgpDemoteScript}
@@ -139,6 +144,21 @@ let
       filterAttrs (name: _: cfg.garp.${name} != null) garpKeywords
     )
   );
+
+  hasRouterNetworking = hasAttrByPath [ "services" "router-networking" "enable" ] options;
+  # INVARIANT: mirrors router-networking's "10-router-wan-<name>" naming and
+  # its effectiveWans = { primary = wan; } // wans.
+  autoWanNetwork =
+    if hasRouterNetworking && config.services.router-networking.enable then
+      let
+        rn = config.services.router-networking;
+        matching = filterAttrs (_: w: w.device == cfg.wan.interface && w.manageWithNetworkd) (
+          { primary = rn.wan; } // rn.wans
+        );
+      in
+      if matching != { } then "10-router-wan-${head (attrNames matching)}" else null
+    else
+      null;
 
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
   virtualIpIsIpv6 = hasInfix ":" virtualIpAddress;
@@ -261,6 +281,19 @@ in
         default = null;
         example = "00:11:22:33:44:55";
         description = "The Golden MAC address to clone when this node is Master.";
+      };
+      network = mkOption {
+        type = types.nullOr types.str;
+        default = autoWanNetwork;
+        defaultText = literalExpression ''"10-router-wan-<name>" of the router-networking WAN whose device is wan.interface, else null'';
+        example = "10-wan";
+        description = ''
+          Attribute name under `systemd.network.networks` of the WAN's
+          `.network`. router-ha sets `ActivationPolicy=manual` on it, so
+          systemd-networkd never brings the WAN up by itself (at boot or on a
+          networkd restart); only VRRP promotion runs `networkctl up`.
+          Detected automatically for WANs managed by `router-networking`.
+        '';
       };
     };
 
@@ -453,6 +486,40 @@ in
       };
 
       systemd.services.keepalived.after = [ "router-ha-vrrp-secret.service" ];
+    })
+
+    (mkIf cfg.wan.enable (
+      let
+        wanNet = if cfg.wan.network == null then { } else config.systemd.network.networks.${cfg.wan.network} or { };
+        matchName = wanNet.matchConfig.Name or null;
+        # GOTCHA: router-ha's own ActivationPolicy assignment creates the
+        # entry, so existence proves nothing; require it to match the WAN.
+        matchesWan =
+          if isList matchName then elem cfg.wan.interface matchName
+          else if isString matchName then elem cfg.wan.interface (splitString " " matchName)
+          else false;
+        networkMac = wanNet.linkConfig.MACAddress or null;
+      in
+      {
+        assertions = [
+          {
+            assertion = matchesWan;
+            message = "services.router-ha.wan: set wan.network to the systemd.network.networks attribute whose matchConfig.Name is ${cfg.wan.interface}, so router-ha can give it ActivationPolicy=manual (${if cfg.wan.network == null then "none detected" else "\"${cfg.wan.network}\" does not match ${cfg.wan.interface}"}).";
+          }
+          {
+            # WHY: networkctl reconfigure re-applies [Link] MACAddress, which
+            # would undo the cloned MAC before DHCP starts.
+            assertion = cfg.wan.clonedMac == null || networkMac == null || networkMac == cfg.wan.clonedMac;
+            message = "services.router-ha.wan: network \"${toString cfg.wan.network}\" sets MACAddress=${toString networkMac}, which overrides clonedMac ${toString cfg.wan.clonedMac} on promotion. Remove it (e.g. router-networking wan.macAddress) or make them equal.";
+          }
+        ];
+      }
+    ))
+    (mkIf (cfg.wan.enable && cfg.wan.network != null) {
+      # INVARIANT: manual, not always-down: networkctl up/reconfigure are
+      # refused for always-down links, and "up" would re-raise the WAN on
+      # the standby whenever networkd restarts.
+      systemd.network.networks.${cfg.wan.network}.linkConfig.ActivationPolicy = "manual";
     })
 
     # Firewall integration
