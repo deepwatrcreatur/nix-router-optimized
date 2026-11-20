@@ -80,7 +80,7 @@ let
   };
 
   routerHaBoundaryChecks = import ./router-ha-boundaries.nix {
-    inherit self lib eval;
+    inherit self lib pkgs nixpkgs system eval;
   };
 
   routerTechnitiumZoneReplicationChecks = import ./router-technitium-zone-replication.nix {

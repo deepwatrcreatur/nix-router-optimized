@@ -1,9 +1,51 @@
 {
   self,
   lib,
+  pkgs,
+  nixpkgs,
+  system,
   eval,
 }:
 
+let
+  garpSystem =
+    (nixpkgs.lib.nixosSystem {
+      inherit system;
+      modules = [
+        {
+          networking.hostName = "router-check";
+          system.stateVersion = "25.11";
+          fileSystems."/" = {
+            device = "none";
+            fsType = "tmpfs";
+          };
+          boot.loader.grub.devices = [ "nodev" ];
+        }
+        self.nixosModules.router-ha
+        {
+          services.router-ha = {
+            enable = true;
+            role = "master";
+            virtualIp = "10.10.10.1/16";
+            vrrpInterface = "eth9";
+            vrrpPasswordFile = "/run/keys/vrrp-password";
+            preemptDelay = 60;
+            garp = {
+              masterDelay = 0;
+              masterRepeat = 3;
+              lowerPrioDelay = 2;
+              lowerPrioRepeat = 2;
+              masterRefresh = 60;
+              masterRefreshRepeat = 2;
+            };
+          };
+        }
+      ];
+    }).config;
+  # WHY: with vrrpPasswordFile, ExecStart reads the rendered /run copy; the
+  # store keepalived.conf (password still a $VAR) is named in ExecStartPre.
+  keepalivedPreStart = builtins.head garpSystem.systemd.services.keepalived.serviceConfig.ExecStartPre;
+in
 {
   router-ha-ntp-boundary-docs-eval = eval.mkNixosEvalCheck "router-ha-ntp-boundary-docs" [
     self.nixosModules.router-ha
@@ -106,10 +148,74 @@
       {
         assertions = [
           {
-            assertion = instance.state == "MASTER" && !(lib.strings.hasInfix "preempt_delay" instance.extraConfig);
-            message = "router-ha without preemptDelay must keep the role-based MASTER start and no preempt_delay (backwards compatible).";
+            assertion =
+              instance.state == "MASTER"
+              && !(lib.strings.hasInfix "preempt_delay" instance.extraConfig)
+              && !(lib.strings.hasInfix "garp_" instance.extraConfig);
+            message = "router-ha without preemptDelay or garp must keep the role-based MASTER start and render neither (backwards compatible).";
           }
         ];
       })
   ];
+
+  router-ha-garp-eval = eval.mkNixosEvalCheck "router-ha-garp" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        garp = {
+          masterDelay = 0;
+          masterRepeat = 3;
+          masterRefresh = 60;
+          masterRefreshRepeat = 2;
+        };
+      };
+    }
+    ({ config, ... }:
+      let
+        conf = config.services.keepalived.vrrpInstances.main.extraConfig;
+      in
+      {
+        assertions = [
+          {
+            assertion =
+              lib.all (line: lib.strings.hasInfix line conf) [
+                "garp_master_delay 0"
+                "garp_master_repeat 3"
+                "garp_master_refresh 60"
+                "garp_master_refresh_repeat 2"
+              ];
+            message = "router-ha should render the set GARP options, including an explicit 0.";
+          }
+          {
+            assertion = !(lib.strings.hasInfix "garp_lower_prio" conf);
+            message = "unset GARP options must be left to keepalived's defaults.";
+          }
+        ];
+      })
+  ];
+
+  # WHY: keepalived logs unknown or malformed keywords and carries on, so
+  # run its own parser instead of trusting the rendered text.
+  # GOTCHA: the build sandbox has no NIC, so the interface errors (and the
+  # exit code they cause) are expected; any other message fails.
+  router-ha-keepalived-config-test =
+    pkgs.runCommand "router-ha-keepalived-config-test" { } ''
+      conf=$(grep -o '/nix/store/[^" ]*keepalived.conf' ${keepalivedPreStart} | head -n1)
+      for kw in garp_master_delay garp_master_repeat garp_lower_prio_delay garp_lower_prio_repeat garp_master_refresh garp_master_refresh_repeat preempt_delay; do
+        grep -q "^ *$kw " "$conf" || { echo "missing $kw in $conf" >&2; exit 1; }
+      done
+      ${pkgs.keepalived}/bin/keepalived --config-test="$PWD/test.log" -f "$conf" -l 2> stderr || true
+      cat test.log stderr > all.log
+      if grep -vE "interface eth9 for vrrp_instance main doesn't exist|Non-existent interface specified|Truncating auth_pass" all.log | grep -q .; then
+        echo "unexpected keepalived config messages:" >&2
+        cat all.log >&2
+        exit 1
+      fi
+      touch "$out"
+    '';
 }
