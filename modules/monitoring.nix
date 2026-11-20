@@ -574,7 +574,9 @@ let
             description = "Seconds since router-hw-sensors last ran; empty when router.monitoring.hardwareSensors is off.";
             type = "stat";
             gridPos = { x = 0; y = 32; w = 6; h = 4; };
-            targets = [ { expr = "time() - router_hw_sensors_last_run_timestamp_seconds"; } ];
+            # Instant query: a range query would keep showing the last age
+            # after the collector stops.
+            targets = [ { expr = "time() - router_hw_sensors_last_run_timestamp_seconds"; instant = true; } ];
             fieldConfig.defaults = {
               unit = "s";
               thresholds = {

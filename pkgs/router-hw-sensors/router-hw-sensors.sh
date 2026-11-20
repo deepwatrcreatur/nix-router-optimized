@@ -25,9 +25,11 @@ for dev in /sys/class/net/*; do
   if [ "$drv" = mlx5_core ] && [[ $pci == *.0 ]]; then
     # One ASIC per card, so read it once through function 0. MTMP reports
     # units of 0.125 degrees C (NVIDIA PRM, MTMP register).
-    raw=$(mstreg -d "$pci" --reg_name MTMP --get --indexes sensor_index=0x0 2>/dev/null \
+    # GOTCHA: under errexit/pipefail a failed read must not stop the run;
+    # the SFP readings and the heartbeat still have to be written.
+    raw=$({ mstreg -d "$pci" --reg_name MTMP --get --indexes sensor_index=0x0 2>/dev/null || true; } \
       | awk '$1 == "temperature" { print $3; exit }')
-    if [ -n "$raw" ]; then
+    if [[ $raw =~ ^0x[0-9a-fA-F]+$ ]]; then
       value=$(( raw ))
       # MTMP is a signed 16-bit field.
       [ "$value" -ge 32768 ] && value=$(( value - 65536 ))
