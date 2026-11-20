@@ -119,6 +119,22 @@ let
   # the value cannot escape the quoted auth_pass (braces stay literal there).
   vrrpPasswordCharsOk = pw: builtins.match "[!-~]+" pw != null && builtins.match ".*[\"'\\\\$#!].*" pw == null;
 
+  garpKeywords = {
+    masterDelay = "garp_master_delay";
+    masterRepeat = "garp_master_repeat";
+    lowerPrioDelay = "garp_lower_prio_delay";
+    lowerPrioRepeat = "garp_lower_prio_repeat";
+    masterRefresh = "garp_master_refresh";
+    masterRefreshRepeat = "garp_master_refresh_repeat";
+  };
+  # WHY: keepalived already sends GARP/unsolicited NA on promotion; tune it
+  # here rather than adding arping/ndisc6 notify scripts (discussion 21 Q3).
+  garpConfig = concatStringsSep "\n" (
+    mapAttrsToList (name: keyword: "${keyword} ${toString cfg.garp.${name}}") (
+      filterAttrs (name: _: cfg.garp.${name} != null) garpKeywords
+    )
+  );
+
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
   virtualIpIsIpv6 = hasInfix ":" virtualIpAddress;
 in
@@ -196,6 +212,25 @@ in
         keeps the role-based initial state and immediate preemption.
       '';
     };
+
+    garp =
+      let
+        garpOption =
+          keyword: description:
+          mkOption {
+            type = types.nullOr types.ints.unsigned;
+            default = null;
+            description = "${description} Keepalived `${keyword}`; `null` keeps keepalived's default.";
+          };
+      in
+      {
+        masterDelay = garpOption "garp_master_delay" "Seconds after becoming MASTER before the second burst of gratuitous ARP/unsolicited NA (0 disables the second burst; keepalived default 5).";
+        masterRepeat = garpOption "garp_master_repeat" "Gratuitous ARP/NA messages per burst on becoming MASTER (keepalived default 5).";
+        lowerPrioDelay = garpOption "garp_lower_prio_delay" "Delay for the second burst after a lower-priority advert is seen while MASTER (defaults to masterDelay).";
+        lowerPrioRepeat = garpOption "garp_lower_prio_repeat" "Messages per burst after a lower-priority advert is seen while MASTER (defaults to masterRepeat).";
+        masterRefresh = garpOption "garp_master_refresh" "Seconds between periodic gratuitous ARP/NA refreshes while MASTER (keepalived default 0, no refresh). Useful when a switch or bridge ages out the VIP's MAC entry.";
+        masterRefreshRepeat = garpOption "garp_master_refresh_repeat" "Messages per periodic refresh (keepalived default 1).";
+      };
 
     singleActiveUnits = mkOption {
       type = types.listOf types.str;
@@ -324,6 +359,7 @@ in
           ];
           extraConfig = ''
             ${optionalString (cfg.preemptDelay != null) "preempt_delay ${toString cfg.preemptDelay}"}
+            ${garpConfig}
             authentication {
               auth_type PASS
               auth_pass "${if usePasswordFile then "$ROUTER_HA_VRRP_PASS" else cfg.vrrpPassword}"

@@ -65,7 +65,30 @@ starts as MASTER). Failover away from a dead master is not delayed; only the
 return is. Each fail-back moves the single-active units (WAN, DHCP, DDNS),
 so fewer of them means fewer short outages when a primary flaps.
 
-## Recommended Ownership Split
+## Gratuitous ARP and NA (`garp`)
+
+On promotion keepalived sends gratuitous ARP (IPv4) and unsolicited
+neighbour advertisements (IPv6) for the VIP, so clients, switches and
+hypervisor bridges learn its new MAC. No arping or ndisc6 scripts are needed.
+`services.router-ha.garp` exposes keepalived's per-instance settings; each is
+`null` by default, which keeps keepalived's own default:
+
+| Option | Keepalived keyword | Keepalived default |
+|---|---|---|
+| `masterRepeat` | `garp_master_repeat` | 5 messages per burst |
+| `masterDelay` | `garp_master_delay` | second burst after 5 s (0 = none) |
+| `lowerPrioRepeat` / `lowerPrioDelay` | `garp_lower_prio_*` | same as the master values |
+| `masterRefresh` | `garp_master_refresh` | 0 (no periodic refresh) |
+| `masterRefreshRepeat` | `garp_master_refresh_repeat` | 1 |
+
+Measure before you tune. During a failover rehearsal, watch the VIP from a
+client (`ping -D <vip>` and `ip neigh show <vip>`) and from the switch or
+Proxmox bridge MAC table (`bridge fdb show | grep <vip-mac>`). Raise
+`masterRepeat` if clients miss the first burst. Set `masterRefresh` (for
+example 60) only if a switch or bridge ages out the VIP's entry while the
+master is idle.
+
+
 
 | Service area | Recommended starting policy | Why |
 |---|---|---|
