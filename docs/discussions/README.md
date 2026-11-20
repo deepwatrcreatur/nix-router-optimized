@@ -25,6 +25,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [19](./19-dhcpv6-ula-rfc9686-and-option108-464xlat-strategy.md) | DHCPv6 Host Registration, ULA (RFC 9686), and DHCP Option 108 / 464XLAT Strategy | 2026-08-16 | Closed |
 | [20](./20-critique-synthesis-and-framework-roadmap.md) | External Architectural Critique Synthesis, Positioning, and Maturation Roadmap | 2026-09-16 | Closed |
 | [21](./21-ecosystem-plan-review.md) | Review of the Ecosystem Research and Improvement Plan | 2026-11-19 | Closed |
+| [22](./22-vyos-parity-plan-review.md) | Review of the VyOS Feature Parity Plan | 2026-11-20 | Closed |
 
 
 ## Methodology

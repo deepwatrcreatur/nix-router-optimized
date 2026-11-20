@@ -34,8 +34,9 @@ from module names alone.
   detailed technical comparison between the Linux/NixOS declarative stack and
   FreeBSD/OPNsense (CARP vs VRRP, pfsync vs conntrackd, pf vs FastTrack/XDP)
 - [`VYOS-FEATURE-PARITY-PLAN.md`](./VYOS-FEATURE-PARITY-PLAN.md) —
-  architectural comparison with VyOS and phased engineering roadmap to close key gaps
-  (Route-Based IPsec/VTI, OSPF/BFD, Multicast/IGMP proxy, and unified operational CLI)
+  comparison with VyOS 1.4/1.5 and the gap list (HA hardening, commit-confirm style
+  rollback, `routerctl`, DHCP relay, multicast, IPsec). Revision 2 (2026-11-20) applies
+  [discussion 22](./discussions/22-vyos-parity-plan-review.md)
 
 ### IPv6 and translation
 

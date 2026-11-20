@@ -170,7 +170,7 @@ In-depth implementation notes, configuration schemas, and design records are org
 | **[`docs/RECIPES.md`](docs/RECIPES.md)** | Tested deployment recipes: PPPoE, Caddy reverse proxy, Technitium blocklists, and WARP routing. |
 | **[`docs/PERFORMANCE-TUNING.md`](docs/PERFORMANCE-TUNING.md)** | In-depth analysis of Netfilter flowtables, NIC driver offloads, CAKE tuning, and SMP affinity. |
 | **[`docs/FREEBSD-OPNSENSE-COMPARISON.md`](docs/FREEBSD-OPNSENSE-COMPARISON.md)** | Technical comparison of Linux/NixOS vs. FreeBSD/OPNsense (CARP vs VRRP, pfsync vs conntrackd). |
-| **[`docs/VYOS-FEATURE-PARITY-PLAN.md`](docs/VYOS-FEATURE-PARITY-PLAN.md)** | Architectural comparison with VyOS and phased parity roadmap (IPsec/VTI, OSPF/BFD, Multicast, CLI). |
+| **[`docs/VYOS-FEATURE-PARITY-PLAN.md`](docs/VYOS-FEATURE-PARITY-PLAN.md)** | Comparison with VyOS and the gap list, with what is shipped and VM-tested versus missing. |
 | **[`docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md)** | Architectural survey, homelab consumer invariants, secrets management bootstrap paradox, and roadmap. |
 | **[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)** | Driver and hardware compatibility matrix (Intel 2.5G/10G, Broadcom, Rockchip, Realtek). |
 | **[`docs/work-items/README.md`](docs/work-items/README.md)** | Ranked technical work backlog, design decisions, and agent implementation runbooks. |
