@@ -36,6 +36,16 @@ restarts during a `nixos-rebuild switch`.
   versions restarted systemd-networkd on promotion, which bounced every link
   at the moment of failover.
 
+Evaluation checks that `wan.network` names a network whose
+`matchConfig.Name` is `wan.interface` (a typo would otherwise create a new,
+empty network and leave the real WAN automatic), and that the network does
+not set `MACAddress` to something other than `clonedMac`: `networkctl
+reconfigure` re-applies it and would undo the clone before DHCP starts.
+
+A failed `networkctl reconfigure` does not demote the node: keepalived stays
+MASTER without a working WAN, as it did with the earlier networkd restart.
+Tracking WAN health in VRRP priority is not implemented yet.
+
 Do not set `ActivationPolicy=always-down` on the WAN of an HA node (a common
 way to park a cold standby): `networkctl up` refuses always-down links, and
 the module system reports the conflicting definition.

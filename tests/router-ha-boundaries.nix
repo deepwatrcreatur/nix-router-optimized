@@ -367,6 +367,52 @@ in
       })
   ];
 
+  router-ha-wan-network-typo-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-network-typo" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan" = {
+        matchConfig.Name = "eth1";
+        networkConfig.DHCP = "yes";
+      };
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wna";
+        };
+      };
+    }
+  ];
+
+  router-ha-wan-network-mac-conflict-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-network-mac-conflict" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan" = {
+        matchConfig.Name = "eth1";
+        networkConfig.DHCP = "yes";
+        linkConfig.MACAddress = "02:00:00:00:00:01";
+      };
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          clonedMac = "02:00:00:00:00:b0";
+        };
+      };
+    }
+  ];
+
   router-ha-wan-network-missing-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-network-missing" [
     self.nixosModules.router-ha
     {

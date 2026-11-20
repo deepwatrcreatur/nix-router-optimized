@@ -488,14 +488,33 @@ in
       systemd.services.keepalived.after = [ "router-ha-vrrp-secret.service" ];
     })
 
-    (mkIf cfg.wan.enable {
-      assertions = [
-        {
-          assertion = cfg.wan.network != null && config.systemd.network.networks ? ${cfg.wan.network};
-          message = "services.router-ha.wan: set wan.network to the systemd.network.networks attribute that configures ${cfg.wan.interface}, so router-ha can give it ActivationPolicy=manual (${if cfg.wan.network == null then "none detected" else "\"${cfg.wan.network}\" is not defined"}).";
-        }
-      ];
-    })
+    (mkIf cfg.wan.enable (
+      let
+        wanNet = if cfg.wan.network == null then { } else config.systemd.network.networks.${cfg.wan.network} or { };
+        matchName = wanNet.matchConfig.Name or null;
+        # GOTCHA: router-ha's own ActivationPolicy assignment creates the
+        # entry, so existence proves nothing; require it to match the WAN.
+        matchesWan =
+          if isList matchName then elem cfg.wan.interface matchName
+          else if isString matchName then elem cfg.wan.interface (splitString " " matchName)
+          else false;
+        networkMac = wanNet.linkConfig.MACAddress or null;
+      in
+      {
+        assertions = [
+          {
+            assertion = matchesWan;
+            message = "services.router-ha.wan: set wan.network to the systemd.network.networks attribute whose matchConfig.Name is ${cfg.wan.interface}, so router-ha can give it ActivationPolicy=manual (${if cfg.wan.network == null then "none detected" else "\"${cfg.wan.network}\" does not match ${cfg.wan.interface}"}).";
+          }
+          {
+            # WHY: networkctl reconfigure re-applies [Link] MACAddress, which
+            # would undo the cloned MAC before DHCP starts.
+            assertion = cfg.wan.clonedMac == null || networkMac == null || networkMac == cfg.wan.clonedMac;
+            message = "services.router-ha.wan: network \"${toString cfg.wan.network}\" sets MACAddress=${toString networkMac}, which overrides clonedMac ${toString cfg.wan.clonedMac} on promotion. Remove it (e.g. router-networking wan.macAddress) or make them equal.";
+          }
+        ];
+      }
+    ))
     (mkIf (cfg.wan.enable && cfg.wan.network != null) {
       # INVARIANT: manual, not always-down: networkctl up/reconfigure are
       # refused for always-down links, and "up" would re-raise the WAN on
