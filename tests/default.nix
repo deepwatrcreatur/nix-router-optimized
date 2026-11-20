@@ -143,6 +143,10 @@ let
     inherit self lib pkgs;
   };
 
+  vmHaWanHealthCheck = import ./vm/router-ha-wan-health.nix {
+    inherit self lib pkgs;
+  };
+
   vmHaPairCheck = import ./vm/router-ha-pair.nix {
     inherit self lib pkgs;
   };
@@ -156,6 +160,7 @@ in
   vm-router-kea-ha = vmKeaHaCheck;
   vm-router-ha-wan-failover = vmHaWanFailoverCheck;
   vm-router-ha-pair = vmHaPairCheck;
+  vm-router-ha-wan-health = vmHaWanHealthCheck;
   vm-router-technitium-zone-ha = vmTechnitiumZoneHaCheck;
 
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
