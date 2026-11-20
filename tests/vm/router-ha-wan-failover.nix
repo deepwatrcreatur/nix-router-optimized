@@ -72,6 +72,9 @@ let
         };
       };
 
+      # Debug logs show the RA/DHCPv6 exchange if wait_pd ever times out.
+      systemd.services.systemd-networkd.environment.SYSTEMD_LOG_LEVEL = "debug";
+
       environment.systemPackages = [
         pkgs.jq
         pkgs.iproute2
@@ -94,13 +97,23 @@ mkRouterTest {
           "198.51.100.1/24"
           "2001:db8:1::1/64"
         ];
-        # GOTCHA: networkd starts DHCPv6 only after an RA (WithoutRA=no), so
-        # the simulated ISP advertises the managed flag like a real one.
-        networkConfig.IPv6SendRA = true;
-        ipv6SendRAConfig = {
-          Managed = true;
-          OtherInformation = true;
-        };
+      };
+      # GOTCHA: networkd starts DHCPv6 only after an RA (WithoutRA=no). Send
+      # frequent unsolicited RAs with the managed flag, like a real ISP, so a
+      # newly promoted WAN never depends on one router solicitation getting
+      # answered (that flaked under CI load).
+      boot.kernel.sysctl."net.ipv6.conf.all.forwarding" = 1;
+      services.radvd = {
+        enable = true;
+        config = ''
+          interface eth1 {
+            AdvSendAdvert on;
+            MinRtrAdvInterval 3;
+            MaxRtrAdvInterval 4;
+            AdvManagedFlag on;
+            AdvOtherConfigFlag on;
+          };
+        '';
       };
       # The cloned MAC always gets the same address, like an ISP that ties the
       # lease to the CPE MAC.
@@ -194,7 +207,7 @@ mkRouterTest {
         except Exception:
             print(r.succeed("networkctl status eth1 --no-pager || true"))
             print(r.succeed("networkctl status --json=short eth1 | jq -c 'keys, .DHCPv6Client' || true"))
-            print(r.succeed("journalctl -u systemd-networkd --no-pager | grep -i -E 'dhcp6|eth1' | tail -30 || true"))
+            print(r.succeed("journalctl -u systemd-networkd --no-pager | grep -i -E 'dhcp6|ndisc|eth1' | tail -60 || true"))
             print(isp.succeed("journalctl -u kea-dhcp6-server --no-pager | tail -30 || true"))
             raise
 
@@ -224,6 +237,7 @@ mkRouterTest {
     start_all()
     isp.wait_for_unit("dnsmasq.service")
     isp.wait_for_unit("kea-dhcp6-server.service")
+    isp.wait_for_unit("radvd.service")
     for r in routers:
         r.wait_until_succeeds("systemctl is-active keepalived.service", timeout=60)
 

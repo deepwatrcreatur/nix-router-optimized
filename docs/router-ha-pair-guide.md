@@ -59,7 +59,11 @@ master holding the VIP, the IPv4 lease and a delegated prefix.
 
 IPv6 note: the DHCPv6 DUID differs per node, so an ISP that pins the
 delegated prefix to the DUID may hand the new master a different prefix,
-and LAN clients then renumber.
+and LAN clients then renumber. DHCPv6 and prefix delegation also start only
+after the new master hears a Router Advertisement; most ISPs answer the
+router solicitation at once, but one that only sends slow periodic RAs
+delays IPv6 after a failover. `DHCPv6Config.WithoutRA = "solicit"` on the
+WAN network removes that dependency.
 
 ## What This Pattern Does Not Do Automatically
 
