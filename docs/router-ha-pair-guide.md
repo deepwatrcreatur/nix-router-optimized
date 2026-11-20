@@ -129,8 +129,9 @@ transition that exactly one node holds the VIP, the WAN and the unit
 | reboot | peer takes over; the node boots as BACKUP with its WAN down |
 | recovery from any of the above | node waits `preemptDelay` as BACKUP, then takes everything back |
 
-DNS zone ownership under `zoneReplication.ha` is not covered by this test
-yet.
+DNS zone ownership under `zoneReplication.ha` has its own VM test,
+`vm-router-technitium-zone-ha`; see
+[`router-technitium-automation.md`](./router-technitium-automation.md#following-vrrp-zonereplicationha).
 
 ## Gratuitous ARP and NA (`garp`)
 

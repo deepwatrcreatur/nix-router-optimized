@@ -286,6 +286,15 @@ in
                 message = "the replication run must demote a Primary on a node that is not MASTER.";
               }
               {
+                # The MASTER sends NOTIFY from its own address, not the VIP.
+                # GOTCHA: check the per-run update of an existing Secondary (the
+                # call after "Updating secondary zone"), not only the create.
+                assertion =
+                  before "Updating secondary zone" "primaryNameServerAddresses=10.10.10.1,10.10.10.2" replication
+                  && lib.hasInfix "primaryNameServerAddresses=10.10.10.1,10.10.10.2" demote;
+                message = "under ha a Secondary must list the peers after the VIP so it accepts their NOTIFY.";
+              }
+              {
                 assertion = lib.hasInfix "not Primary on this node" rfc2136;
                 message = "RFC2136 settings skip zones this node does not hold as Primary.";
               }
