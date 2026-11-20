@@ -53,6 +53,7 @@
         rec {
           routerctl = pkgs.callPackage ./pkgs/router-diag { };
           router-apply = pkgs.callPackage ./pkgs/router-apply { };
+          router-hw-sensors = pkgs.callPackage ./pkgs/router-hw-sensors { };
           router-diag = routerctl;
           ulogd = ulogdWithJson pkgs;
         }
