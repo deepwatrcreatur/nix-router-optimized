@@ -195,6 +195,19 @@ services.router-technitium.zoneReplication = {
   lost, so keep the delay longer than a zone refresh.
 - **RFC2136** settings are applied only on the node holding the zone as
   Primary.
+- **NOTIFY from the MASTER.** A Secondary accepts NOTIFY only from its
+  primary addresses, and the MASTER sends NOTIFY from its own address, not
+  the virtual IP. Under `ha` the Secondary therefore lists the virtual IP
+  followed by `ha.peers`, so changes replicate within seconds. Before this,
+  the standby refused every NOTIFY (`RCODE=Refused` in the MASTER's log) and
+  only caught up at the zone's SOA refresh interval. Existing Secondaries
+  get the new list on the next activation.
+
+The VM test `vm-router-technitium-zone-ha` runs this on two routers: a
+record written on the owner reaches the standby in about 10 s, ownership
+moves in about 7 s on failover and 10 s on fail-back, records written on
+either owner survive both moves, and exactly one node holds the zone as
+Primary at every steady state.
 
 Verify on the standby:
 

@@ -649,6 +649,12 @@ let
   '';
 
   haEnabled = replication.ha.enable;
+  # WHY: a Secondary accepts NOTIFY only from its primary addresses, and the
+  # MASTER sends NOTIFY from its own address, not the VIP. Listing the peers
+  # (after the VIP) lets changes replicate at once instead of at SOA refresh.
+  secondaryPrimaryAddresses = unique (
+    replication.secondary.primaryAddresses ++ optionals haEnabled replication.ha.peers
+  );
   haStateDir = "/var/lib/technitium-zone-replication";
   replicatedPrimarySettings = zoneVar: addresses: ''
     technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
@@ -736,7 +742,7 @@ let
         echo "Not demoting $zone: this node became VRRP MASTER" >&2
         return 1
       fi
-      echo "Demoting $zone to Secondary of ${concatStringsSep ", " replication.secondary.primaryAddresses}"
+      echo "Demoting $zone to Secondary of ${concatStringsSep ", " secondaryPrimaryAddresses}"
       technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
         --data-urlencode "token=$TOKEN" --data-urlencode "zone=$zone" \
@@ -746,7 +752,7 @@ let
         --data-urlencode "token=$TOKEN" \
         --data-urlencode "zone=$zone" \
         --data-urlencode "type=Secondary" \
-        --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," replication.secondary.primaryAddresses}" \
+        --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," secondaryPrimaryAddresses}" \
         --data-urlencode "zoneTransferProtocol=Tcp" \
         --data-urlencode "tsigKeyName=${replication.tsigKeyName}" \
         "http://127.0.0.1:5380/api/zones/create" >/dev/null; then
@@ -858,13 +864,13 @@ let
               continue
             fi
           ''}
-          echo "Creating secondary zone ${zone.name} from ${concatStringsSep ", " replication.secondary.primaryAddresses}"
+          echo "Creating secondary zone ${zone.name} from ${concatStringsSep ", " secondaryPrimaryAddresses}"
           technitium_request ${pkgs.curl}/bin/curl -fsS -X POST \
             -H "Content-Type: application/x-www-form-urlencoded" \
             --data-urlencode "token=$TOKEN" \
             --data-urlencode "zone=${zone.name}" \
             --data-urlencode "type=Secondary" \
-            --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," replication.secondary.primaryAddresses}" \
+            --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," secondaryPrimaryAddresses}" \
             --data-urlencode "zoneTransferProtocol=Tcp" \
             --data-urlencode "tsigKeyName=${replication.tsigKeyName}" \
             "http://127.0.0.1:5380/api/zones/create" \
@@ -886,7 +892,7 @@ let
             -H "Content-Type: application/x-www-form-urlencoded" \
             --data-urlencode "token=$TOKEN" \
             --data-urlencode "zone=${zone.name}" \
-            --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," replication.secondary.primaryAddresses}" \
+            --data-urlencode "primaryNameServerAddresses=${concatStringsSep "," secondaryPrimaryAddresses}" \
             --data-urlencode "primaryZoneTransferProtocol=Tcp" \
             --data-urlencode "primaryZoneTransferTsigKeyName=${replication.tsigKeyName}" \
             "http://127.0.0.1:5380/api/zones/options/set" \
