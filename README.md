@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![NixOS](https://img.shields.io/badge/NixOS-unstable-blue?logo=nixos&logoColor=white)](https://nixos.org)
-[![Documentation](https://img.shields.io/badge/Docs-Portal-slate)](https://deepwatrcreatur.github.io/nix-router-optimized/)
+[![Documentation](https://img.shields.io/badge/Docs-Portal-slate)](https://nix-router.deepwatercreature.com/)
 
 `nix-router-optimized` is a modular NixOS framework for high-throughput edge routing, stateful packet filtering, and deterministic multi-node failover on commodity x86_64 and aarch64 hardware.
 
@@ -165,7 +165,7 @@ In-depth implementation notes, configuration schemas, and design records are org
 
 | Document | Scope & Focus |
 | :--- | :--- |
-| **[Documentation Portal](https://deepwatrcreatur.github.io/nix-router-optimized/)** | Architecture portal with SVG topology blueprints, failover flows, and interactive module references. |
+| **[Documentation Portal](https://nix-router.deepwatercreature.com/)** | Architecture portal with SVG topology blueprints, failover flows, and interactive module references. |
 | **[`docs/MODULES.md`](docs/MODULES.md)** | Complete reference guide for all 38+ framework modules, option definitions, and default values. |
 | **[`docs/RECIPES.md`](docs/RECIPES.md)** | Tested deployment recipes: PPPoE, Caddy reverse proxy, Technitium blocklists, and WARP routing. |
 | **[`docs/PERFORMANCE-TUNING.md`](docs/PERFORMANCE-TUNING.md)** | In-depth analysis of Netfilter flowtables, NIC driver offloads, CAKE tuning, and SMP affinity. |
