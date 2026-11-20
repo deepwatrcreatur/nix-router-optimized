@@ -395,6 +395,20 @@ in
         example = "00:11:22:33:44:55";
         description = "The Golden MAC address to clone when this node is Master.";
       };
+      sharedDhcpIdentity = mkOption {
+        type = types.bool;
+        default = cfg.wan.clonedMac != null;
+        defaultText = literalExpression "wan.clonedMac != null";
+        description = ''
+          Give the WAN's DHCPv4 and DHCPv6 clients the same identity on both
+          nodes: a link-layer DUID built from `clonedMac` and an IAID from its
+          last four bytes. Without it each node sends its own machine-id
+          DUID, so an ISP that binds the lease or the delegated prefix to the
+          DUID hands the new master a different prefix and LAN clients
+          renumber. Turning it on changes the DUID once, which can move the
+          delegated prefix at the next renewal.
+        '';
+      };
       network = mkOption {
         type = types.nullOr types.str;
         default = autoWanNetwork;
@@ -740,11 +754,48 @@ in
         ];
       }
     ))
+    (mkIf (cfg.wan.enable && cfg.wan.sharedDhcpIdentity) {
+      assertions = [
+        {
+          assertion = cfg.wan.clonedMac != null && builtins.match "([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}" cfg.wan.clonedMac != null;
+          message = "services.router-ha.wan.sharedDhcpIdentity derives the DUID from wan.clonedMac, which must be set to a MAC such as 02:00:00:00:00:01.";
+        }
+      ];
+    })
+    (mkIf (cfg.wan.enable && cfg.wan.sharedDhcpIdentity && cfg.wan.clonedMac != null && cfg.wan.network != null) (
+      let
+        mac = toLower cfg.wan.clonedMac;
+        # DUID-LL (RFC 8415 11.4): hardware type 1 (Ethernet), then the MAC.
+        # WHY: explicit raw data, not the link's current address, so the
+        # DUID cannot depend on whether the clone was applied yet.
+        identity = {
+          DUIDType = mkDefault "link-layer";
+          DUIDRawData = mkDefault "00:01:${mac}";
+          # INVARIANT: same on both nodes; the default IAID hashes the
+          # interface name, which can differ between the two machines.
+          IAID = mkDefault (fromHexString (concatStrings (drop 2 (splitString ":" mac))));
+        };
+      in
+      {
+        systemd.network.networks.${cfg.wan.network} = {
+          dhcpV4Config = identity;
+          dhcpV6Config = identity;
+        };
+      }
+    ))
     (mkIf (cfg.wan.enable && cfg.wan.network != null) {
       # INVARIANT: manual, not always-down: networkctl up/reconfigure are
       # refused for always-down links, and "up" would re-raise the WAN on
       # the standby whenever networkd restarts.
       systemd.network.networks.${cfg.wan.network}.linkConfig.ActivationPolicy = "manual";
+    })
+    (mkIf (cfg.wan.enable && cfg.wan.network != null && cfg.wan.clonedMac != null) {
+      # WHY: on a planned handover the old master still holds the cloned
+      # MAC's link-local address for a moment. DAD on the new master then
+      # marks fe80::...:<mac> dadfailed for good, and DHCPv6/PD never start
+      # (seen in vm-router-ha-wan-failover). VRRP already makes the clone
+      # exclusive, so duplicate detection only adds that failure.
+      systemd.network.networks.${cfg.wan.network}.networkConfig.IPv6DuplicateAddressDetection = mkDefault 0;
     })
 
     # Firewall integration

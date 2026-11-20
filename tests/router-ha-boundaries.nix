@@ -550,4 +550,99 @@ in
       };
     }
   ];
+
+  router-ha-wan-shared-dhcp-identity-eval = eval.mkNixosEvalCheck "router-ha-wan-shared-dhcp-identity" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan" = {
+        matchConfig.Name = "eth1";
+        networkConfig.DHCP = "yes";
+      };
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "backup";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          clonedMac = "02:00:00:00:00:B0";
+        };
+      };
+    }
+    ({ config, ... }:
+      let
+        net = config.systemd.network.networks."10-wan";
+        want = {
+          DUIDType = "link-layer";
+          DUIDRawData = "00:01:02:00:00:00:00:b0";
+          IAID = 176;
+        };
+      in
+      {
+        assertions = [
+          {
+            assertion = lib.all (k: net.dhcpV4Config.${k} == want.${k} && net.dhcpV6Config.${k} == want.${k}) (lib.attrNames want);
+            message = "router-ha with clonedMac must give DHCPv4 and DHCPv6 a DUID-LL from the cloned MAC and an IAID from its last four bytes, identical on both nodes.";
+          }
+          {
+            assertion = net.networkConfig.IPv6DuplicateAddressDetection == 0;
+            message = "router-ha with clonedMac must disable DAD on the WAN (the old master briefly holds the same link-local address).";
+          }
+        ];
+      })
+  ];
+
+  router-ha-wan-no-clone-keeps-dhcp-identity-eval = eval.mkNixosEvalCheck "router-ha-wan-no-clone-keeps-dhcp-identity" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan".matchConfig.Name = "eth1";
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "backup";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+        };
+      };
+    }
+    ({ config, ... }:
+      let
+        net = config.systemd.network.networks."10-wan";
+      in
+      {
+        assertions = [
+          {
+            assertion = !(net.dhcpV6Config ? DUIDType) && !(net.networkConfig ? IPv6DuplicateAddressDetection);
+            message = "router-ha without clonedMac must leave the WAN's DHCP identity and DAD alone.";
+          }
+        ];
+      })
+  ];
+
+  router-ha-wan-shared-dhcp-identity-needs-mac-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-shared-dhcp-identity-needs-mac" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan".matchConfig.Name = "eth1";
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "backup";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          sharedDhcpIdentity = true;
+        };
+      };
+    }
+  ];
 }

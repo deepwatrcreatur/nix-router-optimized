@@ -75,6 +75,14 @@ mkRouterTest {
             print(isp.succeed("journalctl -u kea-dhcp6-server --no-pager | tail -30 || true"))
             raise
 
+    def delegated(r):
+        # The ISP binds PD to the client DUID and IAID; wan.sharedDhcpIdentity
+        # makes both identical, so the same prefix must follow the master.
+        return r.succeed(
+            "networkctl status --json=short eth1"
+            " | jq -c '[.DHCPv6Client.Prefixes[] | {Prefix, PrefixLength}] | sort'"
+        ).strip()
+
     def networkd_pid(r):
         return r.succeed("systemctl show -P MainPID systemd-networkd").strip()
 
@@ -110,6 +118,8 @@ mkRouterTest {
         wait_role(router2, "backup")
         wait_wan_lease(router1)
         wait_pd(router1)
+        pd = delegated(router1)
+        print(f"router1 delegated prefix: {pd}")
         assert not wan_up(router2), "backup must keep its WAN link down"
         client.wait_until_succeeds("ping -c1 -W1 10.0.10.1")
         router1.succeed("ip -4 addr show dev eth2 | grep -q 'inet 10.0.10.1/'")
@@ -122,11 +132,12 @@ mkRouterTest {
     pids = {r.name: networkd_pid(r) for r in routers}
     start_monitors()
 
-    with subtest("failover: router2 takes VIP, WAN lease and PD; router1 drops WAN"):
+    with subtest("failover: router2 takes VIP, WAN lease and the same PD; router1 drops WAN"):
         router1.succeed("systemctl stop keepalived")
         wait_role(router2, "master")
         wait_wan_lease(router2)
         wait_pd(router2)
+        assert delegated(router2) == pd, f"router2 got {delegated(router2)}, want router1's {pd}"
         router1.wait_until_succeeds("! ip -4 addr show dev eth1 | grep -q inet")
         assert not wan_up(router1), "demoted router must bring its WAN down"
         client.wait_until_succeeds("ping -c1 -W1 10.0.10.1")
@@ -138,6 +149,7 @@ mkRouterTest {
         wait_role(router2, "backup")
         wait_wan_lease(router1)
         wait_pd(router1)
+        assert delegated(router1) == pd, f"fail-back changed the prefix to {delegated(router1)}"
         router2.wait_until_succeeds("! ip -4 addr show dev eth1 | grep -q inet")
         assert not wan_up(router2)
         client.wait_until_succeeds("ping -c1 -W1 10.0.10.1")

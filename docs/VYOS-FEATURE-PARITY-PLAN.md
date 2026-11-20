@@ -63,7 +63,7 @@ covers it), **gap** (not available).
 | Stateful failover | conntrack-sync (conntrackd) | None; deferred until VRRP is rehearsed on hardware (discussion 21) | Gap (deferred) |
 | DHCPv4 HA | Kea HA (1.5 line) | Kea HA (`router-kea.dhcp4.ha`), port scoped to the peer | Shipped, VM-tested (`vm-router-kea-ha`) |
 | DHCPv6 / PD serving | Kea DHCPv6 and PD (1.5 line) | No DHCPv6 server module | **Gap**: router-xm6 |
-| Delegated prefix across failover | — | Per-node DUID may change the prefix | **Gap**: router-5sa |
+| Delegated prefix across failover | — | Shared DUID-LL and IAID from the cloned MAC (`router-ha.wan.sharedDhcpIdentity`) | Shipped, VM-tested (`vm-router-ha-wan-failover`; router-5sa) |
 | DHCP relay | `service dhcp-relay` | Not exposed (networkd supports `RelayTarget=`) | **Gap**: router-yix |
 | Authoritative DNS | Forwarding with authoritative domains | Technitium with TSIG zone replication following VRRP | Shipped, VM-tested (`vm-router-technitium-zone-ha`) |
 | BGP | FRR | FRR (`router-bgp.nix`) | Shared engine; compare address families and policy before claiming parity |
@@ -95,9 +95,10 @@ pace.
   (FAULT, so the peer's `preemptDelay` does not apply) and pins its priority
   to 1 until `retryAfterSec`. No sync group is needed: there is one VRRP
   instance and the WAN follows it. *Tested:* `vm-router-ha-wan-health`.
-- **router-5sa (P1): keep the delegated prefix across failover.** A shared
-  DUID for the HA WAN. *Test:* the simulated ISP binds PD to the DUID; the
-  same /56 survives failover and fail-back.
+- **router-5sa (P1), done: keep the delegated prefix across failover.**
+  `router-ha.wan.sharedDhcpIdentity` (default with `clonedMac`) shares a
+  DUID-LL and IAID; DAD is off on the cloned-MAC WAN. *Tested:* the same /56
+  survives failover and fail-back in `vm-router-ha-wan-failover`.
 - **Hardware rehearsal** (nix-clan-homelab nch-sny.36): planned and crash
   failover between elitedesk (X520) and the current router, with timings.
 
