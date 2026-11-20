@@ -147,6 +147,10 @@ let
     inherit self lib pkgs;
   };
 
+  vmRouterApplyCheck = import ./vm/router-apply.nix {
+    inherit self lib pkgs;
+  };
+
   vmHaPairCheck = import ./vm/router-ha-pair.nix {
     inherit self lib pkgs;
   };
@@ -160,6 +164,7 @@ in
   vm-router-kea-ha = vmKeaHaCheck;
   vm-router-ha-wan-failover = vmHaWanFailoverCheck;
   vm-router-ha-pair = vmHaPairCheck;
+  vm-router-apply = vmRouterApplyCheck;
   vm-router-ha-wan-health = vmHaWanHealthCheck;
   vm-router-technitium-zone-ha = vmTechnitiumZoneHaCheck;
 

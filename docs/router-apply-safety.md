@@ -10,8 +10,9 @@ The point is simple:
 - firewall, DHCP, DNS, WAN, HA, and routing changes can strand both users and
   the operator if the recovery path was not prepared before the switch
 
-This is a manual safety procedure.
-It is **not** an auto-rollback feature.
+This runbook is the manual procedure. For automatic revert of a change you
+don't confirm in time, use `router-apply` (see
+[Automatic revert](#automatic-revert-router-apply)) together with it.
 
 ## What Counts As A Risky Change
 
@@ -42,10 +43,77 @@ That is useful, but it answers a different question:
 - **generation rollback**: how to recover to an earlier known state
 - **post-change validation**: how to decide whether the new state is actually
   acceptable
-- **automated rollback**: a future possible capability, not what this doc
-  claims today
+- **automated rollback**: `router-apply` reverts a change you do not
+  confirm in time; deciding whether to confirm is still the checks below
 
 Do not confuse those three.
+
+## Automatic revert (`router-apply`)
+
+`services.router-apply.enable = true` installs `router-apply`, a
+commit-confirm style switch similar to VyOS `commit-confirm`:
+
+```bash
+# On your workstation: build the new system and copy it to the router.
+sys=$(nix build --print-out-paths .#nixosConfigurations.router.config.system.build.toplevel)
+nix copy --to ssh://router "$sys"
+
+# On the router:
+sudo router-apply diff "$sys"              # what would change
+sudo router-apply switch --timeout 300 "$sys"
+# ...run the post-switch checks below from another vantage point...
+sudo router-apply confirm                  # keep it
+sudo router-apply revert                   # or go back now
+sudo router-apply status                   # pending trial and time left
+```
+
+How it works:
+
+- **The revert is armed first.** `switch` starts a transient systemd timer
+  (`router-apply-revert`) before activating anything, so a hung activation
+  or a dropped SSH session still gets reverted.
+- **The trial isn't the boot default.** The new system is activated with
+  `switch-to-configuration test`, so the boot entry and system profile still
+  point at the previous generation. If the router crashes or reboots during
+  the trial, it comes back on the old system.
+- **The activation runs as its own transient unit**, so it finishes even if
+  your SSH session dies halfway.
+- **`confirm`** cancels the timer, sets the system profile and installs the
+  boot entry (`switch-to-configuration boot`).
+- **`revert`** (or the timer) activates the previous system again.
+- **One trial at a time:** a second `switch` is refused until the first is
+  confirmed or reverted.
+- **Default timeout:** set with `services.router-apply.defaultTimeoutSec`
+  (300).
+
+`router-apply diff` prints:
+- `nix store diff-closures`;
+- the changed configuration behind nftables, keepalived, Kea, systemd-networkd,
+  Technitium, FRR, radvd and chrony (their unit files and the config files and
+  scripts those reference, two levels deep);
+- `diff -ru` of `/etc/systemd/network` and `/etc/kea`.
+
+It shows what the build renders, not the live kernel state.
+
+What it does not cover:
+
+- **Bad deploys that don't use `router-apply`.** It does nothing about
+  `nixos-rebuild switch`, deploy-rs or `clan machines update`. deploy-rs's
+  magic rollback is the equivalent there: it reverts unless the deployer can
+  reconnect over SSH.
+- **Breakage that only shows up after you confirm.** Confirm only after the
+  checks pass.
+- **A broken boot of the old generation.** The revert restores it as it was.
+
+`vm-router-apply` tests this:
+- an unconfirmed change that moves the management address is reverted after
+  the 30 s timeout (about 31 s in the VM), and SSH works again;
+- the boot default never moves during a trial;
+- a manual revert is immediate;
+- a confirmed change stays past the timeout and becomes the boot default;
+- `diff` shows the rendered networkd change.
+
+A mutation where `confirm` doesn't cancel the timer fails it.
 
 ## Before The Change
 
@@ -115,7 +183,8 @@ has been accepted.
 
 ### 2. Apply the change
 
-Use your normal deploy path, for example:
+Prefer `router-apply switch` (above), so an unreachable router reverts on
+its own. Otherwise use your normal deploy path, for example:
 
 ```bash
 sudo nixos-rebuild switch
@@ -286,13 +355,14 @@ If you need the compact version:
 2. confirm console / Proxmox / out-of-band recovery
 3. keep one current shell open
 4. identify a LAN-side validation host
-5. apply the change
+5. apply the change, preferably with `router-apply switch`
 6. verify:
    - SSH reachability
    - DNS through the router
    - WAN connectivity
    - any changed HA or WAN behavior
-7. if the checks fail, rollback immediately
+7. if the checks pass, `router-apply confirm`; if they fail, roll back
+   immediately (`router-apply revert`, or let the timer do it)
 
 ## Relationship To Other Docs
 
