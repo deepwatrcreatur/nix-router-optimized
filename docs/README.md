@@ -13,6 +13,8 @@ from module names alone.
 
 - [`MODULES.md`](./MODULES.md) — exhaustive reference for all 38+ router modules
 - [`RECIPES.md`](./RECIPES.md) — copyable configuration recipes (PPPoE, Caddy, Technitium, storage)
+- [`routerctl.md`](./routerctl.md) — the operational CLI: status, firewall
+  explain/trace, and `ha`, `leases`, `dns`, `routes` with a stable JSON contract
 - [`PERFORMANCE-TUNING.md`](./PERFORMANCE-TUNING.md) — FastTrack flowtable, NIC offloads, CAKE SQM, and multi-queue IRQ affinity
 - [`index.html`](./index.html) — interactive documentation portal and SVG network topology maps for GitHub Pages
 

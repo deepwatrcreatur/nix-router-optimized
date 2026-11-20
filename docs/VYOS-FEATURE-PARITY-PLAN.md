@@ -74,7 +74,7 @@ covers it), **gap** (not available).
 | PPPoE client | Yes | `router-pppoe.nix` | Shipped |
 | Multi-WAN | WAN load balancing | `router-mwan.nix` | Shipped |
 | Zone firewall | Zone-based firewall | `router-zones.nix`, `routerctl firewall explain/trace` | Shipped; UX improvements are docs and `routerctl` work |
-| Operational CLI | `show` / `monitor` hierarchy | `routerctl` (status, interfaces, health, diagnostics, firewall, `--json`) | Partial: router-dke adds ha, leases, dns, routes |
+| Operational CLI | `show` / `monitor` hierarchy | `routerctl` (status, interfaces, health, diagnostics, firewall, ha, leases, dns, routes; `--json`, see [routerctl.md](./routerctl.md)) | Shipped; ha/leases/dns/routes VM-tested (router-dke). No `monitor` equivalent |
 | Flow export | Flow accounting | Vector + ulogd NFLOG, ntopng | Different approach; IPFIX deferred |
 
 ---
@@ -110,7 +110,7 @@ unless confirmed within N seconds, plus a preview of the effective change
 *Test:* a change that breaks management access, left unconfirmed, is
 reverted within the timeout.
 
-### 3.3 Extend `routerctl` (router-dke, P2)
+### 3.3 Extend `routerctl` (router-dke, P2), done
 
 The revision-1 plan proposed a new `router-cli`. `routerctl` already exists
 (`pkgs/router-diag`), so it gains subcommands instead, each with stable
@@ -123,7 +123,8 @@ routerctl dns      # Technitium zone types and sync state (API, .status checked)
 routerctl routes   # kernel FIB plus FRR (vtysh JSON)
 ```
 
-*Test:* JSON shape asserted inside an existing two-router VM test.
+*Tested:* JSON shapes are asserted in `vm-router-kea-ha` and
+`vm-router-technitium-zone-ha`; see [routerctl.md](./routerctl.md).
 
 ### 3.4 Common edge needs (P3)
 
