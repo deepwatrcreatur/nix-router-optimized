@@ -39,12 +39,13 @@ What each side honestly offers:
 | | VyOS | `nix-router-optimized` |
 | :--- | :--- | :--- |
 | **Strengths** | A mature operational CLI; `commit-confirm` and `compare`; a wide protocol set (OSPF, IS-IS, BFD, PIM, IGMP proxy, IPsec, EVPN); conntrack-sync; long production history | Eval-time typing and assertions across all modules; the whole router in one reviewable flake; NixOS VM tests that exercise HA end to end; integrations VyOS doesn't ship (Technitium with zone replication, Kea HA tied to the module system, mesh overlays) |
-| **Gaps** | Less composable with a general-purpose OS; LTS images are paid | No automatic revert of a bad change; fewer routing protocols; HA not yet proven on real hardware |
+| **Gaps** | Less composable with a general-purpose OS; LTS images are paid | Automatic revert only through `router-apply` (opt-in, not `nixos-rebuild`); fewer routing protocols; HA not yet proven on real hardware |
 
 Neither side's rollback is instant. A NixOS rollback (`nixos-rebuild switch
 --rollback`, or picking an older generation at boot) needs a path to the
 machine. That is exactly what a bad network change can remove, and why
-`commit-confirm` matters.
+`commit-confirm` matters; `router-apply` (§3.2) now provides the same
+confirm-or-revert step.
 
 ---
 
@@ -56,7 +57,7 @@ covers it), **gap** (not available).
 | Area | VyOS | `nix-router-optimized` | Status |
 | :--- | :--- | :--- | :--- |
 | Configuration model | Hierarchical CLI tree, migration scripts | Typed Nix modules, eval assertions | Different trade-offs (see §1) |
-| Change safety | `commit-confirm`, `compare`, `rollback-soft` | Generations; no auto-revert, no diff preview | **Gap**: router-113 |
+| Change safety | `commit-confirm`, `compare`, `rollback-soft` | `router-apply` (trial switch with auto-revert, `confirm`, `diff` of closure and rendered configs) plus generations | Shipped, VM-tested (`vm-router-apply`; router-113). `diff` shows the rendered build, not live state |
 | Flow offload | nftables flowtables, software and hardware (1.4) | Software nftables flowtable (`router-firewall.flowtable`, no `flags offload`) | Parity for software offload; hardware offload is a gap (needs NIC support, e.g. mlx5; not the X520) |
 | Queueing | Shaper classes, FQ-CoDel, CAKE policy | CAKE (`router-sqm.nix`) | Parity for CAKE |
 | VRRP | Keepalived, sync groups, health tracking | Keepalived (`router-ha.nix`): WAN takeover with MAC clone, `preemptDelay`, GARP options, password file | Shipped, VM-tested (`vm-router-ha-wan-failover`, `vm-router-ha-pair`). WAN health tracking (`wan.healthCheck`, router-afb): shipped, VM-tested (`vm-router-ha-wan-health`); no sync group needed (one instance) |
@@ -102,13 +103,13 @@ pace.
 - **Hardware rehearsal** (nix-clan-homelab nch-sny.36): planned and crash
   failover between elitedesk (X520) and the current router, with timings.
 
-### 3.2 Safe change (router-113, P2)
+### 3.2 Safe change (router-113, P2), done
 
-A confirm-or-revert apply: switch, then return to the previous generation
-unless confirmed within N seconds, plus a preview of the effective change
-(closure diff and rendered nftables, keepalived, Kea and networkd diff).
-*Test:* a change that breaks management access, left unconfirmed, is
-reverted within the timeout.
+`router-apply switch` activates a new system with `switch-to-configuration
+test` and arms a revert timer first; `confirm` makes it the boot default.
+`router-apply diff` previews the closure and the rendered nftables,
+keepalived, Kea and networkd changes. *Tested:* `vm-router-apply`; see
+[router-apply-safety.md](./router-apply-safety.md#automatic-revert-router-apply).
 
 ### 3.3 Extend `routerctl` (router-dke, P2), done
 

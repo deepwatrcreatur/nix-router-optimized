@@ -52,6 +52,7 @@
         in
         rec {
           routerctl = pkgs.callPackage ./pkgs/router-diag { };
+          router-apply = pkgs.callPackage ./pkgs/router-apply { };
           router-diag = routerctl;
           ulogd = ulogdWithJson pkgs;
         }
@@ -104,6 +105,7 @@
             self.nixosModules.router-sqm
             self.nixosModules.router-mdns
             self.nixosModules.router-upnp
+            self.nixosModules.router-apply
             self.nixosModules.router-bgp
             self.nixosModules.router-ha
             self.nixosModules.router-mwan
@@ -157,6 +159,7 @@
         router-sqm = import ./modules/router-sqm.nix;
         router-mdns = import ./modules/router-mdns.nix;
         router-upnp = import ./modules/router-upnp.nix;
+        router-apply = import ./modules/router-apply.nix;
         router-bgp = import ./modules/router-bgp.nix;
         router-ha = import ./modules/router-ha.nix;
         router-alerting = import ./modules/router-alerting.nix;

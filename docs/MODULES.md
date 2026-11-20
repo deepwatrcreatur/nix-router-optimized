@@ -79,6 +79,12 @@ Dual-node high availability engine powered by Keepalived (VRRP v2/v3, RFC 5798):
 - **Preemption Delay**: `preemptDelay` allows a recovered master to wait as BACKUP before reclaiming the VIP, preventing flapping.
 - **Single-Active Unit Control**: Automatically starts exclusive services (DHCP, DDNS, UPnP, IPv6 RA) on master promotion and stops them on demotion.
 
+### `router-apply`
+Commit-confirm style switching (`router-apply diff|switch|confirm|revert|status`):
+activates a new system for a trial, reverts after a timeout unless confirmed,
+and previews the rendered config change. See
+[`router-apply-safety.md`](./router-apply-safety.md#automatic-revert-router-apply).
+
 ---
 
 ## DNS & Ingress
