@@ -203,9 +203,17 @@ services.router-technitium.zoneReplication = {
   only caught up at the zone's SOA refresh interval. Existing Secondaries
   get the new list on the next activation.
 
+- **Boot order.** Creating a Secondary fails until a primary answers SOA,
+  which is the usual case when both nodes boot together.
+  `technitium-zone-replication.service` retries every 20 s, for up to 20
+  attempts in 10 minutes, then stays failed. In HA mode the reconcile timer
+  keeps retrying after that. Every Technitium automation unit also waits up
+  to 3 minutes for the API to answer after boot.
+
 The VM test `vm-router-technitium-zone-ha` runs this on two routers: a
 record written on the owner reaches the standby in about 10 s, ownership
-moves in about 7 s on failover and 10 s on fail-back, records written on
+moves in about 7 s on failover and 10 s on fail-back, a standby whose
+first attempt found no primary recovers on its own, records written on
 either owner survive both moves, and exactly one node holds the zone as
 Primary at every steady state.
 

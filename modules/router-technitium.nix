@@ -451,7 +451,9 @@ let
 
     wait_for_technitium() {
       local i
-      for i in {1..30}; do
+      # WHY: Technitium (.NET) took over 60 s to answer on a loaded CI VM;
+      # a unit that gives up early stays failed until the next activation.
+      for i in {1..90}; do
         if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:5380/api/dns/status >/dev/null 2>&1; then
           return 0
         fi
@@ -2026,7 +2028,11 @@ in
       ] ++ optional hasBootstrapSecret "technitium-bootstrap-api-token.service"
         ++ optional hasStaticHostSync "technitium-sync-static-hosts.service";
       wantedBy = [ "multi-user.target" ];
-      unitConfig = optionalAttrs (!replicationEnabled) {
+      unitConfig = {
+        # Bounded retries: about 7 minutes of attempts, then stay failed.
+        StartLimitIntervalSec = 600;
+        StartLimitBurst = 20;
+      } // optionalAttrs (!replicationEnabled) {
         ConditionPathExists = "/var/lib/technitium-zone-replication/owned-secondaries";
       };
 
@@ -2035,6 +2041,11 @@ in
         RemainAfterExit = true;
         StateDirectory = "technitium-zone-replication";
         StateDirectoryMode = "0700";
+        # WHY: creating a Secondary fails until a primary answers SOA. When
+        # both nodes boot together the standby usually asks first; retry
+        # instead of waiting for the next activation or reconcile run.
+        Restart = "on-failure";
+        RestartSec = "20s";
       };
 
       script = ''

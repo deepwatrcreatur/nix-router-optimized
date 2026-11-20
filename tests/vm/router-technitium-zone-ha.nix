@@ -163,6 +163,21 @@ mkRouterTest {
         add_a(router1, "one", "10.0.10.51")
         wait_resolves(router2, "one", "10.0.10.51")
 
+    with subtest("standby retries creating its Secondary until the primary answers"):
+        # Same race as both nodes booting together: the standby asks before
+        # the owner's Technitium answers SOA.
+        router1.succeed("systemctl stop technitium-dns-server.service")
+        api(router2, "zones/delete", zone=ZONE)
+        router2.execute("systemctl restart technitium-zone-replication.service")
+        router2.wait_until_succeeds(
+            "[ $(systemctl show -P NRestarts technitium-zone-replication.service) -ge 1 ]", timeout=60
+        )
+        assert zone_type(router2) is None, "the Secondary cannot exist while no primary answers"
+        router1.succeed("systemctl start technitium-dns-server.service")
+        router1.wait_until_succeeds("curl -fsS http://127.0.0.1:5380/api/dns/status", timeout=180)
+        wait_owner(router1, router2)
+        wait_resolves(router2, "one", "10.0.10.51")
+
     with subtest("failover: router2 promotes, router1 demotes, data kept"):
         router1.succeed("systemctl stop keepalived.service")
         t0 = time.monotonic()
