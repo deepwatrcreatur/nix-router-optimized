@@ -57,7 +57,7 @@ covers it), **gap** (not available).
 | :--- | :--- | :--- | :--- |
 | Configuration model | Hierarchical CLI tree, migration scripts | Typed Nix modules, eval assertions | Different trade-offs (see §1) |
 | Change safety | `commit-confirm`, `compare`, `rollback-soft` | Generations; no auto-revert, no diff preview | **Gap**: router-113 |
-| Flow offload | nftables flowtables, software and hardware (1.4) | nftables flowtables (`nftables-fasttrack.nix`) | Parity |
+| Flow offload | nftables flowtables, software and hardware (1.4) | Software nftables flowtable (`router-firewall.flowtable`, no `flags offload`) | Parity for software offload; hardware offload is a gap (needs NIC support, e.g. mlx5; not the X520) |
 | Queueing | Shaper classes, FQ-CoDel, CAKE policy | CAKE (`router-sqm.nix`) | Parity for CAKE |
 | VRRP | Keepalived, sync groups, health tracking | Keepalived (`router-ha.nix`): WAN takeover with MAC clone, `preemptDelay`, GARP options, password file | Shipped, VM-tested (`vm-router-ha-wan-failover`, `vm-router-ha-pair`). WAN health tracking: **gap**, router-afb |
 | Stateful failover | conntrack-sync (conntrackd) | None; deferred until VRRP is rehearsed on hardware (discussion 21) | Gap (deferred) |
