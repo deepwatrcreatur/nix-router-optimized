@@ -87,6 +87,7 @@ let
       ${pkgs.systemd}/bin/networkctl up ${escapeShellArg cfg.wan.interface}
       # Fresh DHCPv4/DHCPv6/PD with the (possibly cloned) MAC.
       ${pkgs.systemd}/bin/networkctl reconfigure ${escapeShellArg cfg.wan.interface}
+      ${optionalString wanHealthEnabled "${pkgs.coreutils}/bin/touch ${escapeShellArg wanUpSinceFile}"}
     ''}
     ${optionalString bgpSingleActiveOwner ''
       ${bgpPromoteScript}
@@ -120,6 +121,118 @@ let
   notifyBackupScript = demoteActiveOwnership "backup" backupRoleScript;
   notifyFaultScript = demoteActiveOwnership "fault" faultRoleScript;
   keepalivedStopScript = demoteActiveOwnership "stop" backupRoleScript;
+
+  hc = cfg.wan.healthCheck;
+  wanHealthEnabled = cfg.wan.enable && hc.enable;
+  # INVARIANT: "1" pins the node's priority to 1 (router_ha_wan_pin fails,
+  # weight -253), "0" restores it. Only the health check writes it.
+  wanPenaltyFile = "${runtimeDir}/wan-penalty";
+  wanFailCountFile = "${runtimeDir}/wan-health-failures";
+  # Written by notify_master after the WAN is raised; the startup grace
+  # counts from here so slow link setup does not eat into it.
+  wanUpSinceFile = "${runtimeDir}/wan-up-since";
+  # Seconds as a decimal string for timeout(1) and ping -W, e.g. 800 -> "0.800".
+  probeTimeout =
+    let
+      ms = hc.timeoutMs;
+      frac = toString (mod ms 1000);
+    in
+    "${toString (ms / 1000)}.${fixedWidthString 3 "0" frac}";
+
+  # WHY: a priority drop alone is not enough. A backup that sees a
+  # lower-priority master waits preempt_delay before taking over, so with
+  # preemptDelay = 300 a dead WAN would stay master for five minutes. The
+  # check therefore yields once (exit 1 -> FAULT -> priority-0 advert, the
+  # peer takes over at once) and pins the priority to 1 so this node does not
+  # preempt straight back. A node that is already pinned never yields again:
+  # if the peer is also pinned (the ISP itself is down) or absent, the LAN
+  # VIP stays up somewhere instead of both nodes sitting in FAULT.
+  wanHealthScript = pkgs.writeShellScript "router-ha-wan-health" ''
+    set -u
+    PATH=${makeBinPath [ pkgs.coreutils pkgs.gawk pkgs.iproute2 pkgs.iputils pkgs.util-linux ]}
+    wan=${escapeShellArg cfg.wan.interface}
+    role=$(cat ${escapeShellArg roleStateFile} 2>/dev/null || echo backup)
+    penalty=$(cat ${escapeShellArg wanPenaltyFile} 2>/dev/null || echo 0)
+    now=$(date +%s)
+
+    set_penalty() {
+      printf '%s\n' "$1" > ${escapeShellArg wanPenaltyFile}.tmp
+      mv ${escapeShellArg wanPenaltyFile}.tmp ${escapeShellArg wanPenaltyFile}
+    }
+
+    if [ "$role" = fault ] && [ "$penalty" = 1 ]; then
+      # Stay in FAULT until router_ha_wan_pin has seen the pin; leaving it
+      # earlier at full priority could preempt the peer straight back.
+      since=$(stat -c %Y ${escapeShellArg wanPenaltyFile} 2>/dev/null || echo 0)
+      if [ $((now - since)) -lt 3 ]; then
+        exit 1
+      fi
+    fi
+
+    if [ "$role" != master ]; then
+      rm -f ${escapeShellArg wanFailCountFile}
+      ${optionalString (hc.retryAfterSec != null) ''
+        # The WAN is down on a backup, so it cannot be re-checked here; after
+        # retryAfterSec the pin is lifted and the node may preempt (still
+        # subject to preemptDelay) to try again.
+        if [ "$penalty" = 1 ]; then
+          since=$(stat -c %Y ${escapeShellArg wanPenaltyFile} 2>/dev/null || echo "$now")
+          if [ $((now - since)) -ge ${toString hc.retryAfterSec} ]; then
+            logger -t router-ha "WAN health retry: lifting the priority pin"
+            set_penalty 0
+          fi
+        fi
+      ''}
+      exit 0
+    fi
+
+    # The master has just brought the WAN up; give DHCP time to finish.
+    since=$(stat -c %Y ${escapeShellArg roleStateFile} 2>/dev/null || echo 0)
+    up=$(stat -c %Y ${escapeShellArg wanUpSinceFile} 2>/dev/null || echo 0)
+    [ "$up" -gt "$since" ] && since=$up
+    if [ $((now - since)) -lt ${toString hc.startupGraceSec} ]; then
+      exit 0
+    fi
+
+    healthy=0
+    ${if hc.targets == [ ] then ''
+      gw=$(ip -4 route show default dev "$wan" | awk '$2 == "via" { print $3; exit }')
+      if [ -n "$gw" ]; then
+        timeout ${probeTimeout} arping -q -c 1 -w ${toString ((hc.timeoutMs + 999) / 1000)} -I "$wan" "$gw" && healthy=1
+      elif [ -n "$(ip -4 route show default dev "$wan")" ]; then
+        # GOTCHA: point-to-point WANs (PPPoE) have no gateway to ARP for.
+        healthy=1
+      fi
+    '' else ''
+      # Probe all targets in parallel so the check fits in one interval.
+      pids=""
+      for t in ${escapeShellArgs hc.targets}; do
+        ping -q -n -c 1 -W ${probeTimeout} -I "$wan" "$t" >/dev/null 2>&1 &
+        pids="$pids $!"
+      done
+      for p in $pids; do
+        wait "$p" && healthy=1
+      done
+    ''}
+
+    if [ "$healthy" = 1 ]; then
+      rm -f ${escapeShellArg wanFailCountFile}
+      if [ "$penalty" != 0 ]; then
+        logger -t router-ha "WAN ${cfg.wan.interface} healthy again: restoring priority"
+        set_penalty 0
+      fi
+      exit 0
+    fi
+
+    fails=$(( $(cat ${escapeShellArg wanFailCountFile} 2>/dev/null || echo 0) + 1 ))
+    printf '%s\n' "$fails" > ${escapeShellArg wanFailCountFile}
+    if [ "$fails" -lt ${toString hc.failures} ] || [ "$penalty" = 1 ]; then
+      exit 0
+    fi
+    logger -t router-ha "WAN ${cfg.wan.interface} failed $fails checks: yielding to the peer"
+    set_penalty 1
+    exit 1
+  '';
 
   usePasswordFile = cfg.vrrpPasswordFile != null;
   # INVARIANT: router-ha-vrrp-secret writes "$dir/vrrp-secret.env".
@@ -295,6 +408,73 @@ in
           Detected automatically for WANs managed by `router-networking`.
         '';
       };
+
+      healthCheck = {
+        enable = mkEnableOption ''
+          the WAN health check. While this node is master, it checks the WAN
+          every `interval` seconds; after `failures` failed checks in a row it
+          hands the VIP and WAN to the peer immediately (regardless of
+          `preemptDelay`) and pins its own priority to 1. A pinned node never
+          yields again, so if both WANs are bad (an ISP outage) or the peer is
+          missing, one node stays master. See docs/router-ha-pair-guide.md'';
+
+        targets = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          example = [ "1.1.1.1" "9.9.9.9" ];
+          description = ''
+            Addresses pinged out of the WAN interface; the WAN is healthy if
+            any one answers. Empty (the default) ARPs the IPv4 default gateway
+            learned on the WAN instead, which catches a dead link, NIC or
+            lease without depending on remote hosts. With targets, an outage
+            beyond the ISP gateway also triggers failover, although the peer
+            usually shares that upstream.
+          '';
+        };
+
+        interval = mkOption {
+          type = types.ints.between 1 60;
+          default = 1;
+          description = "Seconds between checks.";
+        };
+
+        timeoutMs = mkOption {
+          type = types.ints.between 100 10000;
+          default = 800;
+          description = ''
+            Milliseconds to wait for an ARP or ping reply. Must be shorter
+            than `interval`, or keepalived skips runs that overlap.
+          '';
+        };
+
+        failures = mkOption {
+          type = types.ints.between 1 100;
+          default = 3;
+          description = "Consecutive failed checks before this node yields.";
+        };
+
+        startupGraceSec = mkOption {
+          type = types.ints.unsigned;
+          default = 30;
+          description = ''
+            Seconds after becoming master before checks count, so DHCP can
+            finish on the freshly raised WAN.
+          '';
+        };
+
+        retryAfterSec = mkOption {
+          type = types.nullOr types.ints.positive;
+          default = 900;
+          description = ''
+            Seconds after a yield before the pin is lifted. The node can then
+            preempt again (after `preemptDelay`) and re-test its WAN; if it is
+            still bad it yields again. A backup's WAN is down, so this is the
+            only way it can notice a repair. During an ISP outage that affects
+            both nodes, each retry moves the VIP twice. `null` never lifts the
+            pin; restart keepalived to clear it.
+          '';
+        };
+      };
     };
 
     keaSync = {
@@ -366,6 +546,16 @@ in
           message = "services.router-ha: VRRP virtual IP (${cfg.virtualIp}) must be in the same subnet as vrrpInterface ${cfg.vrrpInterface}.";
         }
         {
+          # WHY: keepalived never lowers address-owner priority 255, so the
+          # pin would not hold and a node with a dead WAN would preempt back.
+          assertion = !wanHealthEnabled || cfg.priority < 255;
+          message = "services.router-ha.wan.healthCheck needs priority below 255; keepalived does not lower address-owner priority, so the WAN pin could not hold.";
+        }
+        {
+          assertion = !wanHealthEnabled || hc.timeoutMs < hc.interval * 1000;
+          message = "services.router-ha.wan.healthCheck.timeoutMs must be shorter than interval.";
+        }
+        {
           # WHY: Kea HA needs both servers running; stopping the backup's Kea
           # on every VRRP transition would force partner-down on the master.
           assertion = keaHaEnabled -> !(elem "kea-dhcp4-server.service" cfg.singleActiveUnits || elem "kea-dhcp4-server" cfg.singleActiveUnits);
@@ -421,6 +611,10 @@ in
           virtualIps = [
             { addr = cfg.virtualIp; }
           ];
+          trackScripts = optionals wanHealthEnabled [
+            "router_ha_wan_health"
+            "router_ha_wan_pin"
+          ];
           extraConfig = ''
             ${optionalString (cfg.preemptDelay != null) "preempt_delay ${toString cfg.preemptDelay}"}
             ${garpConfig}
@@ -436,6 +630,37 @@ in
           '';
         };
       };
+
+      services.keepalived.vrrpScripts = mkIf wanHealthEnabled {
+        router_ha_wan_health = {
+          script = "${wanHealthScript}";
+          inherit (hc) interval;
+          # The script counts failures itself; keepalived acts on each result.
+          timeout = hc.interval + 5;
+          fall = 1;
+          rise = 1;
+          user = "root";
+        };
+        # GOTCHA: a track_file would react faster, but the nixpkgs module
+        # renders extraConfig after the instances, and keepalived ignores a
+        # track_file referenced before it is declared.
+        router_ha_wan_pin = {
+          script = "${pkgs.writeShellScript "router-ha-wan-pin" ''
+            [ "$(${pkgs.coreutils}/bin/cat ${escapeShellArg wanPenaltyFile} 2>/dev/null)" != 1 ]
+          ''}";
+          interval = 1;
+          weight = -253;
+          fall = 1;
+          rise = 1;
+          user = "root";
+        };
+      };
+
+      # INVARIANT: a keepalived (re)start clears the pin, so a restart is a
+      # fresh start and the manual way to lift it early.
+      systemd.services.keepalived.serviceConfig.ExecStartPre = mkIf wanHealthEnabled (mkBefore [
+        "+${pkgs.coreutils}/bin/rm -f ${wanPenaltyFile} ${wanFailCountFile}"
+      ]);
 
       systemd.services.keepalived.serviceConfig.ExecStopPost = [
         "+${keepalivedStopScript}"

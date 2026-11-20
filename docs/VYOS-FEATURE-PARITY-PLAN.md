@@ -59,7 +59,7 @@ covers it), **gap** (not available).
 | Change safety | `commit-confirm`, `compare`, `rollback-soft` | Generations; no auto-revert, no diff preview | **Gap**: router-113 |
 | Flow offload | nftables flowtables, software and hardware (1.4) | Software nftables flowtable (`router-firewall.flowtable`, no `flags offload`) | Parity for software offload; hardware offload is a gap (needs NIC support, e.g. mlx5; not the X520) |
 | Queueing | Shaper classes, FQ-CoDel, CAKE policy | CAKE (`router-sqm.nix`) | Parity for CAKE |
-| VRRP | Keepalived, sync groups, health tracking | Keepalived (`router-ha.nix`): WAN takeover with MAC clone, `preemptDelay`, GARP options, password file | Shipped, VM-tested (`vm-router-ha-wan-failover`, `vm-router-ha-pair`). WAN health tracking: **gap**, router-afb |
+| VRRP | Keepalived, sync groups, health tracking | Keepalived (`router-ha.nix`): WAN takeover with MAC clone, `preemptDelay`, GARP options, password file | Shipped, VM-tested (`vm-router-ha-wan-failover`, `vm-router-ha-pair`). WAN health tracking (`wan.healthCheck`, router-afb): shipped, VM-tested (`vm-router-ha-wan-health`); no sync group needed (one instance) |
 | Stateful failover | conntrack-sync (conntrackd) | None; deferred until VRRP is rehearsed on hardware (discussion 21) | Gap (deferred) |
 | DHCPv4 HA | Kea HA (1.5 line) | Kea HA (`router-kea.dhcp4.ha`), port scoped to the peer | Shipped, VM-tested (`vm-router-kea-ha`) |
 | DHCPv6 / PD serving | Kea DHCPv6 and PD (1.5 line) | No DHCPv6 server module | **Gap**: router-xm6 |
@@ -90,11 +90,11 @@ pace.
 
 ### 3.1 Finish HA hardening
 
-- **router-afb (P1): VRRP priority follows WAN health.** A track script
-  lowers the master's priority when its upstream stops answering, so the
-  peer takes over. Decide whether the LAN and WAN instances need a sync
-  group. *Test:* the master's upstream goes dark with carrier up; the VIP
-  and WAN move within 5 s and recovery respects `preemptDelay`.
+- **router-afb (P1), done: VRRP follows WAN health.**
+  `router-ha.wan.healthCheck` makes a master with a dead WAN yield at once
+  (FAULT, so the peer's `preemptDelay` does not apply) and pins its priority
+  to 1 until `retryAfterSec`. No sync group is needed: there is one VRRP
+  instance and the WAN follows it. *Tested:* `vm-router-ha-wan-health`.
 - **router-5sa (P1): keep the delegated prefix across failover.** A shared
   DUID for the HA WAN. *Test:* the simulated ISP binds PD to the DUID; the
   same /56 survives failover and fail-back.

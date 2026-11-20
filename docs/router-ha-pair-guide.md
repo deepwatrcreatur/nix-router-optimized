@@ -115,6 +115,65 @@ The delay also applies after a crash: keepalived's unit restarts it
 It applies after the master's LAN link returns from FAULT and after a
 reboot too; through boot the WAN stays down (`ActivationPolicy=manual`).
 
+## WAN Health Tracking (`wan.healthCheck`)
+
+VRRP adverts travel on the LAN, so by default a master whose WAN is dead
+(the DHCP lease never came back, a NIC or cable fails with carrier still up,
+`networkctl reconfigure` failed) keeps the VIP. Enable the health check on
+both nodes to hand over in that case:
+
+```nix
+services.router-ha.wan.healthCheck = {
+  enable = true;
+  # targets = [ "1.1.1.1" "9.9.9.9" ];  # default: ARP the WAN's default gateway
+};
+```
+
+While a node is master it probes the WAN every `interval` seconds (default
+1, with a `timeoutMs` of 800). After `failures` consecutive failures
+(default 3), and only once `startupGraceSec` (default 30) has passed since
+promotion so DHCP can finish, it:
+
+1. **yields**: the check enters keepalived FAULT, which sends a priority-0
+   advert, so the peer takes over at once. This bypasses `preemptDelay`; a
+   plain priority drop would make the peer wait `preemptDelay` first;
+2. **pins** its own priority to 1 (`/run/router-ha/wan-penalty` holds `1`),
+   so it does not preempt straight back.
+
+A pinned node never yields again. If the peer's WAN is bad too (the ISP
+itself is down), the peer yields back to the pinned node, which stays
+master: the LAN VIP, DHCP and DNS stay up on one node instead of both
+sitting in FAULT. When the peer is missing, the yield still costs a few
+seconds: the node leaves FAULT after about 3 s and reclaims the VIP after
+keepalived's master-down timer, then stays master pinned. The check needs
+`priority` below 255, because keepalived never lowers address-owner
+priority.
+
+A backup's WAN is down, so it cannot see a repair. After `retryAfterSec`
+(default 900; `null` disables retries) the pin is lifted and the node
+preempts again after `preemptDelay` to re-test; if the WAN is still bad it
+yields again. During an ISP outage that hits both nodes, each retry moves
+the VIP twice. Restarting keepalived also clears the pin. A master that
+passes a check clears its own pin.
+
+The default probe (ARP for the IPv4 default gateway) catches node-local
+faults without depending on remote hosts. `targets` pings addresses
+instead, in parallel, and also catches outages past the ISP gateway, which
+usually hit both nodes alike. Point-to-point WANs such as PPPoE have no
+gateway to ARP for; with no targets set, a default route on the WAN counts
+as healthy, so set `targets` there.
+
+There is one VRRP instance (on the LAN) and the WAN follows it through the
+notify scripts, so no `vrrp_sync_group` is needed. keepalived in nixpkgs is
+built without BFD, so `track_bfd` is not an option.
+
+The VM test `vm-router-ha-wan-health` (with `preemptDelay = 10`) drops all
+WAN traffic on the master with carrier up. The peer becomes master within
+5 s (about 4 s in the VM), the pinned node stays backup past
+`preemptDelay`, and it takes over again only after `retryAfterSec` plus
+`preemptDelay`. With the ISP dark for both nodes, the pinned node ends up as
+the one stable master. A mutation that drops the yield fails the 5 s bound.
+
 ## Tested Lifecycle
 
 The VM test `vm-router-ha-pair` runs two routers with `preemptDelay = 10`
@@ -128,6 +187,7 @@ transition that exactly one node holds the VIP, the WAN and the unit
 | LAN link down | node goes to FAULT, peer takes over |
 | reboot | peer takes over; the node boots as BACKUP with its WAN down |
 | recovery from any of the above | node waits `preemptDelay` as BACKUP, then takes everything back |
+| upstream dark, carrier up (`wan.healthCheck`, test `vm-router-ha-wan-health`) | peer is MASTER after about 4 s, despite `preemptDelay` |
 
 DNS zone ownership under `zoneReplication.ha` has its own VM test,
 `vm-router-technitium-zone-ha`; see

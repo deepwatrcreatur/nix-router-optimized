@@ -429,4 +429,125 @@ in
       };
     }
   ];
+  router-ha-wan-health-eval = eval.mkNixosEvalCheck "router-ha-wan-health" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan" = {
+        matchConfig.Name = "eth1";
+        networkConfig.DHCP = "yes";
+      };
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        preemptDelay = 300;
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          healthCheck = {
+            enable = true;
+            targets = [ "192.0.2.1" "2001:db8::1" ];
+          };
+        };
+      };
+    }
+    ({ config, ... }:
+      let
+        ka = config.services.keepalived;
+        instance = ka.vrrpInstances.main;
+      in
+      {
+        assertions = [
+          {
+            assertion = instance.trackScripts == [ "router_ha_wan_health" "router_ha_wan_pin" ];
+            message = "router-ha wan.healthCheck must track both the health (yield) and pin scripts.";
+          }
+          {
+            # INVARIANT: weight 0 makes a failed check FAULT the instance,
+            # which is what bypasses the peer's preempt_delay.
+            assertion = ka.vrrpScripts.router_ha_wan_health.weight == 0 && ka.vrrpScripts.router_ha_wan_pin.weight == -253;
+            message = "router_ha_wan_health must use weight 0 (FAULT) and router_ha_wan_pin weight -253 (priority 1).";
+          }
+          {
+            assertion = lib.strings.hasInfix "-W 0.800" (builtins.readFile ka.vrrpScripts.router_ha_wan_health.script);
+            message = "router_ha_wan_health must probe targets with the fractional timeoutMs.";
+          }
+        ];
+      })
+  ];
+
+  router-ha-wan-health-default-off-eval = eval.mkNixosEvalCheck "router-ha-wan-health-default-off" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan".matchConfig.Name = "eth1";
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = config.services.keepalived.vrrpInstances.main.trackScripts == [ ] && config.services.keepalived.vrrpScripts == { };
+          message = "router-ha must not add WAN health tracking unless wan.healthCheck.enable is set.";
+        }
+      ];
+    })
+  ];
+
+  router-ha-wan-health-timeout-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-health-timeout" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan".matchConfig.Name = "eth1";
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          healthCheck = {
+            enable = true;
+            interval = 1;
+            timeoutMs = 1000;
+          };
+        };
+      };
+    }
+  ];
+
+  router-ha-wan-health-owner-priority-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-health-owner-priority" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan".matchConfig.Name = "eth1";
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        priority = 255;
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          healthCheck.enable = true;
+        };
+      };
+    }
+  ];
 }
