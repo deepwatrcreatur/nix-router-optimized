@@ -142,11 +142,16 @@ let
   vmHaWanFailoverCheck = import ./vm/router-ha-wan-failover.nix {
     inherit self lib pkgs;
   };
+
+  vmHaPairCheck = import ./vm/router-ha-pair.nix {
+    inherit self lib pkgs;
+  };
 in
 {
   vm-smoke = vmSmokeCheck;
   vm-router-kea-ha = vmKeaHaCheck;
   vm-router-ha-wan-failover = vmHaWanFailoverCheck;
+  vm-router-ha-pair = vmHaPairCheck;
 
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
     self.nixosModules.default

@@ -110,6 +110,28 @@ starts as MASTER). Failover away from a dead master is not delayed; only the
 return is. Each fail-back moves the single-active units (WAN, DHCP, DDNS),
 so fewer of them means fewer short outages when a primary flaps.
 
+The delay also applies after a crash: keepalived's unit restarts it
+(`Restart=always`), and the restarted daemon comes back as BACKUP and waits.
+It applies after the master's LAN link returns from FAULT and after a
+reboot too; through boot the WAN stays down (`ActivationPolicy=manual`).
+
+## Tested Lifecycle
+
+The VM test `vm-router-ha-pair` runs two routers with `preemptDelay = 10`
+and a stand-in unit in `singleActiveUnits`, and checks after every
+transition that exactly one node holds the VIP, the WAN and the unit
+(sampled for 5 s):
+
+| Event on the MASTER | Measured in the VM |
+|---|---|
+| keepalived killed (SIGKILL) | peer is MASTER after about 4 s |
+| LAN link down | node goes to FAULT, peer takes over |
+| reboot | peer takes over; the node boots as BACKUP with its WAN down |
+| recovery from any of the above | node waits `preemptDelay` as BACKUP, then takes everything back |
+
+DNS zone ownership under `zoneReplication.ha` is not covered by this test
+yet.
+
 ## Gratuitous ARP and NA (`garp`)
 
 On promotion keepalived sends gratuitous ARP (IPv4) and unsolicited
