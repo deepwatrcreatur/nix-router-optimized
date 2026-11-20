@@ -33,6 +33,9 @@ from module names alone.
 - [`FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md) —
   detailed technical comparison between the Linux/NixOS declarative stack and
   FreeBSD/OPNsense (CARP vs VRRP, pfsync vs conntrackd, pf vs FastTrack/XDP)
+- [`VYOS-FEATURE-PARITY-PLAN.md`](./VYOS-FEATURE-PARITY-PLAN.md) —
+  architectural comparison with VyOS and phased engineering roadmap to close key gaps
+  (Route-Based IPsec/VTI, OSPF/BFD, Multicast/IGMP proxy, and unified operational CLI)
 
 ### IPv6 and translation
 
