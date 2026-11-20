@@ -3,602 +3,870 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NixOS Router Framework | Declarative, High-Performance Edge Routing</title>
-  <meta name="description" content="A typed, topology-driven declarative router framework for NixOS: deterministic edge networking, dual-node HA failover, and line-rate performance.">
+  <title>nix-router-optimized | Declarative Edge Routing for NixOS</title>
+  <meta name="description" content="A typed, topology-driven declarative router framework for NixOS: deterministic edge networking, dual-node HA failover, and hardware-accelerated forwarding.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090d16;
-      --bg-card: rgba(18, 26, 43, 0.75);
-      --bg-card-hover: rgba(26, 38, 64, 0.9);
-      --border: rgba(255, 255, 255, 0.1);
-      --border-accent: rgba(56, 189, 248, 0.4);
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --cyan: #38bdf8;
-      --cyan-glow: rgba(56, 189, 248, 0.25);
-      --green: #34d399;
-      --amber: #fbbf24;
-      --purple: #a855f7;
-      --code-bg: #0b1120;
+      --bg: #fafaf9;
+      --surface: #ffffff;
+      --surface-subtle: #f4f4f5;
+      --border: #e4e4e7;
+      --border-strong: #d4d4d8;
+      --text: #09090b;
+      --text-muted: #52525b;
+      --text-subtle: #71717a;
+      --primary: #18181b;
+      --primary-accent: #2563eb;
+      --code-bg: #0f172a;
+      --code-text: #e2e8f0;
+      --tag-bg: #f4f4f5;
+      --tag-border: #e4e4e7;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
       line-height: 1.6;
-      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Ambient background gradient glow */
-    .ambient-glow {
-      position: fixed;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 1000px;
-      height: 450px;
-      background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 80%);
-      pointer-events: none;
-      z-index: 0;
+    /* Layout */
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
     }
 
+    /* Header */
     header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
-      z-index: 100;
-      backdrop-filter: blur(16px);
-      background: rgba(9, 13, 22, 0.8);
-      border-bottom: 1px solid var(--border);
-      padding: 1rem 2rem;
+      z-index: 50;
+    }
+    .header-inner {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      height: 64px;
     }
-
-    .logo {
-      font-weight: 800;
-      font-size: 1.25rem;
+    .brand {
       display: flex;
       align-items: center;
-      gap: 0.6rem;
-      color: var(--text);
+      gap: 0.75rem;
       text-decoration: none;
+      color: var(--text);
     }
-    .logo span { color: var(--cyan); }
-
-    nav { display: flex; gap: 1.5rem; align-items: center; }
+    .brand-title {
+      font-family: 'Fira Code', monospace;
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .brand-badge {
+      font-size: 0.75rem;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'Fira Code', monospace;
+    }
+    nav {
+      display: flex;
+      gap: 1.5rem;
+      align-items: center;
+    }
     nav a {
       color: var(--text-muted);
       text-decoration: none;
-      font-size: 0.95rem;
-      font-weight: 500;
-      transition: color 0.2s;
-    }
-    nav a:hover { color: var(--cyan); }
-
-    .btn-github {
-      background: #1e293b;
-      color: #fff;
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-weight: 600;
       font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+    nav a:hover {
+      color: var(--text);
+    }
+    .btn-outline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text);
       text-decoration: none;
-      transition: all 0.2s;
+      background: var(--surface);
+      transition: background 0.15s ease, border-color 0.15s ease;
     }
-    .btn-github:hover {
-      background: #334155;
-      border-color: var(--cyan);
-      box-shadow: 0 0 15px var(--cyan-glow);
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 3rem 1.5rem;
-      position: relative;
-      z-index: 1;
+    .btn-outline:hover {
+      background: var(--surface-subtle);
+      border-color: #a1a1aa;
     }
 
     /* Hero */
     .hero {
-      text-align: center;
-      padding: 4rem 1rem 3rem;
-      max-width: 900px;
-      margin: 0 auto;
+      padding: 4.5rem 0 3.5rem;
+      border-bottom: 1px solid var(--border);
     }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.35rem 0.85rem;
-      background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      border-radius: 9999px;
-      color: var(--cyan);
-      font-size: 0.85rem;
+    .hero-eyebrow {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.82rem;
+      color: var(--primary-accent);
       font-weight: 600;
-      margin-bottom: 1.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1rem;
     }
     .hero h1 {
-      font-size: 3.2rem;
-      font-weight: 800;
-      line-height: 1.15;
-      margin-bottom: 1.25rem;
+      font-size: 2.75rem;
+      font-weight: 700;
+      line-height: 1.2;
       letter-spacing: -0.03em;
-    }
-    .hero h1 .gradient-text {
-      background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: var(--text);
+      max-width: 820px;
+      margin-bottom: 1.25rem;
     }
     .hero p {
-      font-size: 1.2rem;
+      font-size: 1.15rem;
       color: var(--text-muted);
+      line-height: 1.6;
+      max-width: 760px;
       margin-bottom: 2rem;
-      max-width: 750px;
-      margin-left: auto;
-      margin-right: auto;
     }
     .hero-actions {
       display: flex;
-      justify-content: center;
-      gap: 1rem;
+      gap: 0.85rem;
       flex-wrap: wrap;
+      margin-bottom: 2.5rem;
     }
     .btn-primary {
-      background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
-      color: #fff;
-      padding: 0.85rem 1.8rem;
-      border-radius: 10px;
-      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1.25rem;
+      background: var(--primary);
+      color: #ffffff;
+      border-radius: 6px;
+      font-size: 0.92rem;
+      font-weight: 500;
       text-decoration: none;
-      box-shadow: 0 4px 20px var(--cyan-glow);
-      transition: all 0.2s;
+      transition: opacity 0.15s ease;
     }
     .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 25px rgba(56, 189, 248, 0.4);
+      opacity: 0.9;
     }
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text);
-      padding: 0.85rem 1.8rem;
-      border-radius: 10px;
-      font-weight: 600;
-      text-decoration: none;
+    .meta-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      padding-top: 1.5rem;
+      border-top: 1px dashed var(--border);
+    }
+    .meta-pill {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.78rem;
+      background: var(--surface);
       border: 1px solid var(--border);
-      transition: all 0.2s;
-    }
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: var(--cyan);
-    }
-
-    /* Section Styles */
-    .section-title {
-      font-size: 2rem;
-      font-weight: 700;
-      text-align: center;
-      margin-bottom: 0.75rem;
-      letter-spacing: -0.02em;
-    }
-    .section-subtitle {
-      text-align: center;
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
       color: var(--text-muted);
-      margin-bottom: 3rem;
-      font-size: 1.1rem;
     }
 
-    /* 4-Stage Pipeline */
+    /* Section common */
+    section {
+      padding: 4rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-header {
+      margin-bottom: 2.5rem;
+    }
+    .section-eyebrow {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.8rem;
+      color: var(--primary-accent);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+    .section-title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 1rem;
+      max-width: 720px;
+    }
+
+    /* Pipeline Grid */
     .pipeline-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 5rem;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
     }
-    .pipeline-card {
-      background: var(--bg-card);
+    @media (max-width: 860px) {
+      .pipeline-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 520px) {
+      .pipeline-grid { grid-template-columns: 1fr; }
+    }
+    .pipeline-item {
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 1.75rem;
-      backdrop-filter: blur(12px);
-      transition: all 0.3s;
-      position: relative;
-      overflow: hidden;
-    }
-    .pipeline-card:hover {
-      transform: translateY(-4px);
-      border-color: var(--cyan);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
     }
     .pipeline-step {
       font-family: 'Fira Code', monospace;
-      font-size: 0.8rem;
-      color: var(--cyan);
+      font-size: 0.75rem;
       font-weight: 600;
+      color: var(--text-subtle);
       margin-bottom: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
     }
-    .pipeline-card h3 {
-      font-size: 1.25rem;
-      margin-bottom: 0.6rem;
+    .pipeline-item h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text);
     }
-    .pipeline-card p {
+    .pipeline-item p {
+      font-size: 0.88rem;
       color: var(--text-muted);
-      font-size: 0.95rem;
       line-height: 1.5;
     }
 
-    /* Interactive Topology Diagram */
-    .diagram-container {
-      background: #060911;
+    /* Topology Schematic */
+    .schematic-box {
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 2.5rem;
-      margin-bottom: 5rem;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      border-radius: 8px;
+      padding: 1.75rem;
+      margin-bottom: 2rem;
     }
-    .diagram-header {
+    .schematic-caption {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 2rem;
+      margin-bottom: 1.25rem;
       flex-wrap: wrap;
-      gap: 1rem;
+      gap: 0.75rem;
     }
-    .diagram-header h3 { font-size: 1.3rem; }
-    .diagram-badges { display: flex; gap: 0.5rem; }
-    .status-badge {
-      font-size: 0.75rem;
-      padding: 0.25rem 0.65rem;
-      border-radius: 6px;
+    .schematic-caption h4 {
+      font-size: 0.95rem;
       font-weight: 600;
-      font-family: 'Fira Code', monospace;
     }
-    .badge-primary { background: rgba(52, 211, 153, 0.15); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.3); }
-    .badge-standby { background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.3); }
-
-    /* SVG Topology styling */
-    svg.topology-svg {
+    .schematic-legend {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .legend-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+    .topology-svg {
       width: 100%;
       height: auto;
       display: block;
     }
-    .svg-node {
-      cursor: pointer;
-      transition: filter 0.2s;
-    }
-    .svg-node:hover {
-      filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.6));
-    }
 
-    /* Code Walkthrough Tabs */
-    .tabs-wrapper {
-      margin-bottom: 5rem;
-    }
-    .tabs-nav {
-      display: flex;
-      gap: 0.5rem;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 1.5rem;
-      overflow-x: auto;
-    }
-    .tab-btn {
-      background: none;
-      border: none;
-      padding: 0.75rem 1.25rem;
-      color: var(--text-muted);
-      font-weight: 600;
-      font-size: 0.95rem;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s;
-      white-space: nowrap;
-    }
-    .tab-btn.active {
-      color: var(--cyan);
-      border-bottom-color: var(--cyan);
-    }
-    .tab-content {
-      display: none;
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      font-family: 'Fira Code', monospace;
-      font-size: 0.9rem;
-      overflow-x: auto;
-      box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);
-    }
-    .tab-content.active { display: block; }
-    pre { color: #e2e8f0; line-height: 1.5; }
-    .keyword { color: #f43f5e; font-weight: 600; }
-    .string { color: #34d399; }
-    .comment { color: #64748b; font-style: italic; }
-    .attr { color: #38bdf8; }
-
-    /* Modules Catalog Grid */
-    .modules-filter {
-      display: flex;
-      justify-content: center;
-      gap: 0.5rem;
-      margin-bottom: 2rem;
-      flex-wrap: wrap;
-    }
-    .filter-btn {
-      background: #1e293b;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 0.4rem 1rem;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .filter-btn.active, .filter-btn:hover {
-      background: var(--cyan);
-      color: #0b1120;
-      font-weight: 600;
-      border-color: var(--cyan);
-    }
-    .modules-grid {
+    /* HA Sequence */
+    .sequence-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 1.25rem;
-      margin-bottom: 5rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
     }
-    .module-card {
-      background: var(--bg-card);
+    .sequence-card {
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      transition: all 0.2s;
+      border-radius: 6px;
+      padding: 1.25rem;
     }
-    .module-card:hover {
-      border-color: var(--cyan);
-      background: var(--bg-card-hover);
-      transform: translateY(-2px);
-    }
-    .module-card h4 {
+    .sequence-num {
       font-family: 'Fira Code', monospace;
-      font-size: 1.1rem;
-      color: var(--cyan);
-      margin-bottom: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--primary-accent);
+      font-weight: 600;
+      margin-bottom: 0.4rem;
     }
-    .module-card p {
+    .sequence-card h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+    .sequence-card p {
+      font-size: 0.85rem;
       color: var(--text-muted);
-      font-size: 0.9rem;
       line-height: 1.45;
     }
 
-    /* Comparison Box */
-    .comparison-section {
-      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.8) 100%);
+    /* Code Tabs */
+    .tabs-wrapper {
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 3rem 2rem;
-      margin-bottom: 5rem;
+      border-radius: 8px;
+      overflow: hidden;
     }
-    .comp-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 2rem;
-      margin-top: 2rem;
-    }
-    @media (max-width: 768px) {
-      .comp-grid { grid-template-columns: 1fr; }
-    }
-    .comp-card {
-      background: rgba(11, 17, 32, 0.6);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.75rem;
-    }
-    .comp-card h3 { font-size: 1.3rem; margin-bottom: 1rem; }
-    .comp-card ul { list-style: none; }
-    .comp-card li {
-      padding: 0.5rem 0;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      font-size: 0.95rem;
+    .tabs-nav {
       display: flex;
-      gap: 0.5rem;
+      background: var(--surface-subtle);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
     }
-    .comp-card li:last-child { border-bottom: none; }
-
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 3rem 1.5rem;
-      text-align: center;
+    .tab-btn {
+      padding: 0.75rem 1.25rem;
+      background: none;
+      border: none;
+      font-size: 0.88rem;
+      font-weight: 500;
       color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+    }
+    .tab-btn.active {
+      color: var(--text);
+      background: var(--surface);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+    }
+    .tab-content {
+      display: none;
+      padding: 1.5rem;
+      background: var(--code-bg);
+      font-family: 'Fira Code', monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    pre {
+      color: var(--code-text);
+      line-height: 1.55;
+    }
+    .syn-k { color: #f43f5e; }
+    .syn-s { color: #34d399; }
+    .syn-c { color: #64748b; font-style: italic; }
+    .syn-a { color: #38bdf8; }
+    .syn-n { color: #fbbf24; }
+
+    /* Comparison Table */
+    .table-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
       font-size: 0.9rem;
     }
-    footer a { color: var(--cyan); text-decoration: none; }
+    th, td {
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--surface-subtle);
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    td strong {
+      color: var(--text);
+      display: block;
+      margin-bottom: 0.2rem;
+    }
+    .text-sm-mono {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    /* Modules Catalog */
+    .modules-filter {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .filter-btn:hover {
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+    .filter-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 1rem;
+    }
+    .module-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .module-card-header {
+      margin-bottom: 0.75rem;
+    }
+    .module-name {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.35rem;
+    }
+    .module-category {
+      display: inline-block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-subtle);
+      font-weight: 600;
+    }
+    .module-card p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    /* Footer */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 3rem 0;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .footer-links {
+      display: flex;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .footer-links a:hover {
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
-  <div class="ambient-glow"></div>
 
   <header>
-    <a href="#" class="logo">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      nix-router-<span>optimized</span>
-    </a>
-    <nav>
-      <a href="#pipeline">Architecture</a>
-      <a href="#topology">Topology (HA)</a>
-      <a href="#quickstart">Quick Start</a>
-      <a href="#modules">Modules</a>
-      <a href="https://github.com/deepwatrcreatur/nix-router-optimized" class="btn-github" target="_blank" rel="noreferrer">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-        GitHub
+    <div class="container header-inner">
+      <a href="#" class="brand">
+        <span class="brand-title">nix-router-optimized</span>
+        <span class="brand-badge">NixOS 24.11 / Unstable</span>
       </a>
-    </nav>
+      <nav>
+        <a href="#pipeline">Architecture</a>
+        <a href="#topology">Topology</a>
+        <a href="#comparison">BSD Comparison</a>
+        <a href="#configuration">Configuration</a>
+        <a href="#modules">Modules</a>
+        <a href="https://github.com/deepwatrcreatur/nix-router-optimized" class="btn-outline" target="_blank" rel="noreferrer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          Repository
+        </a>
+      </nav>
+    </div>
   </header>
 
-  <div class="container">
+  <main>
+    <!-- Hero Section -->
     <div class="hero">
-      <div class="badge">
-        <span style="color:var(--green)">●</span> Active Development on Reference Hardware
-      </div>
-      <h1>Declarative, Carrier-Grade Edge Routing on <span class="gradient-text">NixOS</span></h1>
-      <p>
-        Replace black-box appliances with deterministic infrastructure-as-code. 
-        Featuring FastTrack flowtable offload, dual-node VRRP failover with Golden MAC cloning, 
-        and strict systemd slice isolation.
-      </p>
-      <div class="hero-actions">
-        <a href="#quickstart" class="btn-primary">Get Started in 60s</a>
-        <a href="#topology" class="btn-secondary">Explore HA Topology</a>
+      <div class="container">
+        <div class="hero-eyebrow">Modular NixOS Routing Engine</div>
+        <h1>Typed, topology-driven edge routing and deterministic failover.</h1>
+        <p>
+          A pure NixOS framework for high-throughput edge gateways, stateful Netfilter packet filtering,
+          and dual-node VRRP failover on commodity x86_64 and aarch64 hardware. Zero mutable runtime state.
+        </p>
+        <div class="hero-actions">
+          <a href="#configuration" class="btn-primary">View Gateway Flake</a>
+          <a href="#comparison" class="btn-outline">Read Technical Comparison</a>
+          <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/MODULES.md" class="btn-outline" target="_blank" rel="noreferrer">Module Reference (38+)</a>
+        </div>
+        <div class="meta-bar">
+          <span class="meta-pill">Netfilter / nftables</span>
+          <span class="meta-pill">FastTrack Flowtables</span>
+          <span class="meta-pill">VRRP (RFC 5798)</span>
+          <span class="meta-pill">ISC Kea DHCPv4/v6</span>
+          <span class="meta-pill">Technitium TSIG</span>
+          <span class="meta-pill">CAKE SQM</span>
+          <span class="meta-pill">Multi-Queue SMP IRQ</span>
+        </div>
       </div>
     </div>
 
     <!-- 4-Stage Pipeline -->
-    <div id="pipeline" style="padding-top: 3rem;">
-      <h2 class="section-title">The 4-Stage Declarative Pipeline</h2>
-      <p class="section-subtitle">A deterministic engine replacing brittle imperative shell scripts and opaque web forms</p>
-
-      <div class="pipeline-grid">
-        <div class="pipeline-card">
-          <div class="pipeline-step">Stage 01</div>
-          <h3>Typed Topology</h3>
-          <p>Interfaces, subnets, links, and VLANs are modeled as strict Nix types. Evaluation-time assertions catch IP overlaps and port conflicts at build time.</p>
+    <section id="pipeline">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Deterministic Compilation</div>
+          <h2 class="section-title">The 4-Stage Synthesis Pipeline</h2>
+          <p class="section-desc">
+            Rather than mutating system state via web forms or disjoint scripts, configurations are compiled
+            deterministically from a single typed topology definition.
+          </p>
         </div>
-        <div class="pipeline-card">
-          <div class="pipeline-step">Stage 02</div>
-          <h3>Derived Config</h3>
-          <p>Firewall rule trees (nftables), DHCP pools (Kea), and DNS zones (Technitium) are deterministically compiled from your single source of truth topology.</p>
-        </div>
-        <div class="pipeline-card">
-          <div class="pipeline-step">Stage 03</div>
-          <h3>Immutable Deploy</h3>
-          <p>Generates bit-identical NixOS system closures. Deployed atomically via <code>deploy-rs</code> with instant rollback if networking drops.</p>
-        </div>
-        <div class="pipeline-card">
-          <div class="pipeline-step">Stage 04</div>
-          <h3>Measurable Perf</h3>
-          <p>Hardware-aware offloads (TSO/GSO/GRO), FastTrack connection bypass, CAKE bufferbloat shaping, and structured telemetry via <code>routerctl</code>.</p>
+        <div class="pipeline-grid">
+          <div class="pipeline-item">
+            <span class="pipeline-step">Stage 01</span>
+            <h3>Typed Topology</h3>
+            <p>
+              Physical interfaces, subnets, VLANs, and zone assignments are declared once as strict Nix expressions.
+              Evaluation-time assertions detect subnet collisions and invalid MTUs before build time.
+            </p>
+          </div>
+          <div class="pipeline-item">
+            <span class="pipeline-step">Stage 02</span>
+            <h3>Derived Subsystems</h3>
+            <p>
+              Netfilter chains, Kea lease pools, Technitium DNS zones, and CAKE qdiscs are generated automatically.
+              Cross-subsystem addressing drift is mathematically impossible.
+            </p>
+          </div>
+          <div class="pipeline-item">
+            <span class="pipeline-step">Stage 03</span>
+            <h3>Immutable Closures</h3>
+            <p>
+              Build outputs produce bit-reproducible NixOS generations. Deployments via <code>deploy-rs</code> execute
+              automated canary checks with instantaneous rollback on network connectivity loss.
+            </p>
+          </div>
+          <div class="pipeline-item">
+            <span class="pipeline-step">Stage 04</span>
+            <h3>Dataplane Offload</h3>
+            <p>
+              Established TCP/UDP streams enter FastTrack flowtables, bypassing Netfilter evaluation. Hardware offloads
+              and multi-queue SMP IRQ distribution balance line-rate traffic across CPU cores.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Interactive Topology Diagram -->
-    <div id="topology" class="diagram-container">
-      <div class="diagram-header">
-        <div>
-          <h3>Reference Homelab High-Availability Topology</h3>
-          <p style="color: var(--text-muted); font-size: 0.9rem;">Dual-node failover with ISP modem single-lease constraint & out-of-band management</p>
+    <!-- Topology & High Availability -->
+    <section id="topology">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Redundant Architecture</div>
+          <h2 class="section-title">Reference High-Availability Topology</h2>
+          <p class="section-desc">
+            Dual-node active/passive failover evaluated on production homelab hardware: virtualized primary with Intel 2.5GbE
+            paired with a bare-metal standby with Intel 10GbE SFP+.
+          </p>
         </div>
-        <div class="diagram-badges">
-          <span class="status-badge badge-primary">Primary: router (2.5G igc)</span>
-          <span class="status-badge badge-standby">Standby: elitedesk (10G X520)</span>
+
+        <div class="schematic-box">
+          <div class="schematic-caption">
+            <h4>Physical Wiring & Layer-2 Interconnect</h4>
+            <div class="schematic-legend">
+              <div class="legend-item"><span class="legend-indicator" style="background: #16a34a;"></span> Primary: Active Path</div>
+              <div class="legend-item"><span class="legend-indicator" style="background: #d97706;"></span> Standby: Passive Path</div>
+              <div class="legend-item"><span class="legend-indicator" style="background: #2563eb;"></span> Heartbeat / Sync</div>
+            </div>
+          </div>
+
+          <!-- Clean Architectural SVG Blueprint -->
+          <svg class="topology-svg" viewBox="0 0 880 440" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Background Grid Lines -->
+            <path d="M 40 0 L 40 440 M 120 0 L 120 440 M 200 0 L 200 440 M 280 0 L 280 440 M 360 0 L 360 440 M 440 0 L 440 440 M 520 0 L 520 440 M 600 0 L 600 440 M 680 0 L 680 440 M 760 0 L 760 440 M 840 0 L 840 440" stroke="#f4f4f5" stroke-width="1"/>
+            <path d="M 0 40 L 880 40 M 0 100 L 880 100 M 0 160 L 880 160 M 0 220 L 880 220 M 0 280 L 880 280 M 0 340 L 880 340 M 0 400 L 880 400" stroke="#f4f4f5" stroke-width="1"/>
+
+            <!-- ISP Modem Box -->
+            <g transform="translate(340, 20)">
+              <rect width="200" height="55" rx="6" fill="#ffffff" stroke="#71717a" stroke-width="1.5"/>
+              <text x="100" y="26" fill="#09090b" font-size="12" font-weight="600" text-anchor="middle">ISP Cable Modem</text>
+              <text x="100" y="44" fill="#52525b" font-size="10" font-family="'Fira Code', monospace" text-anchor="middle">Single Dynamic Lease (Golden MAC)</text>
+            </g>
+
+            <!-- Line: Modem to WAN Switch -->
+            <path d="M 440 75 L 440 105" stroke="#71717a" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+            <!-- Unmanaged L2 WAN Switch -->
+            <g transform="translate(320, 105)">
+              <rect width="240" height="40" rx="6" fill="#f4f4f5" stroke="#a1a1aa" stroke-width="1.5"/>
+              <text x="120" y="25" fill="#09090b" font-size="11" font-weight="600" text-anchor="middle">Unmanaged L2 WAN Switch</text>
+            </g>
+
+            <!-- Connections from WAN Switch to Nodes -->
+            <path d="M 380 145 L 245 195" stroke="#16a34a" stroke-width="2"/>
+            <path d="M 500 145 L 635 195" stroke="#d97706" stroke-width="2" stroke-dasharray="4 3"/>
+
+            <!-- Primary Node: router (VM) -->
+            <g transform="translate(130, 195)">
+              <rect width="230" height="145" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+              <text x="15" y="24" fill="#15803d" font-size="12" font-weight="700">PRIMARY: router (VM)</text>
+              <text x="15" y="44" fill="#09090b" font-size="10" font-family="'Fira Code', monospace">WAN: enp6s17 (Active, Golden MAC)</text>
+              <text x="15" y="60" fill="#09090b" font-size="10" font-family="'Fira Code', monospace">LAN: enp6s16 (VIP 10.10.10.1/16)</text>
+              <line x1="15" y1="72" x2="215" y2="72" stroke="#bbf7d0" stroke-width="1"/>
+              <text x="15" y="90" fill="#166534" font-size="9.5">✓ Kea DHCPv4 Server (Active)</text>
+              <text x="15" y="106" fill="#166534" font-size="9.5">✓ IPv6 SendRA + TSIG Primary DNS</text>
+              <text x="15" y="122" fill="#166534" font-size="9.5">✓ FastTrack Flowtable Active</text>
+              <text x="15" y="138" fill="#166534" font-size="9.5">✓ VRRP MASTER (Priority 150)</text>
+            </g>
+
+            <!-- Standby Node: elitedesk (Baremetal) -->
+            <g transform="translate(520, 195)">
+              <rect width="230" height="145" rx="6" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+              <text x="15" y="24" fill="#b45309" font-size="12" font-weight="700">STANDBY: elitedesk (BM)</text>
+              <text x="15" y="44" fill="#09090b" font-size="10" font-family="'Fira Code', monospace">WAN: enp1s0f0 (always-down)</text>
+              <text x="15" y="60" fill="#09090b" font-size="10" font-family="'Fira Code', monospace">LAN: enp1s0f1 (10.10.10.4/16)</text>
+              <line x1="15" y1="72" x2="215" y2="72" stroke="#fde68a" stroke-width="1"/>
+              <text x="15" y="90" fill="#92400e" font-size="9.5">⚠ Kea DHCP Disabled (Manual)</text>
+              <text x="15" y="106" fill="#92400e" font-size="9.5">⚠ IPv6 RA Suppressed</text>
+              <text x="15" y="122" fill="#92400e" font-size="9.5">✓ Secondary DNS (AXFR Replicated)</text>
+              <text x="15" y="138" fill="#92400e" font-size="9.5">✓ VRRP BACKUP (Priority 100)</text>
+            </g>
+
+            <!-- State Sync / VRRP Link -->
+            <path d="M 360 265 L 520 265" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <rect x="385" y="254" width="110" height="22" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="440" y="269" fill="#2563eb" font-size="9" font-family="'Fira Code', monospace" text-anchor="middle">VRRP + conntrackd</text>
+
+            <!-- Managed LAN Switch -->
+            <g transform="translate(260, 380)">
+              <rect width="360" height="40" rx="6" fill="#f4f4f5" stroke="#a1a1aa" stroke-width="1.5"/>
+              <text x="180" y="25" fill="#09090b" font-size="11" font-weight="600" text-anchor="middle">Managed L2 Switch (LAN Subnets 10.10.0.0/16)</text>
+            </g>
+
+            <!-- Connections to LAN Switch -->
+            <path d="M 245 340 L 350 380" stroke="#16a34a" stroke-width="2"/>
+            <path d="M 635 340 L 530 380" stroke="#2563eb" stroke-width="1.5"/>
+          </svg>
+        </div>
+
+        <div class="sequence-grid">
+          <div class="sequence-card">
+            <div class="sequence-num">Event 01</div>
+            <h4>VRRP Heartbeat Expiry</h4>
+            <p>Keepalived detects 3 consecutive missed VRRP advertisements on the internal LAN link and transitions to MASTER.</p>
+          </div>
+          <div class="sequence-card">
+            <div class="sequence-num">Event 02</div>
+            <h4>VIP Ownership & ARP</h4>
+            <p>Floating IP <code>10.10.10.1</code> is assigned to the standby LAN interface; gratuitous ARPs update switch MAC tables.</p>
+          </div>
+          <div class="sequence-card">
+            <div class="sequence-num">Event 03</div>
+            <h4>Golden MAC Ingress</h4>
+            <p>Standby WAN link transitions from <code>always-down</code> to active, assuming the cloned ISP MAC to acquire the lease.</p>
+          </div>
+          <div class="sequence-card">
+            <div class="sequence-num">Event 04</div>
+            <h4>DNS & DDNS Promotion</h4>
+            <p>Technitium secondary zones are promoted to Primary via local API hooks, restoring authoritative DDNS updating.</p>
+          </div>
         </div>
       </div>
+    </section>
 
-      <!-- SVG Topology Visualizer -->
-      <svg class="topology-svg" viewBox="0 0 900 460" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="boxGradPrimary" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#064e3b" stop-opacity="0.8"/>
-            <stop offset="100%" stop-color="#022c22" stop-opacity="0.9"/>
-          </linearGradient>
-          <linearGradient id="boxGradStandby" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#78350f" stop-opacity="0.8"/>
-            <stop offset="100%" stop-color="#451a03" stop-opacity="0.9"/>
-          </linearGradient>
-          <linearGradient id="boxGradGeneral" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#1e293b" stop-opacity="0.9"/>
-            <stop offset="100%" stop-color="#0f172a" stop-opacity="0.9"/>
-          </linearGradient>
-          <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
+    <!-- Technical Comparison -->
+    <section id="comparison">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Architectural Tradeoffs</div>
+          <h2 class="section-title">Comparative Analysis: Linux/NixOS vs. BSD Stacks</h2>
+          <p class="section-desc">
+            A technical evaluation of subsystem primitives, operational predictability, and dataplane performance
+            against FreeBSD appliances (OPNsense/pfSense) and vanilla OpenBSD.
+          </p>
+        </div>
 
-        <!-- ISP Modem -->
-        <g class="svg-node" transform="translate(350, 20)">
-          <rect width="200" height="60" rx="10" fill="url(#boxGradGeneral)" stroke="#38bdf8" stroke-width="1.5"/>
-          <text x="100" y="28" fill="#f8fafc" font-size="13" font-weight="700" text-anchor="middle">ISP Cable Modem</text>
-          <text x="100" y="46" fill="#94a3b8" font-size="10" font-family="'Fira Code', monospace" text-anchor="middle">Single Dynamic Lease (Golden MAC)</text>
-        </g>
-
-        <!-- WAN Link Down to Unmanaged Switch -->
-        <path d="M 450 80 L 450 115" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="4 2"/>
-
-        <!-- Unmanaged WAN Switch -->
-        <g class="svg-node" transform="translate(330, 115)">
-          <rect width="240" height="45" rx="8" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/>
-          <text x="120" y="28" fill="#e2e8f0" font-size="12" font-weight="600" text-anchor="middle">Isolated L2 WAN Unmanaged Switch</text>
-        </g>
-
-        <!-- Connections from WAN Switch to Routers -->
-        <path d="M 390 160 L 250 210" stroke="#34d399" stroke-width="2.5" />
-        <path d="M 510 160 L 650 210" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3"/>
-
-        <!-- Primary Node: router -->
-        <g class="svg-node" transform="translate(140, 210)">
-          <rect width="230" height="135" rx="12" fill="url(#boxGradPrimary)" stroke="#34d399" stroke-width="2"/>
-          <text x="115" y="30" fill="#34d399" font-size="15" font-weight="800" text-anchor="middle">PRIMARY: router (VM)</text>
-          <text x="115" y="52" fill="#e2e8f0" font-size="11" font-family="'Fira Code', monospace" text-anchor="middle">WAN: enp6s17 (Active, Golden MAC)</text>
-          <text x="115" y="70" fill="#e2e8f0" font-size="11" font-family="'Fira Code', monospace" text-anchor="middle">LAN: enp6s16 (VIP 10.10.10.1/16)</text>
-          <text x="115" y="90" fill="#a7f3d0" font-size="10" text-anchor="middle">✓ Kea DHCPv4 Server (Active)</text>
-          <text x="115" y="106" fill="#a7f3d0" font-size="10" text-anchor="middle">✓ IPv6 SendRA + TSIG Primary DNS</text>
-          <text x="115" y="122" fill="#a7f3d0" font-size="10" text-anchor="middle">✓ Inadyn DDNS + UPnP Ingress</text>
-        </g>
-
-        <!-- Standby Node: elitedesk -->
-        <g class="svg-node" transform="translate(530, 210)">
-          <rect width="230" height="135" rx="12" fill="url(#boxGradStandby)" stroke="#fbbf24" stroke-width="2"/>
-          <text x="115" y="30" fill="#fbbf24" font-size="15" font-weight="800" text-anchor="middle">STANDBY: elitedesk (Baremetal)</text>
-          <text x="115" y="52" fill="#fde68a" font-size="11" font-family="'Fira Code', monospace" text-anchor="middle">WAN: enp1s0f0 (always-down)</text>
-          <text x="115" y="70" fill="#fde68a" font-size="11" font-family="'Fira Code', monospace" text-anchor="middle">LAN: enp1s0f1 (Node 10.10.10.4)</text>
-          <text x="115" y="90" fill="#fed7aa" font-size="10" text-anchor="middle">⚠ Kea DHCP Disabled</text>
-          <text x="115" y="106" fill="#fed7aa" font-size="10" text-anchor="middle">⚠ IPv6 RA Suppressed</text>
-          <text x="115" y="122" fill="#fed7aa" font-size="10" text-anchor="middle">✓ Secondary DNS (AXFR Replicated)</text>
-        </g>
-
-        <!-- VRRP & Conntrack Sync Line -->
-        <path d="M 370 277 L 530 277" stroke="#38bdf8" stroke-width="2" stroke-dasharray="6 3"/>
-        <text x="450" y="270" fill="#38bdf8" font-size="10" font-family="'Fira Code', monospace" text-anchor="middle">VRRP Heartbeat + conntrackd (FTFW)</text>
-
-        <!-- LAN Switch -->
-        <g class="svg-node" transform="translate(250, 390)">
-          <rect width="400" height="45" rx="8" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/>
-          <text x="200" y="28" fill="#e2e8f0" font-size="13" font-weight="600" text-anchor="middle">Homelab Switch (LAN 10.10.0.0/16)</text>
-        </g>
-
-        <path d="M 255 345 L 350 390" stroke="#34d399" stroke-width="2.5"/>
-        <path d="M 645 345 L 550 390" stroke="#38bdf8" stroke-width="2"/>
-      </svg>
-    </div>
-
-    <!-- Quick Start Walkthrough Tabs -->
-    <div id="quickstart" class="tabs-wrapper">
-      <h2 class="section-title">Quick Start Examples</h2>
-      <p class="section-subtitle">Copyable, battle-tested Nix configurations for your flake</p>
-
-      <div class="tabs-nav">
-        <button class="tab-btn active" onclick="switchTab('tab-single')">Single Gateway (5 Min)</button>
-        <button class="tab-btn" onclick="switchTab('tab-ha')">High Availability Pair</button>
-        <button class="tab-btn" onclick="switchTab('tab-zones')">Zone Isolation (nftables)</button>
-        <button class="tab-btn" onclick="switchTab('tab-pppoe')">PPPoE Uplink</button>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 20%;">Subsystem</th>
+                <th style="width: 28%;">nix-router-optimized (Linux)</th>
+                <th style="width: 26%;">OPNsense / pfSense (FreeBSD)</th>
+                <th style="width: 26%;">Vanilla OpenBSD</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>State & Config Model</strong></td>
+                <td>
+                  Pure Nix expressions; typed schema evaluation; cryptographic store paths; zero mutable runtime drift.
+                </td>
+                <td>
+                  Imperative PHP web UI modifying monolithic on-disk <code>config.xml</code> database.
+                </td>
+                <td>
+                  Plaintext flat files (<code>/etc/pf.conf</code>, <code>hostname.if*</code>); manual sync.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Deployment & Rollback</strong></td>
+                <td>
+                  Atomic generations; immediate bootloader rollback; <code>deploy-rs</code> automated canary checks.
+                </td>
+                <td>
+                  In-place package updates; rollback requires ZFS boot environments or full disk backups.
+                </td>
+                <td>
+                  Manual system backups; kernel rollback via boot prompt.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Packet Filter Engine</strong></td>
+                <td>
+                  Netfilter (<code>nftables</code>) with FastTrack flowtables (L4 connection tracking bypass).
+                </td>
+                <td>
+                  FreeBSD <code>pf</code> (derived from OpenBSD pf, rewritten for multi-core SMP).
+                </td>
+                <td>
+                  OpenBSD <code>pf</code> (cleanest syntax, strict single-threaded state evaluation).
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Dataplane Offloading</strong></td>
+                <td>
+                  Kernel flowtables; NIC ring buffer tuning; eBPF / XDP hook support.
+                </td>
+                <td>
+                  Standard kernel packet path; no native XDP or flowtable bypass equivalent.
+                </td>
+                <td>
+                  Standard kernel packet path; strict security-first architecture.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>High Availability</strong></td>
+                <td>
+                  Keepalived (VRRP RFC 5798) with preemption delays and single-active unit scripts.
+                </td>
+                <td>
+                  CARP (IP Protocol 112) integrated with FreeBSD kernel.
+                </td>
+                <td>
+                  CARP + <code>ifstated</code> state machine daemons.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Connection State Sync</strong></td>
+                <td>
+                  <code>conntrackd</code> (FTFW protocol, unicast or multicast).
+                </td>
+                <td>
+                  <code>pfsync</code> (multicast kernel state replication).
+                </td>
+                <td>
+                  <code>pfsync</code> (standard reference implementation).
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Hardware Scaling</strong></td>
+                <td>
+                  Explicit MSI-X SMP affinity, RPS, XPS, and CPU core pinning across queues.
+                </td>
+                <td>
+                  Driver-dependent interrupt handling; multi-threaded kernel network stack.
+                </td>
+                <td>
+                  Historically single-lock network stack; bounded multi-gigabit throughput.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top: 1.5rem; text-align: right;">
+          <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/FREEBSD-OPNSENSE-COMPARISON.md" class="btn-outline" target="_blank" rel="noreferrer">
+            Read Full Technical Report (FREEBSD-OPNSENSE-COMPARISON.md) →
+          </a>
+        </div>
       </div>
+    </section>
 
-      <div id="tab-single" class="tab-content active">
-<pre><span class="comment"># Single-Router Gateway with FastTrack & Unbound DNS</span>
-{ <span class="attr">inputs</span>, ... }: {
-  <span class="attr">imports</span> = [
+    <!-- Configuration & Usage -->
+    <section id="configuration">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Flake Specifications</div>
+          <h2 class="section-title">Production Gateway Examples</h2>
+          <p class="section-desc">
+            Copyable NixOS configurations demonstrating core gateway topologies, high availability, and zone security.
+          </p>
+        </div>
+
+        <div class="tabs-wrapper">
+          <div class="tabs-nav">
+            <button class="tab-btn active" onclick="switchTab(event, 'tab-single')">Single Gateway (FastTrack + DNS)</button>
+            <button class="tab-btn" onclick="switchTab(event, 'tab-ha')">Dual-Node VRRP (Keepalived)</button>
+            <button class="tab-btn" onclick="switchTab(event, 'tab-zones')">Zone Isolation Matrix</button>
+            <button class="tab-btn" onclick="switchTab(event, 'tab-pppoe')">PPPoE Uplink</button>
+          </div>
+
+          <div id="tab-single" class="tab-content active">
+<pre><span class="syn-c"># Single Gateway with FastTrack flowtables, Kea DHCP, and Unbound</span>
+{ <span class="syn-a">inputs</span>, ... }: {
+  <span class="syn-a">imports</span> = [
     inputs.router-optimized.nixosModules.router-networking
     inputs.router-optimized.nixosModules.router-dhcp
     inputs.router-optimized.nixosModules.router-dns-service
@@ -606,215 +874,254 @@
     inputs.router-optimized.nixosModules.router-optimizations
   ];
 
-  <span class="attr">services.router-networking</span> = {
-    <span class="attr">enable</span> = <span class="keyword">true</span>;
-    <span class="attr">wan.device</span> = <span class="string">"eth0"</span>;
-    <span class="attr">routedInterfaces.lan</span> = {
-      <span class="attr">device</span> = <span class="string">"eth1"</span>;
-      <span class="attr">ipv4Address</span> = <span class="string">"192.168.1.1/24"</span>;
-      <span class="attr">ipv6SendRA</span> = <span class="keyword">true</span>;
+  <span class="syn-a">services.router-networking</span> = {
+    <span class="syn-a">enable</span> = <span class="syn-k">true</span>;
+    <span class="syn-a">wan.device</span> = <span class="syn-s">"eth0"</span>;
+    <span class="syn-a">routedInterfaces.lan</span> = {
+      <span class="syn-a">device</span> = <span class="syn-s">"eth1"</span>;
+      <span class="syn-a">ipv4Address</span> = <span class="syn-s">"192.168.1.1/24"</span>;
+      <span class="syn-a">dns</span> = [ <span class="syn-s">"192.168.1.1"</span> ];
+      <span class="syn-a">ipv6SendRA</span> = <span class="syn-k">true</span>;
     };
   };
 
-  <span class="attr">services.router-dhcp.enable</span> = <span class="keyword">true</span>;
-  <span class="attr">services.router-firewall.enable</span> = <span class="keyword">true</span>;
-  <span class="attr">services.router-optimizations.enable</span> = <span class="keyword">true</span>;
-}</pre>
-      </div>
+  <span class="syn-a">services.router-dhcp.enable</span> = <span class="syn-k">true</span>;
+  <span class="syn-a">services.router-dns-service</span> = {
+    <span class="syn-a">enable</span> = <span class="syn-k">true</span>;
+    <span class="syn-a">provider</span> = <span class="syn-s">"unbound"</span>;
+  };
 
-      <div id="tab-ha" class="tab-content">
-<pre><span class="comment"># Dual-Node Keepalived (VRRP) with Golden MAC ISP Spoofing</span>
+  <span class="syn-a">services.router-firewall.enable</span> = <span class="syn-k">true</span>;
+  <span class="syn-a">services.router-optimizations</span> = {
+    <span class="syn-a">enable</span> = <span class="syn-k">true</span>;
+    <span class="syn-a">interfaces</span> = {
+      <span class="syn-a">wan</span> = { <span class="syn-a">device</span> = <span class="syn-s">"eth0"</span>; <span class="syn-a">role</span> = <span class="syn-s">"wan"</span>; <span class="syn-a">bandwidth</span> = <span class="syn-s">"1Gbit"</span>; };
+      <span class="syn-a">lan</span> = { <span class="syn-a">device</span> = <span class="syn-s">"eth1"</span>; <span class="syn-a">role</span> = <span class="syn-s">"lan"</span>; };
+    };
+  };
+}</pre>
+          </div>
+
+          <div id="tab-ha" class="tab-content">
+<pre><span class="syn-c"># Dual-Node VRRP Pair with ISP Golden MAC Spoofing</span>
 {
-  <span class="attr">services.router-ha</span> = {
-    <span class="attr">enable</span> = <span class="keyword">true</span>;
-    <span class="attr">role</span> = <span class="string">"master"</span>;               <span class="comment"># Set to "backup" on standby node</span>
-    <span class="attr">virtualIp</span> = <span class="string">"10.10.10.1/16"</span>;    <span class="comment"># Floating Gateway IP</span>
-    <span class="attr">vrrpInterface</span> = <span class="string">"enp6s16"</span>;      <span class="comment"># Internal LAN NIC</span>
-    <span class="attr">preemptDelay</span> = <span class="string">300</span>;             <span class="comment"># Hold BACKUP 5 mins on recovery before taking VIP</span>
-    
-    <span class="attr">wan</span> = {
-      <span class="attr">enable</span> = <span class="keyword">true</span>;
-      <span class="attr">interface</span> = <span class="string">"enp6s17"</span>;
-      <span class="attr">clonedMac</span> = <span class="string">"02:76:c6:01:2a:b0"</span>; <span class="comment"># Cloned ISP modem lease MAC</span>
+  <span class="syn-a">services.router-ha</span> = {
+    <span class="syn-a">enable</span> = <span class="syn-k">true</span>;
+    <span class="syn-a">role</span> = <span class="syn-s">"master"</span>;               <span class="syn-c"># Configured as "backup" on standby node</span>
+    <span class="syn-a">virtualIp</span> = <span class="syn-s">"10.10.10.1/16"</span>;    <span class="syn-c"># Floating LAN gateway IP</span>
+    <span class="syn-a">vrrpInterface</span> = <span class="syn-s">"enp6s16"</span>;      <span class="syn-c"># Dedicated LAN link</span>
+    <span class="syn-a">vrrpPasswordFile</span> = <span class="syn-s">"/run/secrets/vrrp.secret"</span>; <span class="syn-c"># Systemd credential outside store</span>
+    <span class="syn-a">preemptDelay</span> = <span class="syn-n">300</span>;             <span class="syn-c"># Wait 300s after reboot before claiming VIP</span>
+
+    <span class="syn-a">wan</span> = {
+      <span class="syn-a">enable</span> = <span class="syn-k">true</span>;
+      <span class="syn-a">interface</span> = <span class="syn-s">"enp6s17"</span>;
+      <span class="syn-a">clonedMac</span> = <span class="syn-s">"02:76:c6:01:2a:b0"</span>; <span class="syn-c"># Cloned ISP modem lease MAC</span>
     };
 
-    <span class="attr">singleActiveUnits</span> = [
-      <span class="string">"kea-dhcp4-server.service"</span>
-      <span class="string">"inadyn.service"</span>
+    <span class="syn-a">singleActiveUnits</span> = [
+      <span class="syn-s">"kea-dhcp4-server.service"</span>
+      <span class="syn-s">"inadyn.service"</span>
     ];
   };
 }</pre>
-      </div>
+          </div>
 
-      <div id="tab-zones" class="tab-content">
-<pre><span class="comment"># Zero-Trust Zone Policy Configuration</span>
+          <div id="tab-zones" class="tab-content">
+<pre><span class="syn-c"># Declarative Netfilter Zone Security Matrix</span>
 {
-  <span class="attr">services.router-zones</span> = {
-    <span class="attr">enable</span> = <span class="keyword">true</span>;
-    <span class="attr">zones</span> = {
-      <span class="attr">wan.interfaces</span> = [ <span class="string">"wan0"</span> ];
-      <span class="attr">lan.interfaces</span> = [ <span class="string">"lan0"</span> ];
-      <span class="attr">iot.interfaces</span> = [ <span class="string">"lan0.30"</span> ];
+  <span class="syn-a">services.router-zones</span> = {
+    <span class="syn-a">enable</span> = <span class="syn-k">true</span>;
+    <span class="syn-a">zones</span> = {
+      <span class="syn-a">wan.interfaces</span> = [ <span class="syn-s">"wan0"</span> ];
+      <span class="syn-a">lan.interfaces</span> = [ <span class="syn-s">"lan0"</span> ];
+      <span class="syn-a">iot.interfaces</span> = [ <span class="syn-s">"lan0.30"</span> ];
+      <span class="syn-a">dmz.interfaces</span> = [ <span class="syn-s">"lan0.50"</span> ];
     };
 
-    <span class="attr">policies</span> = [
-      { <span class="attr">fromZone</span> = <span class="string">"lan"</span>; <span class="attr">toZone</span> = <span class="string">"wan"</span>; <span class="attr">action</span> = <span class="string">"accept"</span>; }
-      { <span class="attr">fromZone</span> = <span class="string">"iot"</span>; <span class="attr">toZone</span> = <span class="string">"wan"</span>; <span class="attr">action</span> = <span class="string">"accept"</span>; }
-      { <span class="attr">fromZone</span> = <span class="string">"iot"</span>; <span class="attr">toZone</span> = <span class="string">"lan"</span>; <span class="attr">action</span> = <span class="string">"drop"</span>; } <span class="comment"># Isolate smart home devices</span>
+    <span class="syn-a">policies</span> = [
+      { <span class="syn-a">fromZone</span> = <span class="syn-s">"lan"</span>; <span class="syn-a">toZone</span> = <span class="syn-s">"wan"</span>; <span class="syn-a">action</span> = <span class="syn-s">"accept"</span>; }
+      { <span class="syn-a">fromZone</span> = <span class="syn-s">"iot"</span>; <span class="syn-a">toZone</span> = <span class="syn-s">"wan"</span>; <span class="syn-a">action</span> = <span class="syn-s">"accept"</span>; }
+      { <span class="syn-a">fromZone</span> = <span class="syn-s">"iot"</span>; <span class="syn-a">toZone</span> = <span class="syn-s">"lan"</span>; <span class="syn-a">action</span> = <span class="syn-s">"drop"</span>; } <span class="syn-c"># Isolate IoT subnet</span>
+      { <span class="syn-a">fromZone</span> = <span class="syn-s">"dmz"</span>; <span class="syn-a">toZone</span> = <span class="syn-s">"lan"</span>; <span class="syn-a">action</span> = <span class="syn-s">"drop"</span>; }
     ];
   };
 }</pre>
-      </div>
+          </div>
 
-      <div id="tab-pppoe" class="tab-content">
-<pre><span class="comment"># Composable PPPoE Uplink with Secret Protection</span>
+          <div id="tab-pppoe" class="tab-content">
+<pre><span class="syn-c"># Composable PPPoE Uplink with Secret Decoupling</span>
 {
-  <span class="attr">services.router-networking</span> = {
-    <span class="attr">enable</span> = <span class="keyword">true</span>;
-    <span class="attr">wan.device</span> = <span class="string">"ppp0"</span>;
-    <span class="attr">wan.manageWithNetworkd</span> = <span class="keyword">false</span>;
+  <span class="syn-a">services.router-networking</span> = {
+    <span class="syn-a">enable</span> = <span class="syn-k">true</span>;
+    <span class="syn-a">wan.device</span> = <span class="syn-s">"ppp0"</span>;
+    <span class="syn-a">wan.manageWithNetworkd</span> = <span class="syn-k">false</span>;
   };
 
-  <span class="attr">services.router-pppoe</span> = {
-    <span class="attr">enable</span> = <span class="keyword">true</span>;
-    <span class="attr">physicalDevice</span> = <span class="string">"enp1s0"</span>;
-    <span class="attr">interfaceName</span> = <span class="string">"ppp0"</span>;
-    <span class="attr">username</span> = <span class="string">"isp-user@isp.net"</span>;
-    <span class="attr">credentialsFile</span> = <span class="string">"/run/secrets/pppoe-peer.conf"</span>; <span class="comment"># Stored outside /nix/store</span>
+  <span class="syn-a">services.router-pppoe</span> = {
+    <span class="syn-a">enable</span> = <span class="syn-k">true</span>;
+    <span class="syn-a">physicalDevice</span> = <span class="syn-s">"enp1s0"</span>;
+    <span class="syn-a">interfaceName</span> = <span class="syn-s">"ppp0"</span>;
+    <span class="syn-a">username</span> = <span class="syn-s">"fiber-user@isp.net"</span>;
+    <span class="syn-a">credentialsFile</span> = <span class="syn-s">"/run/secrets/pppoe.conf"</span>; <span class="syn-c"># Decrypted in RAM, out of store</span>
   };
 
-  <span class="attr">services.router-firewall.tcpMssClamp.enable</span> = <span class="keyword">true</span>;
+  <span class="syn-a">services.router-firewall.tcpMssClamp.enable</span> = <span class="syn-k">true</span>;
 }</pre>
-      </div>
-    </div>
-
-    <!-- Platform Comparison -->
-    <div class="comparison-section">
-      <h2 class="section-title">Why Linux/NixOS Over FreeBSD/OPNsense?</h2>
-      <p class="section-subtitle">Comparing the declarative fleet model with traditional web appliances</p>
-
-      <div class="comp-grid">
-        <div class="comp-card">
-          <h3 style="color: var(--cyan);">NixOS Router (`nix-router-optimized`)</h3>
-          <ul>
-            <li><strong>Bit-Identical GitOps:</strong> Entire fleet defined in version-controlled Nix expressions.</li>
-            <li><strong>Atomic Rollbacks:</strong> Broken deployments revert instantly via GRUB generations.</li>
-            <li><strong>FastTrack Flowtables:</strong> Netfilter connection offload bypasses rule trees for 10G line rate.</li>
-            <li><strong>eBPF / XDP:</strong> Drop malicious packets inside NIC ring buffers before kernel allocation.</li>
-            <li><strong>State Sync:</strong> VRRP (Keepalived) + conntrackd replicates sessions without dropping calls.</li>
-          </ul>
-        </div>
-        <div class="comp-card">
-          <h3 style="color: #cbd5e1;">FreeBSD Appliance (OPNsense / pfSense)</h3>
-          <ul>
-            <li><strong>Turnkey GUI:</strong> Convenient PHP web UI for single-box administration.</li>
-            <li><strong>Imperative State:</strong> Monolithic <code>config.xml</code> modified on disk at runtime.</li>
-            <li><strong>Upgrades:</strong> In-place package updates; rollback requires full backup restore or ZFS snapshots.</li>
-            <li><strong>No XDP Equivalent:</strong> Packet processing bound to classic kernel queue overhead.</li>
-            <li><strong>State Sync:</strong> CARP + pfsync provides state synchronization, but confined to BSD pf.</li>
-          </ul>
+          </div>
         </div>
       </div>
-      <div style="text-align: center; margin-top: 2rem;">
-        <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/FREEBSD-OPNSENSE-COMPARISON.md" class="btn-secondary" target="_blank" rel="noreferrer">
-          Read Full Architectural Comparison (FREEBSD-OPNSENSE-COMPARISON.md) →
-        </a>
-      </div>
-    </div>
+    </section>
 
     <!-- Modules Catalog -->
-    <div id="modules">
-      <h2 class="section-title">Explore Framework Modules</h2>
-      <p class="section-subtitle">Over 38 modular, composable building blocks for edge networking</p>
+    <section id="modules">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-eyebrow">Composable Architecture</div>
+          <h2 class="section-title">Framework Module Index</h2>
+          <p class="section-desc">
+            38+ composable NixOS modules spanning core networking, packet filtering, high availability, and telemetry.
+          </p>
+        </div>
 
-      <div class="modules-filter">
-        <button class="filter-btn active" onclick="filterModules('all')">All</button>
-        <button class="filter-btn" onclick="filterModules('core')">Core & HA</button>
-        <button class="filter-btn" onclick="filterModules('security')">Firewall & Security</button>
-        <button class="filter-btn" onclick="filterModules('dns')">DNS & Ingress</button>
-        <button class="filter-btn" onclick="filterModules('vpn')">VPNs & Tunnels</button>
-      </div>
+        <div class="modules-filter">
+          <button class="filter-btn active" onclick="filterModules(event, 'all')">All Modules</button>
+          <button class="filter-btn" onclick="filterModules(event, 'core')">Core & HA</button>
+          <button class="filter-btn" onclick="filterModules(event, 'firewall')">Packet Filter</button>
+          <button class="filter-btn" onclick="filterModules(event, 'dns')">DNS & Services</button>
+          <button class="filter-btn" onclick="filterModules(event, 'vpn')">Tunnels & VPNs</button>
+        </div>
 
-      <div class="modules-grid">
-        <div class="module-card" data-cat="core">
-          <h4>router-networking</h4>
-          <p>systemd-networkd engine for WAN DHCP/static, IPv6 Prefix Delegation (/56), and routed downstream interfaces.</p>
-        </div>
-        <div class="module-card" data-cat="core">
-          <h4>router-ha</h4>
-          <p>Dual-node VRRP high availability with Golden MAC cloning, preemption delays, and single-active unit orchestration.</p>
-        </div>
-        <div class="module-card" data-cat="security">
-          <h4>router-firewall</h4>
-          <p>Role-aware nftables policy engine with FastTrack flowtables, SIP-friendly bypass, hairpin NAT, and bogon filters.</p>
-        </div>
-        <div class="module-card" data-cat="security">
-          <h4>router-zones</h4>
-          <p>Declarative zone security matrix (WAN, LAN, IoT, DMZ) with high-level cross-zone traffic allowances and drops.</p>
-        </div>
-        <div class="module-card" data-cat="dns">
-          <h4>router-technitium</h4>
-          <p>Technitium DNS integration with automated API token creation, TSIG AXFR secondary replication, and DoH/DoT.</p>
-        </div>
-        <div class="module-card" data-cat="dns">
-          <h4>router-kea</h4>
-          <p>ISC Kea DHCPv4 server with RFC 2136/TSIG dynamic DNS registration, option 108 (IPv6-mostly), and HA hooks.</p>
-        </div>
-        <div class="module-card" data-cat="security">
-          <h4>router-network-security</h4>
-          <p>Passive AF_PACKET sensor wrapper for Suricata IDS with EveBox interface, plus Snort 3 and Zeek integrations.</p>
-        </div>
-        <div class="module-card" data-cat="vpn">
-          <h4>router-tailscale</h4>
-          <p>Subnet router and exit node automation with declarative route advertisements and firewall policy wiring.</p>
-        </div>
-        <div class="module-card" data-cat="vpn">
-          <h4>router-wireguard</h4>
-          <p>Kernel WireGuard tunnels for site-to-site mesh topologies and roadwarrior VPN access with declarative peers.</p>
-        </div>
-        <div class="module-card" data-cat="core">
-          <h4>router-optimizations</h4>
-          <p>Dynamic Python hardware offload negotiation (TSO/GSO/GRO), ring buffer expansion, and multi-queue IRQ affinity.</p>
-        </div>
-        <div class="module-card" data-cat="core">
-          <h4>router-dashboard</h4>
-          <p>Real-time web monitoring UI on port 8888 showing interface throughput, active connections, and tunnel status.</p>
-        </div>
-        <div class="module-card" data-cat="dns">
-          <h4>dns-blocklists</h4>
-          <p>Declarative DNS ad-blocking presets (Hagezi, OISD, StevenBlack) with automated 24h cron updates.</p>
+        <div class="modules-grid">
+          <div class="module-card" data-cat="core">
+            <div class="module-card-header">
+              <div class="module-name">router-networking</div>
+              <span class="module-category">Core</span>
+            </div>
+            <p>systemd-networkd driver for WAN DHCP/static, IPv6 Prefix Delegation (/56), and routed downstream interfaces.</p>
+          </div>
+
+          <div class="module-card" data-cat="core">
+            <div class="module-card-header">
+              <div class="module-name">router-ha</div>
+              <span class="module-category">Core</span>
+            </div>
+            <p>Dual-node VRRP high availability with Golden MAC cloning, preemption delays, and single-active unit orchestration.</p>
+          </div>
+
+          <div class="module-card" data-cat="firewall">
+            <div class="module-card-header">
+              <div class="module-name">router-firewall</div>
+              <span class="module-category">Packet Filter</span>
+            </div>
+            <p>Role-aware nftables policy engine with FastTrack flowtables, SIP-friendly bypass, hairpin NAT, and bogon filters.</p>
+          </div>
+
+          <div class="module-card" data-cat="firewall">
+            <div class="module-card-header">
+              <div class="module-name">router-zones</div>
+              <span class="module-category">Packet Filter</span>
+            </div>
+            <p>Declarative zone security matrix (WAN, LAN, IoT, DMZ) with high-level cross-zone traffic allowances and drops.</p>
+          </div>
+
+          <div class="module-card" data-cat="dns">
+            <div class="module-card-header">
+              <div class="module-name">router-technitium</div>
+              <span class="module-category">DNS</span>
+            </div>
+            <p>Technitium DNS integration with automated API token creation, TSIG AXFR secondary replication, and DoH/DoT.</p>
+          </div>
+
+          <div class="module-card" data-cat="dns">
+            <div class="module-card-header">
+              <div class="module-name">router-kea</div>
+              <span class="module-category">DHCP</span>
+            </div>
+            <p>ISC Kea DHCPv4 server with RFC 2136/TSIG dynamic DNS registration, option 108 (IPv6-mostly), and HA hooks.</p>
+          </div>
+
+          <div class="module-card" data-cat="core">
+            <div class="module-card-header">
+              <div class="module-name">router-optimizations</div>
+              <span class="module-category">Core</span>
+            </div>
+            <p>NIC offload negotiation (TSO/GSO/GRO), ring buffer expansion, and symmetric multi-queue SMP IRQ affinity.</p>
+          </div>
+
+          <div class="module-card" data-cat="vpn">
+            <div class="module-card-header">
+              <div class="module-name">router-tailscale</div>
+              <span class="module-category">VPN</span>
+            </div>
+            <p>Subnet router and exit node automation with declarative route advertisements and firewall policy wiring.</p>
+          </div>
+
+          <div class="module-card" data-cat="vpn">
+            <div class="module-card-header">
+              <div class="module-name">router-wireguard</div>
+              <span class="module-category">VPN</span>
+            </div>
+            <p>Kernel WireGuard tunnels for site-to-site mesh topologies and roadwarrior VPN access with declarative peers.</p>
+          </div>
+
+          <div class="module-card" data-cat="firewall">
+            <div class="module-card-header">
+              <div class="module-name">router-network-security</div>
+              <span class="module-category">Packet Filter</span>
+            </div>
+            <p>Passive AF_PACKET sensor wrapper for Suricata IDS with EveBox interface, plus Snort 3 and Zeek integrations.</p>
+          </div>
+
+          <div class="module-card" data-cat="core">
+            <div class="module-card-header">
+              <div class="module-name">router-dashboard</div>
+              <span class="module-category">Core</span>
+            </div>
+            <p>Lightweight status monitoring on port 8888 showing interface throughput, active connections, and tunnel status.</p>
+          </div>
+
+          <div class="module-card" data-cat="dns">
+            <div class="module-card-header">
+              <div class="module-name">dns-blocklists</div>
+              <span class="module-category">DNS</span>
+            </div>
+            <p>Declarative DNS ad-blocking presets (Hagezi, OISD, StevenBlack) with automated 24h cron updates.</p>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
   <footer>
-    <p>
-      Maintained by <a href="https://github.com/deepwatrcreatur" target="_blank" rel="noreferrer">Anwer Khan</a>. 
-      Built for the NixOS community under the MIT License.
-    </p>
-    <p style="margin-top: 0.5rem;">
-      <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/MODULES.md">Modules Reference</a> •
-      <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/RECIPES.md">Recipes</a> •
-      <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/PERFORMANCE-TUNING.md">Performance Tuning</a> •
-      <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md">Roadmap</a>
-    </p>
+    <div class="container footer-inner">
+      <div>
+        <span>nix-router-optimized</span> &bull; Released under the MIT License
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/MODULES.md">Modules Reference</a>
+        <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/RECIPES.md">Recipes</a>
+        <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/PERFORMANCE-TUNING.md">Performance Tuning</a>
+        <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/FREEBSD-OPNSENSE-COMPARISON.md">BSD Comparison</a>
+        <a href="https://github.com/deepwatrcreatur/nix-router-optimized/blob/main/docs/ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md">Research Plan</a>
+      </div>
+    </div>
   </footer>
 
   <script>
-    function switchTab(tabId) {
+    function switchTab(evt, tabId) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      event.target.classList.add('active');
+      evt.currentTarget.classList.add('active');
       document.getElementById(tabId).classList.add('active');
     }
 
-    function filterModules(cat) {
+    function filterModules(evt, cat) {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      event.target.classList.add('active');
+      evt.currentTarget.classList.add('active');
       document.querySelectorAll('.module-card').forEach(card => {
         if (cat === 'all' || card.dataset.cat === cat) {
-          card.style.display = 'block';
+          card.style.display = 'flex';
         } else {
           card.style.display = 'none';
         }
