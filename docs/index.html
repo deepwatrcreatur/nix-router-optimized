@@ -21,11 +21,11 @@
       --text-muted: #6e645a;       /* Warm taupe / stone */
       --text-subtle: #94897d;      /* Muted warm gray */
       
-      /* Editorial Accent: Burnt sienna / Terracotta */
-      --accent: #9c4125;
-      --accent-hover: #7f321b;
-      --accent-subtle: #faece6;
-      --accent-border: #f0cfc2;
+      /* Editorial Accent: Deep Magenta / Cassis */
+      --accent: #9d174d;
+      --accent-hover: #831843;
+      --accent-subtle: #fdf2f8;
+      --accent-border: #fbcfe8;
 
       /* Natural Supporting Tones */
       --sage: #2d5a3f;             /* Forest sage for primary/active states */
@@ -183,7 +183,7 @@
       font-weight: 500;
       text-decoration: none;
       transition: background 0.15s ease;
-      box-shadow: 0 1px 2px rgba(156, 65, 37, 0.15);
+      box-shadow: 0 1px 2px rgba(157, 23, 77, 0.15);
     }
     .btn-primary:hover {
       background: var(--accent-hover);
@@ -718,7 +718,7 @@
 
             <!-- Connections from WAN Switch to Nodes -->
             <path d="M 380 145 L 245 195" stroke="#2d5a3f" stroke-width="2"/>
-            <path d="M 500 145 L 635 195" stroke="#9c4125" stroke-width="2" stroke-dasharray="4 3"/>
+            <path d="M 500 145 L 635 195" stroke="#9d174d" stroke-width="2" stroke-dasharray="4 3"/>
 
             <!-- Primary Node: router (VM) -->
             <g transform="translate(130, 195)">
@@ -735,15 +735,15 @@
 
             <!-- Standby Node: elitedesk (Baremetal) -->
             <g transform="translate(520, 195)">
-              <rect width="230" height="145" rx="6" fill="#fbf0ea" stroke="#bd5d3a" stroke-width="1.5"/>
-              <text x="15" y="24" fill="#9c4125" font-size="12" font-family="'Lora', Georgia, serif" font-weight="600">STANDBY: elitedesk (BM)</text>
+              <rect width="230" height="145" rx="6" fill="#fdf2f8" stroke="#be185d" stroke-width="1.5"/>
+              <text x="15" y="24" fill="#9d174d" font-size="12" font-family="'Lora', Georgia, serif" font-weight="600">STANDBY: elitedesk (BM)</text>
               <text x="15" y="44" fill="#24201d" font-size="9.5" font-family="'Fira Code', monospace">WAN: enp1s0f0 (always-down)</text>
               <text x="15" y="60" fill="#24201d" font-size="9.5" font-family="'Fira Code', monospace">LAN: enp1s0f1 (10.10.10.4/16)</text>
-              <line x1="15" y1="72" x2="215" y2="72" stroke="#f0cfc2" stroke-width="1"/>
-              <text x="15" y="90" fill="#8a3b1a" font-size="9.5">⚠ Kea DHCP Disabled (Manual)</text>
-              <text x="15" y="106" fill="#8a3b1a" font-size="9.5">⚠ IPv6 RA Suppressed</text>
-              <text x="15" y="122" fill="#8a3b1a" font-size="9.5">✓ Secondary DNS (AXFR Replicated)</text>
-              <text x="15" y="138" fill="#8a3b1a" font-size="9.5">✓ VRRP BACKUP (Priority 100)</text>
+              <line x1="15" y1="72" x2="215" y2="72" stroke="#fbcfe8" stroke-width="1"/>
+              <text x="15" y="90" fill="#831843" font-size="9.5">⚠ Kea DHCP Disabled (Manual)</text>
+              <text x="15" y="106" fill="#831843" font-size="9.5">⚠ IPv6 RA Suppressed</text>
+              <text x="15" y="122" fill="#831843" font-size="9.5">✓ Secondary DNS (AXFR Replicated)</text>
+              <text x="15" y="138" fill="#831843" font-size="9.5">✓ VRRP BACKUP (Priority 100)</text>
             </g>
 
             <!-- State Sync / VRRP Link -->
