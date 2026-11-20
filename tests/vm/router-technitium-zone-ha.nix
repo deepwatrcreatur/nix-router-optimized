@@ -1,0 +1,184 @@
+{
+  self,
+  lib,
+  pkgs,
+}:
+
+# Two routers run Technitium with zoneReplication.ha: the VRRP MASTER holds
+# home.example as Primary, the other node transfers it from the VIP as a
+# Secondary. Records written on either owner must survive failover and
+# fail-back, and at every steady state exactly one node holds the zone as
+# Primary.
+let
+  mkRouterTest = import ./lib/mk-router-test.nix {
+    inherit pkgs lib self;
+  };
+
+  inherit (import ./lib/ha-pair.nix { inherit self; }) isp mkRouter;
+
+  zone = "home.example";
+
+  # Test-only secrets; real deployments use agenix or another secret store.
+  # The TSIG secret is base64 of a fixed test string.
+  zoneModule =
+    { peer }:
+    { pkgs, lib, ... }:
+    {
+      imports = [
+        self.nixosModules.router-technitium
+        # Minimal stand-in for agenix: router-technitium reads
+        # age.secrets.<name>.path.
+        {
+          options.age.secrets = lib.mkOption {
+            type = lib.types.attrsOf (lib.types.submodule { options.path = lib.mkOption { type = lib.types.str; }; });
+            default = { };
+          };
+        }
+      ];
+
+      virtualisation.memorySize = 2048;
+
+      environment.etc = {
+        "test-secrets/technitium-admin".text = "vm-test-admin";
+        "test-secrets/zone-transfer".text = "dm0tdGVzdC16b25lLXRyYW5zZmVyLWtleQ==";
+      };
+      age.secrets.technitium-admin-password.path = "/etc/test-secrets/technitium-admin";
+
+      # GOTCHA: resolved's stub listener holds port 53, which Technitium
+      # needs on every address.
+      services.resolved.enable = lib.mkForce false;
+
+      services.router-technitium = {
+        enable = true;
+        bootstrapPasswordSecretName = "technitium-admin-password";
+        enableBlockLists = false;
+        zoneReplication = {
+          tsigKeyFile = "/etc/test-secrets/zone-transfer";
+          secondary = {
+            zones = [ { name = zone; } ];
+            primaryAddresses = [ "10.0.10.1" ];
+          };
+          ha = {
+            enable = true;
+            peers = [ peer ];
+          };
+        };
+      };
+
+      environment.systemPackages = [
+        pkgs.dnsutils
+        pkgs.curl
+      ];
+    };
+in
+mkRouterTest {
+  name = "router-technitium-zone-ha";
+
+  nodes = {
+    inherit isp;
+
+    router1 = mkRouter {
+      role = "master";
+      lanAddress = "10.0.10.2/24";
+      mgmtAddress = "192.168.100.2/24";
+      extraModule = zoneModule { peer = "10.0.10.3"; };
+    };
+
+    router2 = mkRouter {
+      role = "backup";
+      lanAddress = "10.0.10.3/24";
+      mgmtAddress = "192.168.100.3/24";
+      extraModule = zoneModule { peer = "10.0.10.2"; };
+    };
+  };
+
+  testScript = ''
+    import json
+    import time
+
+    routers = [router1, router2]
+    ZONE = "${zone}"
+    TOKEN = "/var/lib/private/technitium-dns-server/nix-router-api-token"
+
+    def api(r, path, **params):
+        args = " ".join(f"--data-urlencode {k}={v}" for k, v in params.items())
+        out = r.succeed(
+            f"curl -fsS -G --data-urlencode token=$(cat {TOKEN}) {args} http://127.0.0.1:5380/api/{path}"
+        )
+        resp = json.loads(out)
+        # Technitium reports errors with HTTP 200.
+        assert resp.get("status") == "ok", f"{r.name} {path}: {resp}"
+        return resp["response"]
+
+    def zone_type(r):
+        zones = api(r, "zones/list")["zones"]
+        return next((z["type"] for z in zones if z["name"].lower() == ZONE), None)
+
+    def role(r):
+        return r.succeed("cat /run/router-ha/role 2>/dev/null || echo none").strip()
+
+    def wait_owner(master, other, timeout=180):
+        """Master holds the zone as Primary, the other as Secondary; then sample."""
+        def check(_):
+            t1, t2 = zone_type(master), zone_type(other)
+            master.log(f"{master.name}={t1} {other.name}={t2}")
+            return role(master) == "master" and t1 == "Primary" and t2 == "Secondary"
+        retry(check, timeout)
+        end = time.monotonic() + 5
+        while time.monotonic() < end:
+            types = {r.name: zone_type(r) for r in routers}
+            assert list(types.values()).count("Primary") == 1, f"zone Primary on more than one node: {types}"
+            time.sleep(1)
+
+    def add_a(r, name, address):
+        api(r, "zones/records/add", zone=ZONE, domain=f"{name}.{ZONE}", type="A", ipAddress=address, ttl=60)
+
+    def dump(r):
+        print(r.succeed(f"curl -sS -G --data-urlencode token=$(cat {TOKEN}) --data-urlencode zone={ZONE} http://127.0.0.1:5380/api/zones/options/get || true"))
+        print(r.succeed(f"curl -sS -G --data-urlencode token=$(cat {TOKEN}) http://127.0.0.1:5380/api/zones/list || true"))
+        print(r.succeed(f"dig @127.0.0.1 {ZONE} SOA +norec || true"))
+        print(r.succeed(f"dig @10.0.10.1 {ZONE} AXFR || true"))
+        print(r.succeed("journalctl --no-pager -u technitium-dns-server -u technitium-zone-replication -u technitium-zone-ha-owner | tail -60 || true"))
+        print(r.succeed("ls -la /var/lib/private/technitium-dns-server/logs 2>/dev/null; tail -40 /var/lib/private/technitium-dns-server/logs/*.log 2>/dev/null || true"))
+
+    def wait_resolves(r, name, address, timeout=60):
+        try:
+            r.wait_until_succeeds(f"dig +short @127.0.0.1 {name}.{ZONE} A | grep -qx {address}", timeout=timeout)
+        except Exception:
+            for x in routers:
+                print(f"===== {x.name}")
+                dump(x)
+            raise
+
+    start_all()
+    isp.wait_for_unit("dnsmasq.service")
+    for r in routers:
+        r.wait_for_unit("technitium-bootstrap-api-token.service", timeout=300)
+        r.wait_until_succeeds("systemctl is-active keepalived.service", timeout=60)
+
+    with subtest("election: router1 holds the zone as Primary, router2 as Secondary"):
+        wait_owner(router1, router2)
+
+    with subtest("a record written on the owner reaches the secondary"):
+        add_a(router1, "one", "10.0.10.51")
+        wait_resolves(router2, "one", "10.0.10.51")
+
+    with subtest("failover: router2 promotes, router1 demotes, data kept"):
+        router1.succeed("systemctl stop keepalived.service")
+        t0 = time.monotonic()
+        wait_owner(router2, router1)
+        print(f"zone ownership moved in {time.monotonic() - t0:.1f} s")
+        wait_resolves(router2, "one", "10.0.10.51")
+        add_a(router2, "two", "10.0.10.52")
+        wait_resolves(router1, "two", "10.0.10.52")
+
+    with subtest("fail-back: router1 takes the zone back with both records"):
+        router1.succeed("systemctl start keepalived.service")
+        t0 = time.monotonic()
+        wait_owner(router1, router2)
+        print(f"zone ownership moved back in {time.monotonic() - t0:.1f} s")
+        for name, address in [("one", "10.0.10.51"), ("two", "10.0.10.52")]:
+            wait_resolves(router1, name, address)
+            wait_resolves(router2, name, address)
+  '';
+}
