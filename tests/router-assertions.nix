@@ -206,6 +206,7 @@ in
         };
       };
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         vrrpInterface = "eth1";

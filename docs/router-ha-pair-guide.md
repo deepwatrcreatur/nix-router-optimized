@@ -84,20 +84,46 @@ At minimum, replace these values from the example:
 - `lan0` with your real LAN interface
 - `wan0` with your real WAN interface
 - `02:00:00:00:00:01` with your WAN-side cloned MAC if your ISP expects one
-- `replace-me` with a low-sensitivity VRRP password that you are comfortable
-  having rendered into store-backed Keepalived config
+- `/run/secrets/router-vrrp-password` with the path your secret manager
+  decrypts the shared VRRP password to (see below)
 - `10.10.10.0/24` with your real LAN subnet
 
 If you use `router-ddns`, keep `inadyn.service` in `singleActiveUnits`. Add the
 matching timer unit only if your evaluated system actually exposes it under that
 name.
 
-Important credential note:
+## VRRP Authentication
 
-- `services.router-ha.vrrpPassword` is interpolated into generated Keepalived
-  config, which means it is not handled like a runtime-only secret file
-- do not treat it like a high-value credential
-- do not commit a real shared VRRP password into a public repository
+`services.router-ha.vrrpPasswordFile` names a file holding the shared VRRP
+password. It is loaded as a systemd credential by `router-ha-vrrp-secret`,
+which renders `/run/router-ha/vrrp-secret.env` (mode 0600); keepalived
+substitutes it into `/run/keepalived/keepalived.conf` at start. The password
+never enters the Nix store. A restart of keepalived re-reads the file.
+
+- Use the same file content on both nodes (agenix, sops-nix or clan vars).
+- Keepalived uses only the first 8 characters; the unit logs a note when the
+  file is longer.
+- Allowed characters: printable ASCII without whitespace, quotes, backslash,
+  `$`, `#` or `!`. The unit fails (and keepalived does not start) otherwise.
+- VRRPv2 `PASS` authentication travels in clear text. It prevents accidental
+  cross-talk between VRRP groups on a shared segment; it does not stop an
+  attacker on the LAN. Run VRRP only on a trusted link.
+
+### Migrating from `vrrpPassword`
+
+There is no default password any more, and exactly one of
+`vrrpPasswordFile` or `vrrpPassword` must be set, or evaluation fails. A pair
+where one node authenticates and the other does not elects two masters, so
+this is deliberately not a silent change.
+
+- If you relied on the old default `nix-router-ha`, write `nix-rout` (the
+  first 8 characters, which is all keepalived ever used) to your secret file,
+  set `vrrpPasswordFile` on both nodes, and deploy them. The wire format is
+  unchanged, so the nodes keep agreeing during a rolling deploy. Rotate to a
+  new value afterwards by updating the file on both nodes and restarting
+  keepalived on each.
+- `vrrpPassword = "..."` still works but prints a warning, because the value
+  is written to the world-readable Nix store.
 
 ## Minimal Flake Layout
 

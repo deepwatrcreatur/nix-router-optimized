@@ -258,6 +258,7 @@ in
     self.nixosModules.router-bgp
     {
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         virtualIp = "10.10.10.1/24";
@@ -279,6 +280,7 @@ in
     self.nixosModules.router-bgp
     {
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         virtualIp = "10.10.10.1/24";
@@ -390,6 +392,7 @@ in
     self.nixosModules.router-dns-service
     {
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         virtualIp = "10.10.10.1/24";
@@ -431,6 +434,7 @@ in
     {
       age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "backup";
         virtualIp = "10.10.10.1/24";
@@ -471,6 +475,7 @@ in
     {
       age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "backup";
         virtualIp = "fd00::1/64";

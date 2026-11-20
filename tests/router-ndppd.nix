@@ -69,6 +69,7 @@ in
     self.nixosModules.router-ndp-proxy
     {
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         virtualIp = "2001:db8::1/64";
@@ -115,6 +116,7 @@ in
     self.nixosModules.router-ndp-proxy
     {
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         virtualIp = "2001:db8::1/64";

@@ -5,10 +5,10 @@ let
       virtualIp = "10.10.10.1/24";
       vrrpInterface = "lan0";
       vrrpId = 51;
-      # This value is rendered into store-backed Keepalived config. Do not
-      # treat it like a high-value secret or commit a real shared password in a
-      # public repository.
-      vrrpPassword = "replace-me";
+      # Read at runtime as a systemd credential; it never enters the Nix
+      # store. Use the same file content on both nodes (agenix, sops-nix or
+      # clan vars). Keepalived uses the first 8 characters.
+      vrrpPasswordFile = "/run/secrets/router-vrrp-password";
       wan = {
         enable = true;
         interface = "wan0";

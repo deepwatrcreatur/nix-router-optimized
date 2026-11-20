@@ -206,7 +206,7 @@ in
             role = "backup";
             virtualIp = "10.10.10.1/16";
             vrrpInterface = "lan0";
-            vrrpPassword = "test";
+            vrrpPasswordFile = "/run/keys/vrrp-password";
           };
           services.router-technitium = {
             rfc2136 = {
