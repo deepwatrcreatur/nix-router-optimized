@@ -19,4 +19,9 @@
   '';
 
   systemd.network.enable = true;
+
+  # Lab-only VRRP password on a lab-only bridge; real pairs decrypt this file
+  # from a secret manager. Exercises the same credential path as production.
+  environment.etc."router-ha/vrrp-password".text = "lab-only";
+  services.router-ha.vrrpPasswordFile = "/etc/router-ha/vrrp-password";
 }

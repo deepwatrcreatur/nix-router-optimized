@@ -11,6 +11,7 @@
     self.nixosModules.router-firewall
     {
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         virtualIp = "10.10.10.1/16";
@@ -60,6 +61,7 @@
     self.nixosModules.router-ha
     {
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         virtualIp = "10.10.10.1/16";
@@ -90,6 +92,7 @@
     self.nixosModules.router-ha
     {
       services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
         enable = true;
         role = "master";
         virtualIp = "10.10.10.1/16";

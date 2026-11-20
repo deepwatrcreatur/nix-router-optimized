@@ -111,6 +111,14 @@ let
   notifyFaultScript = demoteActiveOwnership "fault" faultRoleScript;
   keepalivedStopScript = demoteActiveOwnership "stop" backupRoleScript;
 
+  usePasswordFile = cfg.vrrpPasswordFile != null;
+  # INVARIANT: router-ha-vrrp-secret writes "$dir/vrrp-secret.env".
+  vrrpSecretEnv = "${runtimeDir}/vrrp-secret.env";
+  # Mirrors the runtime check in router-ha-vrrp-secret so the inline password
+  # cannot break keepalived.conf parsing either. INVARIANT: no `"` or `\`, so
+  # the value cannot escape the quoted auth_pass (braces stay literal there).
+  vrrpPasswordCharsOk = pw: builtins.match "[!-~]+" pw != null && builtins.match ".*[\"'\\\\$#!].*" pw == null;
+
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
   virtualIpIsIpv6 = hasInfix ":" virtualIpAddress;
 in
@@ -141,10 +149,33 @@ in
       description = "The VRRP Virtual Router ID (VRID). Must be same on both nodes.";
     };
 
+    vrrpPasswordFile = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      example = "/run/agenix/router-vrrp-password";
+      description = ''
+        Runtime path (a string such as `/run/agenix/...`, not a Nix path
+        literal, which would place it in the store) of a file holding the VRRP authentication password (one line). It is loaded
+        as a systemd credential and substituted into keepalived's runtime config,
+        so it never enters the Nix store. Keepalived uses only the first 8
+        characters (VRRPv2 `auth_type PASS`). Allowed characters: printable
+        ASCII without whitespace, quotes, backslash, `$`, `#` or `!`.
+
+        PASS authentication is sent in clear text on the VRRP link. It stops
+        accidental cross-talk between VRRP groups, not an attacker on the LAN.
+        Run VRRP only on a trusted segment.
+      '';
+    };
+
     vrrpPassword = mkOption {
-      type = types.str;
-      default = "nix-router-ha";
-      description = "The VRRP authentication password.";
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        Deprecated: the password is written into keepalived.conf in the
+        world-readable Nix store. Use `vrrpPasswordFile`. There is no default;
+        pairs that relied on the old default `nix-router-ha` must set
+        `vrrpPasswordFile` (or, temporarily, this option) on both nodes.
+      '';
     };
 
     priority = mkOption {
@@ -207,6 +238,23 @@ in
     {
       assertions = [
         {
+          # WHY: no default password. A rolling upgrade where one node has auth
+          # and the other has none makes both nodes MASTER, so make the choice
+          # explicit instead of silently changing the wire format.
+          assertion = (cfg.vrrpPasswordFile != null) != (cfg.vrrpPassword != null);
+          message = "services.router-ha: set exactly one of vrrpPasswordFile (recommended) or the deprecated vrrpPassword. The old default \"nix-router-ha\" was removed; see docs/router-ha-pair-guide.md#vrrp-authentication.";
+        }
+        {
+          # SECURITY: a path literal such as ./vrrp-password resolves into the
+          # world-readable store (flake sources live there).
+          assertion = cfg.vrrpPasswordFile == null || !(hasPrefix builtins.storeDir (toString cfg.vrrpPasswordFile));
+          message = "services.router-ha.vrrpPasswordFile must be a runtime path (e.g. /run/agenix/...), not a file in the Nix store; use a string path, not a path literal.";
+        }
+        {
+          assertion = cfg.vrrpPassword == null || vrrpPasswordCharsOk cfg.vrrpPassword;
+          message = "services.router-ha.vrrpPassword must be printable ASCII without whitespace, quotes, backslash, $, # or !.";
+        }
+        {
           assertion =
             let
               vipIp = head (splitString "/" cfg.virtualIp);
@@ -235,6 +283,9 @@ in
           message = "services.router-ha: VRRP virtual IP (${cfg.virtualIp}) must be in the same subnet as vrrpInterface ${cfg.vrrpInterface}.";
         }
       ];
+
+      warnings = optional (cfg.vrrpPassword != null)
+        "services.router-ha.vrrpPassword puts the VRRP password in the Nix store; use vrrpPasswordFile instead.";
 
       boot.kernel.sysctl = {
         "net.ipv4.ip_nonlocal_bind" = mkIf (!virtualIpIsIpv6) 1;
@@ -275,7 +326,7 @@ in
             ${optionalString (cfg.preemptDelay != null) "preempt_delay ${toString cfg.preemptDelay}"}
             authentication {
               auth_type PASS
-              auth_pass ${cfg.vrrpPassword}
+              auth_pass "${if usePasswordFile then "$ROUTER_HA_VRRP_PASS" else cfg.vrrpPassword}"
             }
             ${optionalString (cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ]) ''
               notify_master "${notifyMasterScript}"
@@ -290,6 +341,52 @@ in
         "+${keepalivedStopScript}"
       ];
     }
+
+    (mkIf usePasswordFile {
+      # SECURITY: the upstream module envsubsts secretFile into
+      # /run/keepalived/keepalived.conf (umask 077). systemd reads
+      # EnvironmentFile before ExecStartPre, so a separate unit renders it.
+      services.keepalived.secretFile = vrrpSecretEnv;
+
+      systemd.services.router-ha-vrrp-secret = {
+        description = "Render the router HA VRRP password for keepalived";
+        before = [ "keepalived.service" ];
+        requiredBy = [ "keepalived.service" ];
+        # WHY: PartOf re-renders the secret whenever keepalived restarts, so a
+        # rotated password file is picked up without a reboot.
+        partOf = [ "keepalived.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          LoadCredential = [ "vrrp-password:${toString cfg.vrrpPasswordFile}" ];
+          UMask = "0077";
+        };
+        script = ''
+          set -euo pipefail
+          dir=${escapeShellArg runtimeDir}
+          pw=$(${pkgs.coreutils}/bin/head -n1 "$CREDENTIALS_DIRECTORY/vrrp-password" | ${pkgs.coreutils}/bin/tr -d '\r')
+          if [ -z "$pw" ]; then
+            echo "router-ha: VRRP password file is empty" >&2
+            exit 1
+          fi
+          case "$pw" in
+            *[!!-~]* | *[\"\'\\\$\#\!]*)
+              echo "router-ha: VRRP password must be printable ASCII without whitespace, quotes, backslash, \$, # or !" >&2
+              exit 1
+              ;;
+          esac
+          if [ "''${#pw}" -gt 8 ]; then
+            echo "router-ha: keepalived uses only the first 8 characters of the VRRP password" >&2
+          fi
+          ${pkgs.coreutils}/bin/install -d -m 0755 "$dir"
+          ${pkgs.coreutils}/bin/printf 'ROUTER_HA_VRRP_PASS=%s\n' "$pw" > "$dir/vrrp-secret.env.tmp"
+          ${pkgs.coreutils}/bin/chmod 0600 "$dir/vrrp-secret.env.tmp"
+          ${pkgs.coreutils}/bin/mv "$dir/vrrp-secret.env.tmp" "$dir/vrrp-secret.env"
+        '';
+      };
+
+      systemd.services.keepalived.after = [ "router-ha-vrrp-secret.service" ];
+    })
 
     # Firewall integration
     (if hasRouterFirewall then {

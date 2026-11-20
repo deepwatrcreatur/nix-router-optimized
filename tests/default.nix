@@ -91,6 +91,10 @@ let
     inherit self lib eval;
   };
 
+  routerHaVrrpAuthChecks = import ./router-ha-vrrp-auth.nix {
+    inherit self lib pkgs nixpkgs system eval;
+  };
+
   routerAlertingChecks = import ./router-alerting.nix {
     inherit self lib pkgs nixpkgs system eval;
   };
@@ -194,6 +198,7 @@ in
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
 // routerHaBoundaryChecks
+// routerHaVrrpAuthChecks
 // routerAlertingChecks
 // routerHomelabLinkChecks
 // routerTechnitiumZoneReplicationChecks
