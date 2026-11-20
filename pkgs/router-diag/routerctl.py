@@ -584,10 +584,18 @@ def get_kea_ha_state():
 
 
 def get_ha_data():
+    import time
+
     role = read_text(HA_ROLE_FILE)
+    if role == "":
+        # GOTCHA: the notify scripts truncate then write; retry past that.
+        time.sleep(0.2)
+        role = read_text(HA_ROLE_FILE)
     kea_ha = get_kea_ha_state()
     if role is None:
         vrrp = unavailable(f"{HA_ROLE_FILE} not found (router-ha not enabled)")
+    elif role == "":
+        vrrp = unavailable(f"{HA_ROLE_FILE} is empty (role change in progress)")
     else:
         try:
             since = int(os.stat(HA_ROLE_FILE).st_mtime)
@@ -679,6 +687,9 @@ def get_leases_data():
             if lease.get("state", 0) != 0:
                 continue
             expire = lease.get("cltt", 0) + lease.get("valid-lft", 0)
+            # Kea keeps expired leases in state 0 until reclamation runs.
+            if expire <= now:
+                continue
             leases.append(
                 {
                     "address": lease.get("ip-address"),
@@ -693,10 +704,11 @@ def get_leases_data():
         # GOTCHA: lease4-get-all needs the lease_cmds hook, which router-kea
         # loads only with dhcp4.ha; fall back to the memfile (with the
         # LFC's previous file first, so newer rows win).
-        if not os.path.exists(KEA_DHCP4_LEASES):
+        memfiles = [KEA_DHCP4_LEASES + ".2", KEA_DHCP4_LEASES]
+        if not any(os.path.exists(f) for f in memfiles):
             base.update(unavailable(err or f"{KEA_DHCP4_LEASES} not found", source=None, leases=[]))
             return base
-        leases = parse_memfile_leases([KEA_DHCP4_LEASES + ".2", KEA_DHCP4_LEASES], now)
+        leases = parse_memfile_leases(memfiles, now)
         source = "memfile"
     leases.sort(key=lambda entry: tuple(int(p) for p in (entry["address"] or "0.0.0.0").split(".")))
     base.update({"available": True, "reason": None, "source": source, "leases": leases})
@@ -730,9 +742,12 @@ def get_dns_data():
     if not unit_active("technitium-dns-server.service"):
         base.update(unavailable("technitium-dns-server is not running (Technitium not enabled or stopped)", zones=[]))
         return base
-    token = read_text(TECHNITIUM_TOKEN_FILE)
+    # The bootstrap token exists with bootstrapPasswordSecretName; a managed
+    # key (apiKeySecretName) is exported as TECHNITIUM_API_KEY_FILE instead.
+    token_files = [TECHNITIUM_TOKEN_FILE] + [f for f in [os.environ.get("TECHNITIUM_API_KEY_FILE")] if f]
+    token = next((t for t in (read_text(f) for f in token_files) if t), None)
     if not token:
-        base.update(unavailable(f"API token {TECHNITIUM_TOKEN_FILE} not readable (run as root)", zones=[]))
+        base.update(unavailable(f"no readable API token in {', '.join(token_files)} (run as root)", zones=[]))
         return base
     url = f"{TECHNITIUM_API}/zones/list?" + urllib.parse.urlencode({"token": token})
     try:

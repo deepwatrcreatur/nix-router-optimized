@@ -54,7 +54,9 @@ No output contains the Technitium API token or keepalived's configuration
 ```
 
 - `vrrp.role` comes from `/run/router-ha/role` (`master`, `backup` or
-  `fault`), and `role_since` is when it last changed (Unix time).
+  `fault`), and `role_since` is when it last changed (Unix time). A stopped
+  keepalived leaves `backup` there (its stop hook demotes the node), so
+  check `keepalived_active` as well.
 - `wan_health_pinned` is true after `router-ha.wan.healthCheck` made this
   node yield; see
   [router-ha-pair-guide.md](./router-ha-pair-guide.md#wan-health-tracking-wanhealthcheck).
@@ -80,7 +82,7 @@ DHCPv4 only; there is no DHCPv6 server module. `source` is
 `control-socket` when Kea's `lease_cmds` hook is loaded (router-kea loads it
 with `dhcp4.ha`). Otherwise it is `memfile`: the leases are read from
 `/var/lib/kea/dhcp4.leases`, keeping only unexpired leases in the default
-state.
+state. Leases past their expiry are left out from either source.
 
 ### `routerctl dns --json`
 
@@ -97,7 +99,9 @@ state.
 }
 ```
 
-Internal zones are left out. Under `zoneReplication.ha`, the VRRP master
+The token comes from the router-technitium bootstrap token, or from
+`TECHNITIUM_API_KEY_FILE` (set for login shells when `apiKeySecretName` is
+used). Internal zones are left out. Under `zoneReplication.ha`, the VRRP master
 shows a zone as `Primary` and the standby as `Secondary`. A Technitium API
 error (it returns HTTP 200 with `"status": "error"`) is reported as
 unavailable with the API's message.
