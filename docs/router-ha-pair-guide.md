@@ -101,6 +101,9 @@ substitutes it into `/run/keepalived/keepalived.conf` at start. The password
 never enters the Nix store. A restart of keepalived re-reads the file.
 
 - Use the same file content on both nodes (agenix, sops-nix or clan vars).
+- Give a runtime string path such as `"/run/agenix/router-vrrp-password"`.
+  A Nix path literal (`./vrrp-password`) would copy the secret into the
+  store, so evaluation rejects any path under `/nix/store`.
 - Keepalived uses only the first 8 characters; the unit logs a note when the
   file is longer.
 - Allowed characters: printable ASCII without whitespace, quotes, backslash,

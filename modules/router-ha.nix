@@ -115,7 +115,8 @@ let
   # INVARIANT: router-ha-vrrp-secret writes "$dir/vrrp-secret.env".
   vrrpSecretEnv = "${runtimeDir}/vrrp-secret.env";
   # Mirrors the runtime check in router-ha-vrrp-secret so the inline password
-  # cannot break keepalived.conf parsing either.
+  # cannot break keepalived.conf parsing either. INVARIANT: no `"` or `\`, so
+  # the value cannot escape the quoted auth_pass (braces stay literal there).
   vrrpPasswordCharsOk = pw: builtins.match "[!-~]+" pw != null && builtins.match ".*[\"'\\\\$#!].*" pw == null;
 
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
@@ -153,7 +154,8 @@ in
       default = null;
       example = "/run/agenix/router-vrrp-password";
       description = ''
-        File holding the VRRP authentication password (one line). It is loaded
+        Runtime path (a string such as `/run/agenix/...`, not a Nix path
+        literal, which would place it in the store) of a file holding the VRRP authentication password (one line). It is loaded
         as a systemd credential and substituted into keepalived's runtime config,
         so it never enters the Nix store. Keepalived uses only the first 8
         characters (VRRPv2 `auth_type PASS`). Allowed characters: printable
@@ -243,6 +245,12 @@ in
           message = "services.router-ha: set exactly one of vrrpPasswordFile (recommended) or the deprecated vrrpPassword. The old default \"nix-router-ha\" was removed; see docs/router-ha-pair-guide.md#vrrp-authentication.";
         }
         {
+          # SECURITY: a path literal such as ./vrrp-password resolves into the
+          # world-readable store (flake sources live there).
+          assertion = cfg.vrrpPasswordFile == null || !(hasPrefix builtins.storeDir (toString cfg.vrrpPasswordFile));
+          message = "services.router-ha.vrrpPasswordFile must be a runtime path (e.g. /run/agenix/...), not a file in the Nix store; use a string path, not a path literal.";
+        }
+        {
           assertion = cfg.vrrpPassword == null || vrrpPasswordCharsOk cfg.vrrpPassword;
           message = "services.router-ha.vrrpPassword must be printable ASCII without whitespace, quotes, backslash, $, # or !.";
         }
@@ -318,7 +326,7 @@ in
             ${optionalString (cfg.preemptDelay != null) "preempt_delay ${toString cfg.preemptDelay}"}
             authentication {
               auth_type PASS
-              auth_pass ${if usePasswordFile then "$ROUTER_HA_VRRP_PASS" else cfg.vrrpPassword}
+              auth_pass "${if usePasswordFile then "$ROUTER_HA_VRRP_PASS" else cfg.vrrpPassword}"
             }
             ${optionalString (cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ]) ''
               notify_master "${notifyMasterScript}"

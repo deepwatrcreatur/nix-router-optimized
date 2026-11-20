@@ -36,6 +36,7 @@ let
     }).config;
 
   realScript = fileConfig.systemd.services.router-ha-vrrp-secret.script;
+  keepalivedPreStart = builtins.head fileConfig.systemd.services.keepalived.serviceConfig.ExecStartPre;
 
   # The unit writes to /run/router-ha; point its one `dir=` line at a scratch
   # directory so the real script can run inside the build sandbox.
@@ -58,7 +59,7 @@ in
       {
         assertions = [
           {
-            assertion = lib.hasInfix "auth_pass $ROUTER_HA_VRRP_PASS" conf;
+            assertion = lib.hasInfix "auth_pass \"$ROUTER_HA_VRRP_PASS\"" conf;
             message = "keepalived.conf must reference the runtime variable, not a literal password.";
           }
           {
@@ -90,7 +91,7 @@ in
     ({ config, ... }: {
       assertions = [
         {
-          assertion = lib.hasInfix "auth_pass legacy" config.services.keepalived.vrrpInstances.main.extraConfig;
+          assertion = lib.hasInfix "auth_pass \"legacy\"" config.services.keepalived.vrrpInstances.main.extraConfig;
           message = "the deprecated inline password must still render.";
         }
         {
@@ -118,6 +119,11 @@ in
     })
   ];
 
+  router-ha-vrrp-store-password-file-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-vrrp-store-password-file" [
+    self.nixosModules.router-ha
+    (haBase { vrrpPasswordFile = "${builtins.storeDir}/00000000000000000000000000000000-vrrp-password"; })
+  ];
+
   router-ha-vrrp-bad-inline-password-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-vrrp-bad-inline-password" [
     self.nixosModules.router-ha
     (haBase { vrrpPassword = "a b"; })
@@ -140,17 +146,37 @@ in
           ${secretScript} 2> err
         }
 
-        run 'S3cret!x' && { echo "accepted a password containing !" >&2; exit 1; }
+        run 'bad!char' && { echo "accepted a password containing !" >&2; exit 1; }
         run 'with space' && { echo "accepted a password with whitespace" >&2; exit 1; }
         run "" && { echo "accepted an empty password" >&2; exit 1; }
 
-        run $'abc123\r\nignored'
-        [ "$(cat run/vrrp-secret.env)" = "ROUTER_HA_VRRP_PASS=abc123" ] || { cat run/vrrp-secret.env; exit 1; }
+        value=labonly1
+        run "$value"$'\r\nignored'
+        expected="ROUTER_HA_VRRP_PASS"="$value"
+        [ "$(cat run/vrrp-secret.env)" = "$expected" ] || { cat run/vrrp-secret.env; exit 1; }
         [ "$(stat -c %a run/vrrp-secret.env)" = 600 ]
         [ ! -s err ]
 
         run 'longer-than-8'
         grep -q 'first 8 characters' err
+
+        # Render the final config the way the upstream ExecStartPre does and
+        # let keepalived parse it. Braces must stay inside the quoted value.
+        # GOTCHA: the sandbox has no lan0, so only interface messages are ok.
+        conf=$(grep -o '/nix/store/[^" ]*keepalived.conf' ${keepalivedPreStart} | head -n1)
+        for value in '{lab1' 'la}b{2' 'plain3'; do
+          run "$value"
+          set -a; . run/vrrp-secret.env; set +a
+          ${pkgs.envsubst}/bin/envsubst -i "$conf" > final.conf
+          grep -qF "auth_pass \"$value\"" final.conf || { grep auth_pass final.conf; exit 1; }
+          rm -f test.log
+          ${pkgs.keepalived}/bin/keepalived --config-test="$PWD/test.log" -f "$PWD/final.conf" -l 2> kstderr || true
+          if cat test.log kstderr | grep -vE "interface lan0 for vrrp_instance main doesn't exist|Non-existent interface specified" | grep -q .; then
+            echo "keepalived rejected a config rendered from '$value':" >&2
+            cat test.log kstderr >&2
+            exit 1
+          fi
+        done
 
         touch "$out"
       '';
