@@ -45,8 +45,109 @@ let
   # WHY: with vrrpPasswordFile, ExecStart reads the rendered /run copy; the
   # store keepalived.conf (password still a $VAR) is named in ExecStartPre.
   keepalivedPreStart = builtins.head garpSystem.systemd.services.keepalived.serviceConfig.ExecStartPre;
+  keaHaPair = extraHa: [
+    self.nixosModules.router-ha
+    self.nixosModules.router-kea
+    self.nixosModules.router-firewall
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "lan0";
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+      } // extraHa;
+
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "wan0" ];
+        lanInterfaces = [ "lan0" ];
+      };
+
+      services.router-kea = {
+        enable = true;
+        dhcp4 = {
+          interfaces = [ "lan0" ];
+          subnet = "10.10.10.0/24";
+          gatewayAddress = "10.10.10.1";
+          poolRanges = [
+            {
+              start = "10.10.10.100";
+              end = "10.10.10.199";
+            }
+          ];
+          ha = {
+            enable = true;
+            thisServerName = "router-a";
+            peerName = "router-b";
+            role = "primary";
+            localAddress = "10.10.10.2";
+            peerAddress = "10.10.10.3";
+          };
+        };
+      };
+    }
+  ];
 in
 {
+  router-ha-kea-ha-eval = eval.mkNixosEvalCheck "router-ha-kea-ha" (
+    keaHaPair { keaSync.enable = true; }
+    ++ [
+      ({ config, ... }:
+        let
+          inputRules = config.services.router-firewall.extraInputRules;
+          haHook = lib.findFirst (h: h ? parameters) null config.services.kea.dhcp4.settings.hooks-libraries;
+          peers = (builtins.head haHook.parameters.high-availability).peers;
+        in
+        {
+          assertions = [
+            {
+              assertion = lib.hasInfix "ip saddr 10.10.10.3 tcp dport 8000 accept" inputRules;
+              message = "the Kea HA port must be open to the peer address.";
+            }
+            {
+              assertion =
+                !(lib.elem 8000 config.services.router-firewall.trustedTcpPorts)
+                && !(lib.hasInfix "Allow Kea HA sync" inputRules);
+              message = "the Kea HA port must not be open to every client or interface.";
+            }
+            {
+              assertion = map (p: p.url) peers == [ "http://10.10.10.2:8000/" "http://10.10.10.3:8000/" ];
+              message = "Kea HA peer URLs must use the configured addresses.";
+            }
+            {
+              assertion =
+                let
+                  ha = builtins.head haHook.parameters.high-availability;
+                in
+                ha.heartbeat-delay == 5000 && ha.max-response-delay == 15000 && ha.max-unacked-clients == 0;
+              message = "Kea HA must default to a 5 s heartbeat and 15 s takeover.";
+            }
+            {
+              assertion = lib.any (lib.hasInfix "keaSync is deprecated") config.warnings;
+              message = "keaSync must warn that it is deprecated.";
+            }
+          ];
+        })
+    ]
+  );
+
+  router-kea-ha-timing-fails-eval = eval.mkNixosEvalFailureCheck "router-kea-ha-timing" (
+    keaHaPair { }
+    ++ [
+      {
+        services.router-kea.dhcp4.ha = {
+          heartbeatDelaySec = 20;
+          maxResponseDelaySec = 15;
+        };
+      }
+    ]
+  );
+
+  router-ha-kea-ha-single-active-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-kea-ha-single-active" (
+    keaHaPair { singleActiveUnits = [ "kea-dhcp4-server.service" ]; }
+  );
+
   router-ha-ntp-boundary-docs-eval = eval.mkNixosEvalCheck "router-ha-ntp-boundary-docs" [
     self.nixosModules.router-ha
     self.nixosModules.router-ntp

@@ -83,6 +83,9 @@ let
       broadcast = network + hostCount - 1;
     };
 
+  haPort = 8000;
+  haHost = addr: if hasInfix ":" addr then "[${addr}]" else addr;
+
   subnetInfo = parseSubnet cfg.dhcp4.subnet;
   inSubnet = ipInt: ipInt >= subnetInfo.network && ipInt <= subnetInfo.broadcast;
   isUsableHostAddress = ipInt: ipInt > subnetInfo.network && ipInt < subnetInfo.broadcast;
@@ -476,6 +479,33 @@ in
           example = "router-backup";
           description = "Name of the peer Kea server.";
         };
+        heartbeatDelaySec = mkOption {
+          type = types.ints.positive;
+          default = 5;
+          description = "Seconds between HA heartbeats to the peer (Kea `heartbeat-delay`).";
+        };
+        maxResponseDelaySec = mkOption {
+          type = types.ints.positive;
+          default = 15;
+          description = ''
+            Seconds without a reply from the peer before this server treats it
+            as failed (Kea `max-response-delay`). With `maxUnackedClients = 0`
+            it then serves every client, so this is roughly the DHCP failover
+            time. Must be larger than `heartbeatDelaySec`.
+          '';
+        };
+        maxUnackedClients = mkOption {
+          type = types.ints.unsigned;
+          default = 0;
+          description = ''
+            Clients that must go unanswered by the peer before taking over
+            (Kea `max-unacked-clients`). 0 takes over as soon as
+            `maxResponseDelaySec` expires. Raise it when the HA link can fail
+            while the peer still reaches clients (e.g. a separate management
+            network), so a partition does not make both servers serve the
+            whole pool. Above 0, a quiet LAN may never trigger takeover.
+          '';
+        };
       };
     };
 
@@ -552,6 +582,10 @@ in
             Kea 3.x on Linux fails to poll for broadcasts when raw sockets are address-qualified.
             Use a bare interface name (e.g. "eth0") instead.
           '';
+        }
+        {
+          assertion = cfg.dhcp4.ha.enable -> cfg.dhcp4.ha.maxResponseDelaySec > cfg.dhcp4.ha.heartbeatDelaySec;
+          message = "router-kea: dhcp4.ha.maxResponseDelaySec must be larger than heartbeatDelaySec, or every missed heartbeat looks like a failed peer.";
         }
         {
           assertion = cfg.dhcp4.ipv6OnlyPreferred.enable -> nat64Enabled;
@@ -671,18 +705,19 @@ in
                   {
                     this-server-name = cfg.dhcp4.ha.thisServerName;
                     mode = "load-balancing";
-                    heartbeat-delay = 10000;
-                    max-response-delay = 60000;
-                    max-unacked-clients = 0;
+                    heartbeat-delay = cfg.dhcp4.ha.heartbeatDelaySec * 1000;
+                    max-response-delay = cfg.dhcp4.ha.maxResponseDelaySec * 1000;
+                    max-ack-delay = 10000;
+                    max-unacked-clients = cfg.dhcp4.ha.maxUnackedClients;
                     peers = [
                       {
                         name = cfg.dhcp4.ha.thisServerName;
-                        url = "http://${cfg.dhcp4.ha.localAddress}:8000/";
+                        url = "http://${haHost cfg.dhcp4.ha.localAddress}:${toString haPort}/";
                         role = cfg.dhcp4.ha.role;
                       }
                       {
                         name = cfg.dhcp4.ha.peerName;
-                        url = "http://${cfg.dhcp4.ha.peerAddress}:8000/";
+                        url = "http://${haHost cfg.dhcp4.ha.peerAddress}:${toString haPort}/";
                         role = if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary";
                       }
                     ];
@@ -813,9 +848,13 @@ in
       services.router-firewall.trustedUdpPorts = mkIf (
         config.services.router-firewall.enable or false
       ) [ 67 68 ];
-      services.router-firewall.trustedTcpPorts = mkIf (
+      # SECURITY: the HA listener accepts lease updates without authentication
+      # (Kea 3.0 offers only TLS here), so only the peer may reach it.
+      services.router-firewall.extraInputRules = mkIf (
         config.services.router-firewall.enable or false && cfg.dhcp4.ha.enable
-      ) [ 8000 ];
+      ) ''
+        ${if hasInfix ":" cfg.dhcp4.ha.peerAddress then "ip6" else "ip"} saddr ${cfg.dhcp4.ha.peerAddress} tcp dport ${toString haPort} accept comment "Kea HA peer"
+      '';
     } else { })
   ]);
 }

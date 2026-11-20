@@ -9,6 +9,11 @@ let
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   hasRouterBgp = hasAttrByPath [ "services" "router-bgp" "enable" ] options;
   hasRouterNdpProxy = hasAttrByPath [ "services" "router-ndp-proxy" "enable" ] options;
+  hasRouterKea = hasAttrByPath [ "services" "router-kea" "enable" ] options;
+  keaHaEnabled =
+    hasRouterKea
+    && (config.services.router-kea.enable or false)
+    && (config.services.router-kea.dhcp4.ha.enable or false);
   bgpSingleActiveOwner =
     hasRouterBgp
     && (config.services.router-bgp.enable or false)
@@ -260,11 +265,21 @@ in
     };
 
     keaSync = {
-      enable = mkEnableOption "Automatic Kea DHCP lease synchronization with peer";
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        visible = false;
+        description = ''
+          Deprecated and has no effect. It only opened TCP 8000 on every
+          interface. Use `services.router-kea.dhcp4.ha`, which configures Kea
+          HA and opens the port to the peer only.
+        '';
+      };
       peerAddress = mkOption {
         type = types.nullOr types.str;
         default = null;
-        description = "The management/control-plane IP of the other router node.";
+        visible = false;
+        description = "Deprecated and has no effect. See `services.router-kea.dhcp4.ha.peerAddress`.";
       };
     };
   };
@@ -317,10 +332,26 @@ in
                   ipLib.cidrContains targetIface.ipv4Address cfg.virtualIp;
           message = "services.router-ha: VRRP virtual IP (${cfg.virtualIp}) must be in the same subnet as vrrpInterface ${cfg.vrrpInterface}.";
         }
+        {
+          # WHY: Kea HA needs both servers running; stopping the backup's Kea
+          # on every VRRP transition would force partner-down on the master.
+          assertion = keaHaEnabled -> !(elem "kea-dhcp4-server.service" cfg.singleActiveUnits || elem "kea-dhcp4-server" cfg.singleActiveUnits);
+          message = ''
+            services.router-ha: kea-dhcp4-server is in singleActiveUnits while
+            services.router-kea.dhcp4.ha is enabled. Kea HA runs on both nodes;
+            choose one DHCP model (see docs/router-dhcp-single-active.md).
+          '';
+        }
       ];
 
-      warnings = optional (cfg.vrrpPassword != null)
-        "services.router-ha.vrrpPassword puts the VRRP password in the Nix store; use vrrpPasswordFile instead.";
+      warnings =
+        optional (cfg.vrrpPassword != null)
+          "services.router-ha.vrrpPassword puts the VRRP password in the Nix store; use vrrpPasswordFile instead."
+        ++ optional (cfg.keaSync.enable || cfg.keaSync.peerAddress != null) ''
+          services.router-ha.keaSync is deprecated and has no effect. It used to
+          open TCP 8000 on every interface. Configure services.router-kea.dhcp4.ha
+          instead; it opens the HA port to the peer only.
+        '';
 
       boot.kernel.sysctl = {
         "net.ipv4.ip_nonlocal_bind" = mkIf (!virtualIpIsIpv6) 1;
@@ -430,8 +461,6 @@ in
         # VRRP uses multicast/protocol 112
         extraInputRules = ''
           ip protocol vrrp accept comment "Allow VRRP traffic"
-        '' + optionalString cfg.keaSync.enable ''
-          tcp dport 8000 accept comment "Allow Kea HA sync"
         '';
       };
     } else { })
