@@ -498,6 +498,366 @@ def cmd_diagnostics(args):
 # ── CLI Parser & Backward Compatibility ────────────────────────────────────
 
 
+# ── Operational state: ha, leases, dns, routes ──────────────────────────────
+#
+# INVARIANT: every section is {"available": bool, "reason": str|None, ...}
+# so scripts can tell "service not configured" from "service broken", and
+# the top level carries SCHEMA_VERSION. Bump it on any incompatible change.
+# SECURITY: tokens and keepalived.conf (VRRP password) are never printed or
+# read into the output.
+
+SCHEMA_VERSION = 1
+
+HA_ROLE_FILE = "/run/router-ha/role"
+HA_PENALTY_FILE = "/run/router-ha/wan-penalty"
+KEA_DHCP4_SOCKET = "/run/kea/dhcp4.sock"
+KEA_DHCP4_LEASES = "/var/lib/kea/dhcp4.leases"
+TECHNITIUM_TOKEN_FILE = "/var/lib/private/technitium-dns-server/nix-router-api-token"
+TECHNITIUM_API = "http://127.0.0.1:5380/api"
+
+
+def unavailable(reason, **extra):
+    out = {"available": False, "reason": reason}
+    out.update(extra)
+    return out
+
+
+def read_text(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def unit_active(unit):
+    rc, out, _ = run_cmd(["systemctl", "is-active", unit])
+    return out.strip() == "active"
+
+
+def kea_command(command, arguments=None, sock_path=KEA_DHCP4_SOCKET, timeout=3.0):
+    """Send one command to a Kea control socket; return (response, error)."""
+    import socket
+
+    if not os.path.exists(sock_path):
+        return None, f"control socket {sock_path} not found"
+    req = {"command": command}
+    if arguments is not None:
+        req["arguments"] = arguments
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            s.connect(sock_path)
+            s.sendall(json.dumps(req).encode())
+            buf = b""
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+                try:
+                    return json.loads(buf.decode()), None
+                except ValueError:
+                    continue
+            return json.loads(buf.decode()), None
+    except PermissionError:
+        return None, f"permission denied on {sock_path} (run as root)"
+    except (OSError, ValueError) as e:
+        return None, f"control socket error: {e}"
+
+
+def get_kea_ha_state():
+    resp, err = kea_command("ha-heartbeat")
+    if err:
+        return unavailable(err)
+    if resp.get("result") != 0:
+        # result 2: unsupported command, i.e. the HA hook is not loaded.
+        return unavailable(f"Kea HA not enabled ({resp.get('text', 'no text')})")
+    args = resp.get("arguments") or {}
+    return {
+        "available": True,
+        "reason": None,
+        "state": args.get("state"),
+        "scopes": args.get("scopes", []),
+        "unsent_update_count": args.get("unsent-update-count"),
+    }
+
+
+def get_ha_data():
+    import time
+
+    role = read_text(HA_ROLE_FILE)
+    if role == "":
+        # GOTCHA: the notify scripts truncate then write; retry past that.
+        time.sleep(0.2)
+        role = read_text(HA_ROLE_FILE)
+    kea_ha = get_kea_ha_state()
+    if role is None:
+        vrrp = unavailable(f"{HA_ROLE_FILE} not found (router-ha not enabled)")
+    elif role == "":
+        vrrp = unavailable(f"{HA_ROLE_FILE} is empty (role change in progress)")
+    else:
+        try:
+            since = int(os.stat(HA_ROLE_FILE).st_mtime)
+        except OSError:
+            since = None
+        penalty = read_text(HA_PENALTY_FILE)
+        vrrp = {
+            "available": True,
+            "reason": None,
+            "role": role,
+            "role_since": since,
+            "keepalived_active": unit_active("keepalived.service"),
+            # router-ha wan.healthCheck: "1" means this node yielded and its
+            # VRRP priority is pinned to 1.
+            "wan_health_pinned": penalty == "1",
+        }
+    return {"schema_version": SCHEMA_VERSION, "vrrp": vrrp, "kea_ha": kea_ha}
+
+
+def cmd_ha(args):
+    data = get_ha_data()
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return 0
+    print(f"{YELLOW}--- High Availability ---{NC}")
+    v = data["vrrp"]
+    if v["available"]:
+        color = GREEN if v["role"] == "master" else (RED if v["role"] == "fault" else BLUE)
+        pinned = f" {RED}(WAN health: priority pinned){NC}" if v["wan_health_pinned"] else ""
+        print(f"  VRRP role:   {color}{v['role']}{NC}{pinned}")
+        print(f"  keepalived:  {'active' if v['keepalived_active'] else RED + 'inactive' + NC}")
+    else:
+        print(f"  VRRP:        unavailable: {v['reason']}")
+    k = data["kea_ha"]
+    if k["available"]:
+        print(f"  Kea HA:      {BOLD}{k['state']}{NC} scopes={','.join(k['scopes']) or '-'} unsent={k['unsent_update_count']}")
+    else:
+        print(f"  Kea HA:      unavailable: {k['reason']}")
+    return 0
+
+
+def parse_memfile_leases(paths, now):
+    """Current DHCPv4 leases from Kea memfile CSVs (later rows win)."""
+    import csv
+
+    by_addr = {}
+    for path in paths:
+        try:
+            with open(path, newline="") as f:
+                for row in csv.DictReader(f):
+                    by_addr[row.get("address")] = row
+        except OSError:
+            continue
+    leases = []
+    for addr, row in by_addr.items():
+        try:
+            expire = int(row.get("expire") or 0)
+            valid = int(row.get("valid_lifetime") or 0)
+            state = int(row.get("state") or 0)
+        except ValueError:
+            continue
+        # valid_lifetime 0 marks a deleted lease; state 0 is "default".
+        if valid == 0 or state != 0 or expire <= now:
+            continue
+        leases.append(
+            {
+                "address": addr,
+                "hwaddr": row.get("hwaddr") or None,
+                "hostname": row.get("hostname") or None,
+                "subnet_id": int(row["subnet_id"]) if (row.get("subnet_id") or "").isdigit() else None,
+                "expires": expire,
+            }
+        )
+    return leases
+
+
+def get_leases_data():
+    import time
+
+    now = int(time.time())
+    base = {"schema_version": SCHEMA_VERSION}
+    if not unit_active("kea-dhcp4-server.service"):
+        base.update(unavailable("kea-dhcp4-server is not running (Kea not enabled or stopped)", source=None, leases=[]))
+        return base
+    resp, err = kea_command("lease4-get-all")
+    if resp is not None and resp.get("result") in (0, 3):
+        leases = []
+        for lease in (resp.get("arguments") or {}).get("leases", []):
+            if lease.get("state", 0) != 0:
+                continue
+            expire = lease.get("cltt", 0) + lease.get("valid-lft", 0)
+            # Kea keeps expired leases in state 0 until reclamation runs.
+            if expire <= now:
+                continue
+            leases.append(
+                {
+                    "address": lease.get("ip-address"),
+                    "hwaddr": lease.get("hw-address") or None,
+                    "hostname": lease.get("hostname") or None,
+                    "subnet_id": lease.get("subnet-id"),
+                    "expires": expire,
+                }
+            )
+        source = "control-socket"
+    else:
+        # GOTCHA: lease4-get-all needs the lease_cmds hook, which router-kea
+        # loads only with dhcp4.ha; fall back to the memfile (with the
+        # LFC's previous file first, so newer rows win).
+        memfiles = [KEA_DHCP4_LEASES + ".2", KEA_DHCP4_LEASES]
+        if not any(os.path.exists(f) for f in memfiles):
+            base.update(unavailable(err or f"{KEA_DHCP4_LEASES} not found", source=None, leases=[]))
+            return base
+        leases = parse_memfile_leases(memfiles, now)
+        source = "memfile"
+    leases.sort(key=lambda entry: tuple(int(p) for p in (entry["address"] or "0.0.0.0").split(".")))
+    base.update({"available": True, "reason": None, "source": source, "leases": leases})
+    return base
+
+
+def cmd_leases(args):
+    data = get_leases_data()
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return 0
+    print(f"{YELLOW}--- DHCPv4 Leases ---{NC}")
+    if not data["available"]:
+        print(f"  unavailable: {data['reason']}")
+        return 0
+    import time
+
+    now = int(time.time())
+    for lease in data["leases"]:
+        left = max(0, lease["expires"] - now)
+        print(f"  {lease['address']:<16} {lease['hwaddr'] or '-':<18} {lease['hostname'] or '-':<24} {left}s left")
+    print(f"  {len(data['leases'])} lease(s), from {data['source']}")
+    return 0
+
+
+def get_dns_data():
+    import urllib.parse
+    import urllib.request
+
+    base = {"schema_version": SCHEMA_VERSION}
+    if not unit_active("technitium-dns-server.service"):
+        base.update(unavailable("technitium-dns-server is not running (Technitium not enabled or stopped)", zones=[]))
+        return base
+    # The bootstrap token exists with bootstrapPasswordSecretName; a managed
+    # key (apiKeySecretName) is exported as TECHNITIUM_API_KEY_FILE instead.
+    token_files = [TECHNITIUM_TOKEN_FILE] + [f for f in [os.environ.get("TECHNITIUM_API_KEY_FILE")] if f]
+    token = next((t for t in (read_text(f) for f in token_files) if t), None)
+    if not token:
+        base.update(unavailable(f"no readable API token in {', '.join(token_files)} (run as root)", zones=[]))
+        return base
+    url = f"{TECHNITIUM_API}/zones/list?" + urllib.parse.urlencode({"token": token})
+    try:
+        with urllib.request.urlopen(url, timeout=5) as r:
+            body = json.load(r)
+    except Exception as e:
+        # SECURITY: urllib errors can echo the URL; never include it.
+        base.update(unavailable(f"Technitium API request failed: {type(e).__name__}", zones=[]))
+        return base
+    # GOTCHA: Technitium returns HTTP 200 for errors; check .status.
+    if body.get("status") != "ok":
+        base.update(unavailable(f"Technitium API error: {body.get('errorMessage', body.get('status'))}", zones=[]))
+        return base
+    zones = []
+    for z in (body.get("response") or {}).get("zones", []):
+        if z.get("internal"):
+            continue
+        zones.append(
+            {
+                "name": z.get("name"),
+                "type": z.get("type"),
+                "disabled": bool(z.get("disabled")),
+                "soa_serial": z.get("soaSerial"),
+                "sync_failed": bool(z.get("syncFailed")),
+                "notify_failed": bool(z.get("notifyFailed")),
+                "expired": bool(z.get("isExpired")),
+            }
+        )
+    zones.sort(key=lambda z: z["name"] or "")
+    base.update({"available": True, "reason": None, "zones": zones})
+    return base
+
+
+def cmd_dns(args):
+    data = get_dns_data()
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return 0
+    print(f"{YELLOW}--- DNS Zones (Technitium) ---{NC}")
+    if not data["available"]:
+        print(f"  unavailable: {data['reason']}")
+        return 0
+    for z in data["zones"]:
+        flags = [f for f in ("disabled", "sync_failed", "notify_failed", "expired") if z[f]]
+        color = RED if flags else GREEN
+        print(f"  {z['name']:<32} {z['type']:<12} serial={z['soa_serial']} {color}{','.join(flags) or 'ok'}{NC}")
+    return 0
+
+
+def get_routes_data():
+    data = {"schema_version": SCHEMA_VERSION}
+    kernel = {"available": True, "reason": None}
+    for family, flag in (("ipv4", "-4"), ("ipv6", "-6")):
+        rc, out, err = run_cmd(["ip", "-j", flag, "route", "show", "table", "main"])
+        if rc != 0:
+            kernel = unavailable(f"ip route failed: {err.strip()}")
+            break
+        try:
+            kernel[family] = json.loads(out or "[]")
+        except ValueError as e:
+            kernel = unavailable(f"ip route returned invalid JSON: {e}")
+            break
+    data["kernel"] = kernel
+
+    if not unit_active("frr.service"):
+        data["frr"] = unavailable("frr is not running (FRR not enabled or stopped)")
+    else:
+        frr = {"available": True, "reason": None}
+        for family, cmd in (("ipv4", "show ip route json"), ("ipv6", "show ipv6 route json")):
+            rc, out, err = run_cmd(["vtysh", "-c", cmd])
+            if rc != 0:
+                frr = unavailable(f"vtysh failed: {(err or out).strip()}")
+                break
+            try:
+                frr[family] = json.loads(out or "{}")
+            except ValueError as e:
+                frr = unavailable(f"vtysh returned invalid JSON: {e}")
+                break
+        data["frr"] = frr
+    return data
+
+
+def cmd_routes(args):
+    data = get_routes_data()
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return 0
+    print(f"{YELLOW}--- Kernel Routes (main table) ---{NC}")
+    k = data["kernel"]
+    if k["available"]:
+        for family in ("ipv4", "ipv6"):
+            for r in k[family]:
+                via = f" via {r['gateway']}" if r.get("gateway") else ""
+                dev = f" dev {r['dev']}" if r.get("dev") else ""
+                proto = f" proto {r['protocol']}" if r.get("protocol") else ""
+                print(f"  {r.get('dst', '?'):<28}{via}{dev}{proto}")
+    else:
+        print(f"  unavailable: {k['reason']}")
+    f = data["frr"]
+    print(f"{YELLOW}--- FRR RIB ---{NC}")
+    if f["available"]:
+        for family in ("ipv4", "ipv6"):
+            for prefix, entries in f[family].items():
+                protos = ",".join(sorted({e.get("protocol", "?") for e in entries}))
+                print(f"  {prefix:<28} {protos}")
+    else:
+        print(f"  unavailable: {f['reason']}")
+    return 0
+
+
 def build_parser():
     common_parser = argparse.ArgumentParser(add_help=False)
     common_parser.add_argument(
@@ -543,6 +903,27 @@ def build_parser():
         "diagnostics",
         parents=[common_parser],
         help="Kernel sysctls and connection tracking metrics",
+    )
+
+    subparsers.add_parser(
+        "ha",
+        parents=[common_parser],
+        help="VRRP role, WAN health pin and Kea HA state",
+    )
+    subparsers.add_parser(
+        "leases",
+        parents=[common_parser],
+        help="Current Kea DHCPv4 leases",
+    )
+    subparsers.add_parser(
+        "dns",
+        parents=[common_parser],
+        help="Technitium zone types and sync state",
+    )
+    subparsers.add_parser(
+        "routes",
+        parents=[common_parser],
+        help="Kernel main-table routes and the FRR RIB",
     )
 
     # firewall
@@ -657,6 +1038,14 @@ def main():
         sys.exit(cmd_interfaces(args))
     elif args.command == "diagnostics":
         sys.exit(cmd_diagnostics(args))
+    elif args.command == "ha":
+        sys.exit(cmd_ha(args))
+    elif args.command == "leases":
+        sys.exit(cmd_leases(args))
+    elif args.command == "dns":
+        sys.exit(cmd_dns(args))
+    elif args.command == "routes":
+        sys.exit(cmd_routes(args))
     elif args.command == "firewall":
         fw_sub = getattr(args, "fw_subcommand", None) or "summary"
         if fw_sub == "explain":

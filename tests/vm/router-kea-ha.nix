@@ -81,6 +81,7 @@ let
         pkgs.socat
         pkgs.jq
         pkgs.curl
+        self.packages.${pkgs.stdenv.hostPlatform.system}.routerctl
       ];
     };
 
@@ -126,6 +127,9 @@ mkRouterTest {
     import time
 
     routers = [router1, router2]
+
+    def routerctl(r, command):
+        return json.loads(r.succeed(f"routerctl {command} --json"))
 
     def kea(r, command, **arguments):
         msg = {"command": command}
@@ -216,6 +220,30 @@ mkRouterTest {
             assert got, f"no lease for {mac} during failover"
             assert got[1] == "10.0.10.3", f"unexpected server {got}"
             leases[mac] = got[0]
+
+    with subtest("routerctl: Kea HA state, leases, and unavailable sections"):
+        ha = routerctl(router2, "ha")
+        assert ha["schema_version"] == 1, ha
+        assert ha["kea_ha"]["available"] and ha["kea_ha"]["state"] == "partner-down", ha
+        assert not ha["vrrp"]["available"] and "router-ha" in ha["vrrp"]["reason"], ha
+        got = routerctl(router2, "leases")
+        assert got["available"] and got["source"] == "control-socket", got
+        by_addr = {entry["address"]: entry for entry in got["leases"]}
+        missing = set(leases.values()) - set(by_addr)
+        assert not missing, f"routerctl leases misses {missing}"
+        for entry in got["leases"]:
+            assert set(entry) == {"address", "hwaddr", "hostname", "subnet_id", "expires"}, entry
+        # The stopped primary reports Kea as unavailable instead of failing.
+        down = routerctl(router1, "leases")
+        assert not down["available"] and "not running" in down["reason"] and down["leases"] == [], down
+        assert not routerctl(router1, "ha")["kea_ha"]["available"]
+        dns = routerctl(router2, "dns")
+        assert not dns["available"] and dns["zones"] == [], dns
+        routes = routerctl(router2, "routes")
+        assert routes["kernel"]["available"], routes
+        assert any(r.get("dst") == "10.0.10.0/24" for r in routes["kernel"]["ipv4"]), routes
+        assert not routes["frr"]["available"], routes
+        router2.succeed("routerctl ha && routerctl leases && routerctl dns && routerctl routes")
 
     with subtest("primary returns: syncs leases and both go back to load-balancing"):
         router1.succeed("systemctl start kea-dhcp4-server")

@@ -68,6 +68,7 @@ let
       environment.systemPackages = [
         pkgs.dnsutils
         pkgs.curl
+        self.packages.${pkgs.stdenv.hostPlatform.system}.routerctl
       ];
     };
 in
@@ -158,6 +159,24 @@ mkRouterTest {
 
     with subtest("election: router1 holds the zone as Primary, router2 as Secondary"):
         wait_owner(router1, router2)
+
+    with subtest("routerctl: VRRP role and zone state per node, no secrets"):
+        token = router1.succeed(f"cat {TOKEN}").strip()
+        for r, want_role, want_type in [(router1, "master", "Primary"), (router2, "backup", "Secondary")]:
+            raw = {c: r.succeed(f"routerctl {c} --json") for c in ("ha", "dns", "leases")}
+            r_token = r.succeed(f"cat {TOKEN}").strip()
+            for c, out in raw.items():
+                assert token not in out and r_token not in out, f"routerctl {c} leaked the API token"
+            ha, dns, leases = (json.loads(raw[c]) for c in ("ha", "dns", "leases"))
+            v = ha["vrrp"]
+            assert v["available"] and v["role"] == want_role and v["keepalived_active"], ha
+            assert v["wan_health_pinned"] is False and isinstance(v["role_since"], int), ha
+            assert not ha["kea_ha"]["available"], ha
+            assert dns["available"], dns
+            zone = next(z for z in dns["zones"] if z["name"].lower() == ZONE)
+            assert zone["type"] == want_type, zone
+            assert set(zone) == {"name", "type", "disabled", "soa_serial", "sync_failed", "notify_failed", "expired"}, zone
+            assert not leases["available"] and leases["leases"] == [], leases
 
     with subtest("a record written on the owner reaches the secondary"):
         add_a(router1, "one", "10.0.10.51")
