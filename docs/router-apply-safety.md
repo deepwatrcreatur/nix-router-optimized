@@ -78,10 +78,18 @@ How it works:
   the trial, it comes back on the old system.
 - **The activation runs as its own transient unit**, so it finishes even if
   your SSH session dies halfway.
-- **`confirm`** cancels the timer, sets the system profile and installs the
-  boot entry (`switch-to-configuration boot`).
-- **`revert`** (or the timer) activates the previous system again.
-- **One trial at a time:** a second `switch` is refused until the first is
+- **`confirm`** sets the system profile, installs the boot entry
+  (`switch-to-configuration boot`) and only then cancels the timer. If the
+  activation is still running, or the running system isn't the trial, or
+  installing the boot entry fails, it refuses, and the revert stays armed. A
+  failed boot install also puts the profile back.
+- **`revert`** (or the timer) first stops a still-running (hung) trial
+  activation, then reactivates the previous system, retrying up to five
+  times. If every attempt fails, it keeps its state for a manual
+  `router-apply revert`; a reboot also works, since the boot default never
+  moved.
+- **One trial at a time:** a lock serializes `switch`, `confirm`, `revert`
+  and the timer, and a second `switch` is refused until the first is
   confirmed or reverted.
 - **Default timeout:** set with `services.router-apply.defaultTimeoutSec`
   (300).
@@ -93,7 +101,8 @@ How it works:
   scripts those reference, two levels deep);
 - `diff -ru` of `/etc/systemd/network` and `/etc/kea`.
 
-It shows what the build renders, not the live kernel state.
+It shows what the build renders, not the live kernel state. Set
+`ROUTER_APPLY_DIFF_UNITS="unit1 unit2"` to expand other units instead.
 
 What it does not cover:
 
@@ -110,6 +119,7 @@ What it does not cover:
   the 30 s timeout (about 31 s in the VM), and SSH works again;
 - the boot default never moves during a trial;
 - a manual revert is immediate;
+- a hung activation refuses `confirm`, and the timer stops it and reverts;
 - a confirmed change stays past the timeout and becomes the boot default;
 - `diff` shows the rendered networkd change.
 

@@ -16,7 +16,7 @@ mkRouterTest {
   name = "router-apply";
 
   nodes = {
-    router = { lib, ... }: {
+    router = { lib, pkgs, ... }: {
       imports = [ self.nixosModules.router-apply ];
       virtualisation.vlans = [ 1 ];
       networking = {
@@ -37,9 +37,21 @@ mkRouterTest {
       specialisation.broken.configuration = {
         systemd.network.networks."10-mgmt".address = lib.mkForce [ "192.168.1.99/24" ];
       };
+      # A unit whose config file has no store references of its own: diff
+      # must treat it as a leaf, not abort under errexit/pipefail.
+      systemd.services.leaf = {
+        serviceConfig.ExecStart = "${pkgs.coreutils}/bin/cat ${pkgs.writeText "leaf.conf" "setting=old\n"}";
+      };
       # A harmless change to confirm.
       specialisation.good.configuration = {
         environment.etc."router-apply-marker".text = "good";
+        systemd.services.leaf.serviceConfig.ExecStart = lib.mkForce
+          "${pkgs.coreutils}/bin/cat ${pkgs.writeText "leaf.conf" "setting=new\n"}";
+      };
+      # An activation that hangs: activation scripts run synchronously in
+      # switch-to-configuration (a oneshot unit would not block it).
+      specialisation.hung.configuration = {
+        system.activationScripts.hang = "${pkgs.coreutils}/bin/touch /run/hang-started; ${pkgs.coreutils}/bin/sleep 600";
       };
     };
 
@@ -66,6 +78,7 @@ mkRouterTest {
     base = router.succeed("readlink -f /run/current-system").strip()
     broken = router.succeed("readlink -f /run/current-system/specialisation/broken").strip()
     good = router.succeed("readlink -f /run/current-system/specialisation/good").strip()
+    hung = router.succeed("readlink -f /run/current-system/specialisation/hung").strip()
     profile_before = router.succeed("readlink -f /nix/var/nix/profiles/system || true").strip()
 
     with subtest("diff shows the rendered networkd change"):
@@ -74,6 +87,9 @@ mkRouterTest {
         assert "=== /etc/systemd/network" in out, out
         assert "+Address=192.168.1.99/24" in out and "-Address=192.168.1.1/24" in out, out
         assert "No change." in router.succeed(f"router-apply diff {base}")
+        leaf = router.succeed(f"ROUTER_APPLY_DIFF_UNITS=leaf router-apply diff {good}")
+        print(leaf)
+        assert "=== leaf.service" in leaf and "+setting=new" in leaf and "-setting=old" in leaf, leaf
 
     with subtest("unconfirmed change that cuts management access is reverted"):
         router.succeed(f"router-apply switch --timeout 30 {broken}")
@@ -104,6 +120,19 @@ mkRouterTest {
         assert router.succeed("readlink -f /run/current-system").strip() == base
         router.fail("test -e /etc/router-apply-marker")
         router.fail("systemctl is-active router-apply-revert.timer")
+
+    with subtest("hung activation: confirm is refused, the timer stops it and reverts"):
+        router.succeed(f"(router-apply switch --timeout 20 {hung} >/tmp/hung.log 2>&1 &)")
+        router.wait_until_succeeds("systemctl show -P ActiveState router-apply-trial.service | grep -qx activating", timeout=30)
+        router.wait_until_succeeds("test -e /run/hang-started", timeout=30)
+        out = router.fail("router-apply confirm 2>&1")
+        assert "still running" in out, out
+        router.succeed("systemctl is-active router-apply-revert.timer")
+        router.wait_until_succeeds("router-apply status | grep -q 'No trial pending'", timeout=90)
+        assert router.succeed("readlink -f /run/current-system").strip() == base
+        router.fail("systemctl show -P ActiveState router-apply-trial.service | grep -qE '^(active|activating)$'")
+        router.fail("pgrep -f 'sleep 600'")
+        admin.wait_until_succeeds("nc -z -w 2 192.168.1.1 22", timeout=60)
 
     with subtest("confirmed change stays and becomes the boot default"):
         router.succeed(f"router-apply switch --timeout 30 {good}")
