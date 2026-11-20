@@ -57,9 +57,27 @@ standby, and no link or static-address change on LAN or management. A planned
 failover there takes about 4 s from `systemctl stop keepalived` to the new
 master holding the VIP, the IPv4 lease and a delegated prefix.
 
-IPv6 note: the DHCPv6 DUID differs per node, so an ISP that pins the
-delegated prefix to the DUID may hand the new master a different prefix,
-and LAN clients then renumber. DHCPv6 and prefix delegation also start only
+DHCP identity: with `clonedMac` set, `wan.sharedDhcpIdentity` (on by
+default) gives both nodes' WAN the same DHCPv4 and DHCPv6 identity: a
+link-layer DUID built from the cloned MAC (`00:01:<mac>`) and an IAID from
+its last four bytes. Without it each node sends its own machine-id DUID, and
+an ISP that binds the lease or the delegated prefix to the DUID hands the
+new master a different prefix, so LAN clients renumber. Enabling it changes
+the DUID once, which can move the delegated prefix at the next renewal; set
+it to `false` to keep the old DUID. Values you set yourself in the WAN
+network's `dhcpV4Config`/`dhcpV6Config` win (`mkDefault`).
+
+With `clonedMac`, router-ha also disables duplicate address detection on
+the WAN (`IPv6DuplicateAddressDetection = 0`). On a planned handover the old
+master still holds the shared link-local address for a moment; DAD on the
+new master then marked it `dadfailed` permanently and DHCPv6 never started.
+VRRP already keeps the clone on one node.
+
+`vm-router-ha-wan-failover` checks that the simulated ISP, which binds PD
+to the DUID and IAID, delegates the same /56 to both nodes across failover
+and fail-back. With the shared identity off, the peer gets a different /56.
+
+DHCPv6 and prefix delegation also start only
 after the new master hears a Router Advertisement; most ISPs answer the
 router solicitation at once, but one that only sends slow periodic RAs
 delays IPv6 after a failover. `DHCPv6Config.WithoutRA = "solicit"` on the
