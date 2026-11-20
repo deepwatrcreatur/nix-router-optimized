@@ -21,7 +21,10 @@ If you want a concrete starting point instead of a boundary note, start with
 Today the repo has bounded ownership behavior in these areas:
 
 - **WAN role transitions** through `services.router-ha.wan`
-- **Kea-related sync/control affordances** where explicitly configured
+- **Kea DHCPv4 HA** through `services.router-kea.dhcp4.ha`. It runs Kea
+  on both nodes independently of VRRP, so `kea-dhcp4-server` must not be in
+  `singleActiveUnits` (evaluation fails if it is). The old
+  `services.router-ha.keaSync` option is retired: it now only warns.
 - **BGP single-active-owner behavior** where the `router-bgp` integration makes
   promotion semantics explicit
 

@@ -134,9 +134,14 @@ let
   vmSmokeCheck = import ./vm/router-basic-smoke.nix {
     inherit self lib pkgs;
   };
+
+  vmKeaHaCheck = import ./vm/router-kea-ha.nix {
+    inherit self lib pkgs;
+  };
 in
 {
   vm-smoke = vmSmokeCheck;
+  vm-router-kea-ha = vmKeaHaCheck;
 
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
     self.nixosModules.default

@@ -42,8 +42,10 @@ All of the following must be true before any live Kea HA retest begins.
 
 - The operator must decide whether Kea HA is expected to follow VRRP
   transitions or operate independently.
-- If Kea HA runs alongside VRRP, the `keaSync` and BGP `singleActiveOwner`
-  interactions must be reviewed for conflicts.
+- Kea HA runs on both nodes regardless of VRRP role. `kea-dhcp4-server`
+  must not be in `services.router-ha.singleActiveUnits`; evaluation fails if
+  it is. The retired `services.router-ha.keaSync` option has no effect.
+- The BGP `singleActiveOwner` interaction must be reviewed for conflicts.
 - `kea-dhcp-ddns-server` ownership (if DDNS is in use) must be explicitly
   decided: does DDNS follow the HA primary, or does each node run its own?
 
@@ -72,7 +74,7 @@ of the following must be demonstrated with timestamped evidence.
 ```bash
 # On each node:
 systemctl status kea-dhcp4-server    # must be active
-curl -s http://localhost:8000/ | jq . # or equivalent Kea control channel check
+echo '{"command": "ha-heartbeat"}' | socat - UNIX-CONNECT:/run/kea/dhcp4.sock | jq .
 ```
 
 Both nodes must show Kea running with HA hooks loaded and the HA state must
@@ -82,8 +84,9 @@ be either `hot-standby` or `load-balancing` (not `waiting`, `syncing`, or
 ### B. HA sync is functional
 
 ```bash
-# On the primary:
-echo '{"command": "ha-heartbeat"}' | socat - UNIX:/run/kea/kea4-ctrl-socket.sock
+# On the primary: a lease handed out by the peer must be present here.
+echo '{"command": "lease4-get", "arguments": {"ip-address": "<client ip>"}}' \
+  | socat - UNIX-CONNECT:/run/kea/dhcp4.sock | jq .result   # 0 = found
 ```
 
 The heartbeat response must show the peer as reachable and in a known state.
@@ -111,6 +114,35 @@ The heartbeat response must show the peer as reachable and in a known state.
 
 All of the above must be captured in a timestamped evidence block (shell
 output, not memory) and linked from the incident or work-item history.
+
+## Simulated Evidence
+
+The `vm-router-kea-ha` check (`tests/vm/router-kea-ha.nix`) runs evidence
+items A–E against two VMs with the module defaults (load-balancing,
+10 s heartbeat, 60 s `max-response-delay`) and `router-firewall` enabled:
+
+| Step | Result in the VM |
+|---|---|
+| Both nodes reach `load-balancing` | about 20–30 s after boot |
+| Fresh clients from 8 MACs | both servers answer a share; every lease appears on both nodes |
+| HA port 8000 | reachable from the peer, refused to a LAN client |
+| Primary's Kea stopped | secondary reaches `partner-down` after about 55–60 s, then serves every client |
+| Primary restarted | it pulls the leases it missed and both are back in `load-balancing` within about 20 s; no duplicate leases |
+
+What clients notice when one node fails: clients that already have a lease
+keep it and renew later, so they see nothing. A new or rebinding client whose
+MAC hashes to the failed node gets no answer until the survivor reaches
+`partner-down`, so up to about a minute of DHCP retries.
+
+Run it with `nix build .#checks.x86_64-linux.vm-router-kea-ha -L`.
+
+Security: Kea 3.0's HA listener accepts lease updates without authentication
+(it supports only TLS). `router-kea` therefore opens port 8000 to the
+configured `peerAddress` only, through `router-firewall`. Without
+`router-firewall`, restrict the port yourself.
+
+This proves the module. It does not satisfy the gate for the reference pair;
+see below.
 
 ## What Does NOT Count as Evidence
 

@@ -103,9 +103,11 @@ kind of verification.
 
 ## Dormant HA Config Policy
 
-The repo may still contain Kea HA-oriented knobs and history because they are
-useful for future design exploration. But for the reference pair, those knobs
-must be treated as:
+`services.router-kea.dhcp4.ha` is tested in VMs by the
+`vm-router-kea-ha` check (see
+[`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md#simulated-evidence)).
+That proves the module, not the reference pair. For the reference pair, the
+HA options must still be treated as:
 
 - **deferred future-design hooks**
 - not present-tense support claims

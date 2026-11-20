@@ -40,10 +40,21 @@ operator is willing to validate the exact transport and ownership model.
 - **Reference pair boundary:** the current project-maintained router pair is
   documented as **single-active DHCP with manual promotion**, not active Kea HA
   service. See [`router-dhcp-single-active.md`](./router-dhcp-single-active.md).
+- **Tested in VMs:** the `vm-router-kea-ha` check covers sync, failover and
+  fail-back; see [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md#simulated-evidence)
+  for the measured timings. With `router-firewall`, the HA port is open to the
+  peer only.
 - **Usage:**
   ```nix
   services.router-kea.enable = true;
-  services.router-kea.dhcp4.ha.enable = true;
+  services.router-kea.dhcp4.ha = {
+    enable = true;
+    thisServerName = "router-a";
+    peerName = "router-b";
+    role = "primary";            # "secondary" on the peer
+    localAddress = "10.10.10.2"; # this node's LAN address
+    peerAddress = "10.10.10.3";
+  };
   ```
 
 ## 3. `services.router-technitium` (The All-in-One Choice)

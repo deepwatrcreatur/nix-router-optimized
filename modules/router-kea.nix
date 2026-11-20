@@ -83,6 +83,9 @@ let
       broadcast = network + hostCount - 1;
     };
 
+  haPort = 8000;
+  haHost = addr: if hasInfix ":" addr then "[${addr}]" else addr;
+
   subnetInfo = parseSubnet cfg.dhcp4.subnet;
   inSubnet = ipInt: ipInt >= subnetInfo.network && ipInt <= subnetInfo.broadcast;
   isUsableHostAddress = ipInt: ipInt > subnetInfo.network && ipInt < subnetInfo.broadcast;
@@ -677,12 +680,12 @@ in
                     peers = [
                       {
                         name = cfg.dhcp4.ha.thisServerName;
-                        url = "http://${cfg.dhcp4.ha.localAddress}:8000/";
+                        url = "http://${haHost cfg.dhcp4.ha.localAddress}:${toString haPort}/";
                         role = cfg.dhcp4.ha.role;
                       }
                       {
                         name = cfg.dhcp4.ha.peerName;
-                        url = "http://${cfg.dhcp4.ha.peerAddress}:8000/";
+                        url = "http://${haHost cfg.dhcp4.ha.peerAddress}:${toString haPort}/";
                         role = if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary";
                       }
                     ];
@@ -813,9 +816,13 @@ in
       services.router-firewall.trustedUdpPorts = mkIf (
         config.services.router-firewall.enable or false
       ) [ 67 68 ];
-      services.router-firewall.trustedTcpPorts = mkIf (
+      # SECURITY: the HA listener accepts lease updates without authentication
+      # (Kea 3.0 offers only TLS here), so only the peer may reach it.
+      services.router-firewall.extraInputRules = mkIf (
         config.services.router-firewall.enable or false && cfg.dhcp4.ha.enable
-      ) [ 8000 ];
+      ) ''
+        ${if hasInfix ":" cfg.dhcp4.ha.peerAddress then "ip6" else "ip"} saddr ${cfg.dhcp4.ha.peerAddress} tcp dport ${toString haPort} accept comment "Kea HA peer"
+      '';
     } else { })
   ]);
 }
