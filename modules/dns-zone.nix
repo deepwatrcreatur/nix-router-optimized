@@ -178,7 +178,12 @@ let
       );
 
       aliasText = concatStringsSep "\n" (
-        mapAttrsToList (alias: target: "${alias}    IN      CNAME   ${target}") zone.aliases
+        mapAttrsToList (alias: target:
+          let
+            targetFqdn = if target == "@" then "${zoneName}." else if hasInfix "." target then (if hasSuffix "." target then target else "${target}.") else "${target}.${zoneName}.";
+          in
+          "${alias}    IN      CNAME   ${targetFqdn}"
+        ) zone.aliases
       );
     in
     ''
@@ -201,7 +206,13 @@ let
       ${aliasText}
     '';
 
-  fqdn = zoneName: name: if name == "@" then zoneName else "${name}.${zoneName}";
+  fqdn = zoneName: name:
+    if name == "@" then
+      zoneName
+    else if hasInfix "." name then
+      name
+    else
+      "${name}.${zoneName}";
 
   # Shell line that records a successfully synchronized record as managed.
   markManaged = zone: domain: type: value: ''
@@ -242,17 +253,21 @@ let
           );
 
           aliasCommands = concatStringsSep "\n" (
-            mapAttrsToList (alias: target: ''
-              echo "Adding zone alias: ${alias}.${zoneName} -> ${target}.${zoneName}"
+            mapAttrsToList (alias: target:
+              let
+                aliasDomain = fqdn zoneName alias;
+                targetCname = fqdn zoneName target;
+              in ''
+              echo "Adding zone alias: ${aliasDomain} -> ${targetCname}"
               technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/records/add?token=$TOKEN" \
                 -d "zone=${zoneName}" \
-                -d "domain=${if alias == "@" then zoneName else "${alias}.${zoneName}"}" \
+                -d "domain=${aliasDomain}" \
                 -d "type=CNAME" \
                 -d "ttl=3600" \
-                -d "cname=${if target == "@" then zoneName else "${target}.${zoneName}"}" \
+                -d "cname=${targetCname}" \
                 -d "overwrite=true" \
                 >/dev/null
-              ${markManaged zoneName (fqdn zoneName alias) "CNAME" (fqdn zoneName target)}
+              ${markManaged zoneName aliasDomain "CNAME" targetCname}
             '') zone.aliases
           );
         in
