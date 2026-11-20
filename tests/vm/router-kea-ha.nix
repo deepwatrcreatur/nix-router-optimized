@@ -21,6 +21,7 @@ let
       role,
       address,
       peerAddress,
+      setLocalAddress ? true,
     }:
     { pkgs, ... }:
     {
@@ -69,8 +70,10 @@ let
             thisServerName = name;
             peerName = peer;
             inherit role peerAddress;
-            localAddress = address;
-          };
+          }
+          # router2 keeps the 0.0.0.0 default: this URL only sets where Kea
+          # listens; the peer reaches it through its own peerAddress.
+          // lib.optionalAttrs setLocalAddress { localAddress = address; };
         };
       };
 
@@ -105,6 +108,7 @@ mkRouterTest {
       role = "secondary";
       address = "10.0.10.3";
       peerAddress = "10.0.10.2";
+      setLocalAddress = false;
     };
 
     client = { pkgs, ... }: {
@@ -156,9 +160,13 @@ mkRouterTest {
                 return ip, server
         return None
 
-    def has_lease(r, ip):
+    def lease_mac(r, ip):
         resp = kea(r, "lease4-get", **{"ip-address": ip})
-        return resp["result"] == 0
+        if resp["result"] != 0:
+            return None
+        return resp["arguments"]["hw-address"]
+
+    leases = {}  # mac -> ip, across every phase
 
     macs = [f"02:00:00:00:10:{i:02x}" for i in range(1, 9)]
     failover_macs = [f"02:00:00:00:20:{i:02x}" for i in range(1, 9)]
@@ -187,6 +195,7 @@ mkRouterTest {
             assert got, f"no lease for {mac}"
             ip, server = got
             servers.add(server)
+            leases[mac] = ip
             for r in routers:
                 r.wait_until_succeeds(
                     f"echo '{{\"command\":\"lease4-get\",\"arguments\":{{\"ip-address\":\"{ip}\"}}}}'"
@@ -206,18 +215,22 @@ mkRouterTest {
             got = lease(mac)
             assert got, f"no lease for {mac} during failover"
             assert got[1] == "10.0.10.3", f"unexpected server {got}"
+            leases[mac] = got[0]
 
     with subtest("primary returns: syncs leases and both go back to load-balancing"):
         router1.succeed("systemctl start kea-dhcp4-server")
         for r in routers:
             wait_state(r, "load-balancing", timeout=180)
-        all_ips = []
+        # Check router1's database before any new DHCP traffic, so only the
+        # startup sync can have put these leases there.
+        for mac in failover_macs:
+            ip = leases[mac]
+            assert lease_mac(router1, ip) == mac, f"router1 did not sync {ip} -> {mac} from the failover"
+        ips = list(leases.values())
+        assert len(set(ips)) == len(ips), f"duplicate leases across phases: {leases}"
+        # Clients keep their failover addresses after fail-back.
         for mac in failover_macs:
             got = lease(mac)
-            assert got, f"no renewal for {mac} after fail-back"
-            all_ips.append(got[0])
-        assert len(set(all_ips)) == len(all_ips), f"duplicate leases: {all_ips}"
-        for ip in all_ips:
-            assert has_lease(router1, ip), f"router1 missed lease {ip} handed out while it was down"
+            assert got and got[0] == leases[mac], f"{mac} moved from {leases[mac]} to {got}"
   '';
 }
