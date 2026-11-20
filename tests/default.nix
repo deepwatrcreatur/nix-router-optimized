@@ -138,10 +138,15 @@ let
   vmKeaHaCheck = import ./vm/router-kea-ha.nix {
     inherit self lib pkgs;
   };
+
+  vmHaWanFailoverCheck = import ./vm/router-ha-wan-failover.nix {
+    inherit self lib pkgs;
+  };
 in
 {
   vm-smoke = vmSmokeCheck;
   vm-router-kea-ha = vmKeaHaCheck;
+  vm-router-ha-wan-failover = vmHaWanFailoverCheck;
 
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
     self.nixosModules.default

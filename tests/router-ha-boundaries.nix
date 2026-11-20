@@ -319,4 +319,68 @@ in
       fi
       touch "$out"
     '';
+
+  router-ha-wan-network-auto-eval = eval.mkNixosEvalCheck "router-ha-wan-network-auto" [
+    self.nixosModules.router-networking
+    self.nixosModules.router-ha
+    {
+      services.router-networking = {
+        enable = true;
+        wan.device = "eth0";
+        wans.backup.device = "eth1";
+        routedInterfaces.lan = {
+          device = "eth2";
+          ipv4Address = "10.10.10.2/24";
+        };
+      };
+      services.router-ha = {
+        enable = true;
+        role = "backup";
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+        };
+      };
+    }
+    ({ config, ... }:
+      let
+        nets = config.systemd.network.networks;
+      in
+      {
+        assertions = [
+          {
+            assertion = config.services.router-ha.wan.network == "10-router-wan-backup";
+            message = "router-ha should detect the router-networking WAN whose device is wan.interface.";
+          }
+          {
+            assertion = nets."10-router-wan-backup".linkConfig.ActivationPolicy == "manual";
+            message = "the HA-managed WAN must use ActivationPolicy=manual so only VRRP raises it.";
+          }
+          {
+            assertion = !(nets."10-router-wan-primary".linkConfig ? ActivationPolicy);
+            message = "router-ha must not touch WANs it does not manage.";
+          }
+        ];
+      })
+  ];
+
+  router-ha-wan-network-missing-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-network-missing" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        enable = true;
+        role = "master";
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+        };
+      };
+    }
+  ];
 }

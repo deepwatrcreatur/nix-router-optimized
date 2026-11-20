@@ -13,10 +13,19 @@ let
         enable = true;
         interface = "wan0";
         clonedMac = "02:00:00:00:00:01";
+        # The .network below gets ActivationPolicy=manual; only the VRRP
+        # master brings wan0 up. Detected automatically when router-networking
+        # manages the WAN.
+        network = "10-wan";
       };
       singleActiveUnits = [
         "inadyn.service"
       ];
+    };
+
+    systemd.network.networks."10-wan" = {
+      matchConfig.Name = "wan0";
+      networkConfig.DHCP = "yes";
     };
 
     services.router-ntp = {
