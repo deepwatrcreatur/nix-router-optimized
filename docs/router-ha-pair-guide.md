@@ -143,7 +143,11 @@ promotion so DHCP can finish, it:
 A pinned node never yields again. If the peer's WAN is bad too (the ISP
 itself is down), the peer yields back to the pinned node, which stays
 master: the LAN VIP, DHCP and DNS stay up on one node instead of both
-sitting in FAULT. The same applies when the peer is missing.
+sitting in FAULT. When the peer is missing, the yield still costs a few
+seconds: the node leaves FAULT after about 3 s and reclaims the VIP after
+keepalived's master-down timer, then stays master pinned. The check needs
+`priority` below 255, because keepalived never lowers address-owner
+priority.
 
 A backup's WAN is down, so it cannot see a repair. After `retryAfterSec`
 (default 900; `null` disables retries) the pin is lifted and the node

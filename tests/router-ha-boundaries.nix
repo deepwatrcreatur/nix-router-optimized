@@ -529,4 +529,25 @@ in
       };
     }
   ];
+
+  router-ha-wan-health-owner-priority-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-health-owner-priority" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan".matchConfig.Name = "eth1";
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        priority = 255;
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          healthCheck.enable = true;
+        };
+      };
+    }
+  ];
 }

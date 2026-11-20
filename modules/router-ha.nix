@@ -87,6 +87,7 @@ let
       ${pkgs.systemd}/bin/networkctl up ${escapeShellArg cfg.wan.interface}
       # Fresh DHCPv4/DHCPv6/PD with the (possibly cloned) MAC.
       ${pkgs.systemd}/bin/networkctl reconfigure ${escapeShellArg cfg.wan.interface}
+      ${optionalString wanHealthEnabled "${pkgs.coreutils}/bin/touch ${escapeShellArg wanUpSinceFile}"}
     ''}
     ${optionalString bgpSingleActiveOwner ''
       ${bgpPromoteScript}
@@ -127,6 +128,9 @@ let
   # weight -253), "0" restores it. Only the health check writes it.
   wanPenaltyFile = "${runtimeDir}/wan-penalty";
   wanFailCountFile = "${runtimeDir}/wan-health-failures";
+  # Written by notify_master after the WAN is raised; the startup grace
+  # counts from here so slow link setup does not eat into it.
+  wanUpSinceFile = "${runtimeDir}/wan-up-since";
   # Seconds as a decimal string for timeout(1) and ping -W, e.g. 800 -> "0.800".
   probeTimeout =
     let
@@ -184,6 +188,8 @@ let
 
     # The master has just brought the WAN up; give DHCP time to finish.
     since=$(stat -c %Y ${escapeShellArg roleStateFile} 2>/dev/null || echo 0)
+    up=$(stat -c %Y ${escapeShellArg wanUpSinceFile} 2>/dev/null || echo 0)
+    [ "$up" -gt "$since" ] && since=$up
     if [ $((now - since)) -lt ${toString hc.startupGraceSec} ]; then
       exit 0
     fi
@@ -192,7 +198,7 @@ let
     ${if hc.targets == [ ] then ''
       gw=$(ip -4 route show default dev "$wan" | awk '$2 == "via" { print $3; exit }')
       if [ -n "$gw" ]; then
-        timeout ${probeTimeout} arping -q -c 1 -w 1 -I "$wan" "$gw" && healthy=1
+        timeout ${probeTimeout} arping -q -c 1 -w ${toString ((hc.timeoutMs + 999) / 1000)} -I "$wan" "$gw" && healthy=1
       elif [ -n "$(ip -4 route show default dev "$wan")" ]; then
         # GOTCHA: point-to-point WANs (PPPoE) have no gateway to ARP for.
         healthy=1
@@ -538,6 +544,12 @@ in
                 in
                   ipLib.cidrContains targetIface.ipv4Address cfg.virtualIp;
           message = "services.router-ha: VRRP virtual IP (${cfg.virtualIp}) must be in the same subnet as vrrpInterface ${cfg.vrrpInterface}.";
+        }
+        {
+          # WHY: keepalived never lowers address-owner priority 255, so the
+          # pin would not hold and a node with a dead WAN would preempt back.
+          assertion = !wanHealthEnabled || cfg.priority < 255;
+          message = "services.router-ha.wan.healthCheck needs priority below 255; keepalived does not lower address-owner priority, so the WAN pin could not hold.";
         }
         {
           assertion = !wanHealthEnabled || hc.timeoutMs < hc.interval * 1000;
