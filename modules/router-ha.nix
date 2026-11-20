@@ -796,6 +796,16 @@ in
       # (seen in vm-router-ha-wan-failover). VRRP already makes the clone
       # exclusive, so duplicate detection only adds that failure.
       systemd.network.networks.${cfg.wan.network}.networkConfig.IPv6DuplicateAddressDetection = mkDefault 0;
+      warnings =
+        let
+          dad = config.systemd.network.networks.${cfg.wan.network}.networkConfig.IPv6DuplicateAddressDetection or 0;
+        in
+        optional (dad != 0) ''
+          services.router-ha.wan: network "${cfg.wan.network}" sets
+          IPv6DuplicateAddressDetection=${toString dad} on the cloned-MAC WAN.
+          On a planned handover the new master can then mark the shared
+          link-local address dadfailed, and DHCPv6/PD never start.
+        '';
     })
 
     # Firewall integration
