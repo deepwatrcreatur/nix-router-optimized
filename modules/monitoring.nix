@@ -511,6 +511,87 @@ let
     };
   };
 
+  hwSensorsDir = "/run/router-hw-sensors";
+
+  # INVARIANT: uid is part of the URL (/d/router-hardware); keep it stable so
+  # router-dashboard links and bookmarks keep working.
+  hardwareDashboard =
+    let
+      tempPanel = id: title: expr: legend: y: thresholds: {
+        inherit id title;
+        type = "timeseries";
+        gridPos = { x = 0; inherit y; w = 24; h = 8; };
+        targets = [ { inherit expr; legendFormat = legend; } ];
+        fieldConfig.defaults = {
+          unit = "celsius";
+          custom.thresholdsStyle.mode = if thresholds == [ ] then "off" else "line";
+          thresholds = {
+            mode = "absolute";
+            steps = [ { color = "green"; value = null; } ] ++ thresholds;
+          };
+        };
+        options.legend = { displayMode = "table"; placement = "right"; calcs = [ "lastNotNull" "max" ]; };
+      };
+    in
+    {
+      dashboard = {
+        uid = "router-hardware";
+        title = "Router Hardware";
+        timezone = "browser";
+        schemaVersion = 39;
+        version = 1;
+        refresh = "1m";
+        time = { from = "now-24h"; to = "now"; };
+        tags = [ "router" "hardware" "temperature" ];
+        panels = [
+          (tempPanel 50 "CPU and board temperatures (hwmon)"
+            "node_hwmon_temp_celsius" "{{chip}} {{sensor}}" 0 [ ])
+          (tempPanel 51 "NIC chip temperature"
+            "router_nic_asic_temperature_celsius" "{{device}} ({{pci}})" 8 [
+              { color = "orange"; value = 85; }
+              { color = "red"; value = 95; }
+            ])
+          (tempPanel 52 "SFP module temperature"
+            "router_sfp_temperature_celsius" "{{device}}" 16 [
+              { color = "orange"; value = 70; }
+              { color = "red"; value = 80; }
+            ])
+          {
+            id = 53;
+            title = "SFP optical power";
+            type = "timeseries";
+            gridPos = { x = 0; y = 24; w = 24; h = 8; };
+            targets = [
+              { expr = "router_sfp_rx_power_dbm"; legendFormat = "{{device}} RX"; }
+              { expr = "router_sfp_tx_power_dbm"; legendFormat = "{{device}} TX"; }
+            ];
+            fieldConfig.defaults.unit = "dBm";
+            options.legend = { displayMode = "table"; placement = "right"; calcs = [ "lastNotNull" "min" ]; };
+          }
+          {
+            id = 54;
+            title = "Sensor collector age";
+            description = "Seconds since router-hw-sensors last ran; empty when router.monitoring.hardwareSensors is off.";
+            type = "stat";
+            gridPos = { x = 0; y = 32; w = 6; h = 4; };
+            # Instant query: a range query would keep showing the last age
+            # after the collector stops.
+            targets = [ { expr = "time() - router_hw_sensors_last_run_timestamp_seconds"; instant = true; } ];
+            fieldConfig.defaults = {
+              unit = "s";
+              thresholds = {
+                mode = "absolute";
+                steps = [
+                  { color = "green"; value = null; }
+                  { color = "red"; value = 300; }
+                ];
+              };
+            };
+          }
+        ];
+      };
+    };
+
   siteConnectivityDashboard = {
     dashboard = {
       title = "Site Connectivity & Access Points";
@@ -838,6 +919,27 @@ in
       '';
     };
 
+    hardwareSensors = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Collect NIC and SFP sensors that the node_exporter hwmon collector
+          doesn't expose: the mlx5 ASIC temperature (MTMP register, via
+          mstflint) and SFP digital diagnostics (module temperature, RX/TX
+          optical power, via `ethtool -m`). They are written as textfile
+          metrics and shown in the "Router Hardware" Grafana dashboard
+          (uid `router-hardware`) together with the hwmon temperatures.
+        '';
+      };
+
+      interval = mkOption {
+        type = types.str;
+        default = "1min";
+        description = "systemd OnUnitActiveSec interval between sensor reads.";
+      };
+    };
+
     alerting = {
       enable = mkOption {
         type = types.bool;
@@ -901,7 +1003,9 @@ in
       exporters = {
         node = {
           enable = true;
-          enabledCollectors = [ "systemd" "processes" "network_route" "conntrack" ];
+          enabledCollectors = [ "systemd" "processes" "network_route" "conntrack" ]
+            ++ optional cfg.hardwareSensors.enable "textfile";
+          extraFlags = optional cfg.hardwareSensors.enable "--collector.textfile.directory=${hwSensorsDir}";
           port = 9100;
         };
         blackbox = mkIf cfg.blackbox.enable {
@@ -1148,9 +1252,37 @@ in
       text = builtins.toJSON networkTelemetryDashboard;
     };
 
+    environment.etc."grafana-dashboards/router-hardware.json" = {
+      mode = "0644";
+      text = builtins.toJSON hardwareDashboard;
+    };
+
     environment.etc."grafana-dashboards/router-site-connectivity.json" = {
       mode = "0644";
       text = builtins.toJSON siteConnectivityDashboard;
+    };
+
+
+    systemd.tmpfiles.rules = mkIf cfg.hardwareSensors.enable [
+      "d ${hwSensorsDir} 0755 root root -"
+    ];
+
+    systemd.services.router-hw-sensors = mkIf cfg.hardwareSensors.enable {
+      description = "Read NIC and SFP sensors for node_exporter";
+      # WHY: root reads the NIC's PCI config space (mstreg) and the SFP EEPROM.
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.callPackage ../pkgs/router-hw-sensors { }}/bin/router-hw-sensors ${hwSensorsDir}";
+        Nice = 10;
+      };
+    };
+
+    systemd.timers.router-hw-sensors = mkIf cfg.hardwareSensors.enable {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "30s";
+        OnUnitActiveSec = cfg.hardwareSensors.interval;
+      };
     };
 
   };

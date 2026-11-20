@@ -147,6 +147,10 @@ let
     inherit self lib pkgs;
   };
 
+  vmHwSensorsCheck = import ./vm/router-hw-sensors.nix {
+    inherit self lib pkgs;
+  };
+
   vmRouterApplyCheck = import ./vm/router-apply.nix {
     inherit self lib pkgs;
   };
@@ -165,8 +169,60 @@ in
   vm-router-ha-wan-failover = vmHaWanFailoverCheck;
   vm-router-ha-pair = vmHaPairCheck;
   vm-router-apply = vmRouterApplyCheck;
+  vm-router-hw-sensors = vmHwSensorsCheck;
   vm-router-ha-wan-health = vmHaWanHealthCheck;
   vm-router-technitium-zone-ha = vmTechnitiumZoneHaCheck;
+
+  router-monitoring-hardware-sensors-eval = eval.mkNixosEvalCheck "router-monitoring-hardware-sensors" [
+    self.nixosModules.monitoring
+    {
+      router.monitoring = {
+        enable = true;
+        hardwareSensors.enable = true;
+      };
+    }
+    ({ config, ... }:
+      let
+        node = config.services.prometheus.exporters.node;
+        dash = builtins.fromJSON config.environment.etc."grafana-dashboards/router-hardware.json".text;
+        exprs = map (p: (builtins.head (p.targets or [ { expr = ""; } ])).expr) dash.dashboard.panels;
+      in
+      {
+        assertions = [
+          {
+            assertion = builtins.elem "textfile" node.enabledCollectors
+              && builtins.elem "--collector.textfile.directory=/run/router-hw-sensors" node.extraFlags;
+            message = "hardwareSensors must enable node_exporter's textfile collector on /run/router-hw-sensors.";
+          }
+          {
+            assertion = config.systemd.timers ? router-hw-sensors
+              && lib.hasInfix "router-hw-sensors /run/router-hw-sensors" config.systemd.services.router-hw-sensors.serviceConfig.ExecStart;
+            message = "hardwareSensors must run router-hw-sensors on a timer into the textfile directory.";
+          }
+          {
+            assertion = dash.dashboard.uid == "router-hardware"
+              && builtins.elem "router_nic_asic_temperature_celsius" exprs
+              && builtins.elem "router_sfp_temperature_celsius" exprs
+              && builtins.elem "node_hwmon_temp_celsius" exprs;
+            message = "The Router Hardware dashboard (uid router-hardware) must graph hwmon, NIC ASIC and SFP temperatures.";
+          }
+        ];
+      })
+  ];
+
+  router-monitoring-hardware-sensors-default-off-eval = eval.mkNixosEvalCheck "router-monitoring-hardware-sensors-default-off" [
+    self.nixosModules.monitoring
+    { router.monitoring.enable = true; }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = !(config.systemd.timers ? router-hw-sensors)
+            && !(builtins.elem "textfile" config.services.prometheus.exporters.node.enabledCollectors);
+          message = "router-hw-sensors must stay off unless router.monitoring.hardwareSensors.enable is set.";
+        }
+      ];
+    })
+  ];
 
   default-module-bundle-eval = eval.mkNixosEvalCheck "default-module-bundle" [
     self.nixosModules.default
