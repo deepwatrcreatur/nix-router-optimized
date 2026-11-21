@@ -280,6 +280,14 @@ Bugs that reached a live router, and the rule each one implies for new modules:
   re-implemented `router-technitium.rfc2136` in their own unit, and that copy
   was the one with the stale-token bug. Mention existing options in the README
   module list so they are discoverable.
+- **Size the listen backlog, not just the worker pool.** Python's
+  `socketserver.TCPServer` (and `http.server.HTTPServer`) calls `listen()`
+  with `request_queue_size = 5`. `ThreadingMixIn` only helps after `accept()`,
+  so bursts of dashboard widget polls overflowed the accept queue on :8888
+  (`TcpExtListenOverflows`, about 7 a minute). Set `request_queue_size` on any
+  server that more than one client polls (see `DashboardHTTPServer` in
+  `modules/router-dashboard/api/server.py`), and test with a burst of
+  connections while the server isn't accepting.
 
 ## Evaluation Tests
 
