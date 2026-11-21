@@ -42,8 +42,10 @@ in
         message = "streams must be forwarded from the upstream to the listed downstreams only.";
       }
       {
-        assertion = lib.hasInfix ''iifname { "wan0.40", "lan0" } ip protocol igmp accept'' fw.extraInputEarlyRules;
-        message = "IGMP must be accepted on the upstream and downstreams.";
+        assertion = lib.hasInfix ''iifname { "lan0" } ip protocol igmp accept'' fw.extraInputEarlyRules
+          && lib.hasInfix ''iifname "wan0.40" igmp type membership-query accept'' fw.extraInputEarlyRules
+          && !(lib.hasInfix ''"wan0.40" } ip protocol igmp'' fw.extraInputEarlyRules);
+        message = "downstreams accept all IGMP; the upstream only membership queries.";
       }
       {
         assertion = lib.any (lib.hasInfix "router-multicast-rp-filter") config.systemd.services.router-multicast.serviceConfig.ExecStartPre;
@@ -51,11 +53,62 @@ in
       }
     ]);
 
+  router-multicast-native-nftables-eval = check "router-multicast-native-nftables" [
+    self.nixosModules.router-multicast
+    {
+      networking.nftables.enable = true;
+      services.router-multicast = {
+        enable = true;
+        upstream.interface = "wan0.40";
+        downstreams = [ "lan0" ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = lib.hasInfix "igmp type membership-query accept" config.networking.firewall.extraInputRules
+        && lib.hasInfix ''iifname { "lan0" } ip protocol igmp accept'' config.networking.firewall.extraInputRules;
+      message = "without router-firewall, the NixOS nftables firewall must admit IGMP.";
+    }
+  ]);
+
+  router-multicast-native-iptables-eval = check "router-multicast-native-iptables" [
+    self.nixosModules.router-multicast
+    {
+      services.router-multicast = {
+        enable = true;
+        upstream.interface = "wan0.40";
+        downstreams = [ "lan0" ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = lib.hasInfix "-i lan0 -p igmp -j nixos-fw-accept" config.networking.firewall.extraCommands
+        && lib.hasInfix "-i wan0.40 -p igmp -m u32" config.networking.firewall.extraCommands;
+      message = "without router-firewall, the NixOS iptables firewall must admit IGMP.";
+    }
+  ]);
+
+  router-multicast-default-bundle-eval = check "router-multicast-default-bundle" [
+    self.nixosModules.default
+    {
+      services.router-multicast = {
+        enable = true;
+        upstream.interface = "wan0";
+        downstreams = [ "lan0" ];
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.systemd.services ? router-multicast;
+      message = "router-multicast must be usable from the default bundle.";
+    }
+  ]);
+
   router-multicast-strict-rp-eval = check "router-multicast-strict-rp" (base {
     services.router-multicast.looseReversePathFilter = false;
   }) (config: [
     {
-      assertion = config.systemd.services.router-multicast.serviceConfig.ExecStartPre == [ ];
+      assertion = !(lib.any (lib.hasInfix "router-multicast-rp-filter") config.systemd.services.router-multicast.serviceConfig.ExecStartPre);
       message = "looseReversePathFilter = false must leave rp_filter alone.";
     }
   ]);
