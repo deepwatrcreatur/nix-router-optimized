@@ -84,6 +84,11 @@ from module names alone.
 - [`router-multicast.md`](./router-multicast.md) — IGMP proxy for IPTV, with
   firewall and rp_filter handling and IGMPv3/quickleave limits
 
+### VPN
+
+- [`router-ipsec.md`](./router-ipsec.md) — route-based IPsec with XFRM
+  interfaces, BGP over the tunnel, failover and flowtable notes
+
 ### Service/module selection
 
 - [`DHCP_SELECTION.md`](./DHCP_SELECTION.md) — DHCP backend choice guide

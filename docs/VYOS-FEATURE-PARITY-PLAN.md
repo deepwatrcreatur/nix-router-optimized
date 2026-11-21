@@ -72,6 +72,9 @@ covers it), **gap** (not available).
 | BFD | FRR, tied to routing and VRRP | None; nixpkgs keepalived is built without BFD | Gap (deferred: router-j93) |
 | IPsec | Route-based (VTI), policy-based, DMVPN | None (WireGuard, OpenVPN, Tailscale, Headscale, Netbird, ZeroTier, Twingate exist) | Gap: router-3op |
 | Multicast | IGMP proxy, PIM | IGMP proxy (`router-multicast`, igmpproxy) and mDNS reflector (`router-mdns.nix`); no PIM | IGMP proxy shipped, VM-tested (`vm-router-multicast`; router-n3i). PIM: not planned |
+
+| IPsec | Route-based (VTI), policy-based, DMVPN | Route-based with XFRM interfaces (`router-ipsec`, strongSwan swanctl, PSK); no policy-based or DMVPN | Shipped, VM-tested (`vm-router-ipsec`; router-3op) |
+| Multicast | IGMP proxy, PIM | mDNS reflector only (`router-mdns.nix`) | Gap: router-n3i |
 | PPPoE client | Yes | `router-pppoe.nix` | Shipped |
 | Multi-WAN | WAN load balancing | `router-mwan.nix` | Shipped |
 | Zone firewall | Zone-based firewall | `router-zones.nix`, `routerctl firewall explain/trace` | Shipped; UX improvements are docs and `routerctl` work |
@@ -160,6 +163,10 @@ VM-tested in `vm-router-multicast`. `igmpproxy` (proxy semantics suit IPTV);
 receives, stops after leaving; another VLAN never receives.
 
 ### 3.6 Route-based IPsec (router-3op, P4)
+
+*Shipped* as `router-ipsec` ([router-ipsec.md](./router-ipsec.md)), VM-tested
+in `vm-router-ipsec`. Flowtable interaction: tunnels are kept out of the
+flowtable by an assertion rather than verified. The original plan:
 
 Use the nixpkgs `strongswan-swanctl` module with **XFRM interfaces**
 (networkd `Kind=xfrm`, `if_id`), not VTI.

@@ -33,6 +33,12 @@ IGMP proxy (igmpproxy) for IPTV-style multicast:
 - Firewall forwards `224.0.0.0/4` only to the listed downstreams; loose `rp_filter` on the upstream.
 - quickleave, group allow/deny lists. See [router-multicast.md](./router-multicast.md).
 
+### `router-ipsec`
+Route-based site-to-site IPsec (strongSwan swanctl, IKEv2, PSK) with XFRM interfaces:
+- One XFRM interface per tunnel; routing (static or BGP via `router-bgp`) decides what is encrypted.
+- PSK read from a runtime file; IKE/ESP admitted only on the WAN from the peer; optional `router-zones` zone.
+- See [router-ipsec.md](./router-ipsec.md).
+
 ### `router-kea`
 ISC Kea DHCPv4 (and DHCPv6) server for advanced environments:
 - Declarative pool ranges, subnet definitions, and static reservations.

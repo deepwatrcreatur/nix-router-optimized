@@ -99,6 +99,10 @@ let
     inherit self lib eval;
   };
 
+  routerIpsecChecks = import ./router-ipsec.nix {
+    inherit self lib eval;
+  };
+
   routerTechnitiumZoneReplicationChecks = import ./router-technitium-zone-replication.nix {
     inherit self lib eval;
   };
@@ -190,6 +194,10 @@ let
   vmMulticastCheck = import ./vm/router-multicast.nix {
     inherit self lib pkgs;
   };
+
+  vmIpsecCheck = import ./vm/router-ipsec.nix {
+    inherit self lib pkgs;
+  };
 in
 {
   vm-smoke = vmSmokeCheck;
@@ -203,6 +211,7 @@ in
   vm-router-dhcp-relay = vmDhcpRelayCheck;
   vm-router-ipv6-downstream = vmIpv6DownstreamCheck;
   vm-router-multicast = vmMulticastCheck;
+  vm-router-ipsec = vmIpsecCheck;
 
   router-monitoring-hardware-sensors-eval = eval.mkNixosEvalCheck "router-monitoring-hardware-sensors" [
     self.nixosModules.monitoring
@@ -323,6 +332,7 @@ in
 // routerDhcpRelayChecks
 // routerIpv6DownstreamChecks
 // routerMulticastChecks
+// routerIpsecChecks
 // routerHaLabChecks
 // routerNdppdChecks
 // routerOptimizationsChecks
