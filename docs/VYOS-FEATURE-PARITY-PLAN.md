@@ -134,14 +134,6 @@ routerctl routes   # kernel FIB plus FRR (vtysh JSON)
   `RelayTarget=`, `RelayAgentCircuitId=` and `RelayAgentRemoteId=`; no new
   daemon. *Tested:* `vm-router-dhcp-relay` (client, relay router also running
   Kea, and a central Kea server that leases only on matching option 82).
-- **router-xm6: DHCPv6 and PD serving.** First document what networkd
-  already provides (RA, DHCPv6 server, sub-delegation of the ISP prefix),
-  then decide whether a module is needed.
-
-- **router-yix: DHCP relay and option 82.** Wrap systemd-networkd's
-  `[DHCPServer]` `RelayTarget=`, `RelayAgentCircuitId=` and
-  `RelayAgentRemoteId=`; no new daemon. *Test:* client, relay and DHCP
-  server VMs.
 - **router-xm6: DHCPv6 and PD serving.** *Decided:* SLAAC from the ISP
   delegation via networkd RAs, with stable per-segment subnet IDs
   (`ipv6SubnetId`); no DHCPv6 server or downstream PD until a revisit trigger
