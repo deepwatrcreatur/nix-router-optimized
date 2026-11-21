@@ -27,6 +27,12 @@ DHCPv4 relay (RFC 1542) for routed segments via `systemd-networkd`'s relay mode:
 - Kea and `router-dhcp` skip relayed segments; firewall rules for clients and server replies.
 - See [router-dhcp-relay.md](./router-dhcp-relay.md).
 
+### `router-multicast`
+IGMP proxy (igmpproxy) for IPTV-style multicast:
+- Configurable upstream (often an ISP IPTV VLAN, not assumed to be the WAN) and listed downstreams.
+- Firewall forwards `224.0.0.0/4` only to the listed downstreams; loose `rp_filter` on the upstream.
+- quickleave, group allow/deny lists. See [router-multicast.md](./router-multicast.md).
+
 ### `router-kea`
 ISC Kea DHCPv4 (and DHCPv6) server for advanced environments:
 - Declarative pool ranges, subnet definitions, and static reservations.

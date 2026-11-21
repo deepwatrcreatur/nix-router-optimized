@@ -71,7 +71,7 @@ covers it), **gap** (not available).
 | OSPF / IS-IS | FRR | None | Gap (deferred: router-j93) |
 | BFD | FRR, tied to routing and VRRP | None; nixpkgs keepalived is built without BFD | Gap (deferred: router-j93) |
 | IPsec | Route-based (VTI), policy-based, DMVPN | None (WireGuard, OpenVPN, Tailscale, Headscale, Netbird, ZeroTier, Twingate exist) | Gap: router-3op |
-| Multicast | IGMP proxy, PIM | mDNS reflector only (`router-mdns.nix`) | Gap: router-n3i |
+| Multicast | IGMP proxy, PIM | IGMP proxy (`router-multicast`, igmpproxy) and mDNS reflector (`router-mdns.nix`); no PIM | IGMP proxy shipped, VM-tested (`vm-router-multicast`; router-n3i). PIM: not planned |
 | PPPoE client | Yes | `router-pppoe.nix` | Shipped |
 | Multi-WAN | WAN load balancing | `router-mwan.nix` | Shipped |
 | Zone firewall | Zone-based firewall | `router-zones.nix`, `routerctl firewall explain/trace` | Shipped; UX improvements are docs and `routerctl` work |
@@ -142,8 +142,9 @@ routerctl routes   # kernel FIB plus FRR (vtysh JSON)
 
 ### 3.5 Routed multicast (router-n3i, P3, after HA)
 
-`igmpproxy` by default (proxy semantics suit IPTV), `smcroute` only for
-static cross-VLAN routes; neither has a NixOS module yet.
+*Shipped* as `router-multicast` ([router-multicast.md](./router-multicast.md)),
+VM-tested in `vm-router-multicast`. `igmpproxy` (proxy semantics suit IPTV);
+`smcroute` for static cross-VLAN routes is not included.
 
 - The upstream is a configurable interface, often an ISP IPTV VLAN, not
   assumed to be the WAN.
