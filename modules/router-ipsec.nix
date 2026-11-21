@@ -20,8 +20,21 @@ let
   hasRouterBgp = hasAttrByPath [ "services" "router-bgp" "neighbors" ] options;
   bgpNeighbors = if hasRouterBgp && (config.services.router-bgp.enable or false) then attrNames config.services.router-bgp.neighbors else [ ];
 
+  # INVARIANT: mirrors router-firewall's wanInterfaces fallback (explicit list,
+  # else router-optimizations interfaces with role "wan").
+  firewallWanInterfaces =
+    let
+      fw = config.services.router-firewall;
+      byRole = mapAttrsToList (_: i: i.device) (
+        filterAttrs (_: i: i.role == "wan") (config.services.router-optimizations.interfaces or { })
+      );
+    in
+    if firewallEnabled then (if fw.wanInterfaces != [ ] then fw.wanInterfaces else byRole) else [ ];
+
   isIpv4Literal = s: builtins.match "([0-9]{1,3}\\.){3}[0-9]{1,3}" s != null;
   secretsFile = "/run/router-ipsec/secrets.conf";
+  # Above any routing daemon's metric (FRR installs BGP routes with 20).
+  blackholeMetric = 4000;
   quote = d: ''"${d}"'';
 
   # INVARIANT: zones this module did not define itself; its own interface
@@ -64,6 +77,20 @@ let
           default = [ ];
           example = [ "10.20.0.0/16" ];
           description = "Static routes sent through the tunnel. Not needed for prefixes learned by BGP.";
+        };
+
+        remotePrefixes = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          example = [ "10.20.0.0/16" ];
+          description = ''
+            Prefixes that must only ever be reached through this tunnel, such
+            as those learned by BGP. Each gets a blackhole route with metric
+            ${toString blackholeMetric}, so if BGP withdraws the prefix (or the
+            tunnel is down) traffic is dropped instead of leaving in the clear
+            via the WAN default route. `routes` need none: they always point
+            at the XFRM interface, which drops without an SA.
+          '';
         };
 
         remote = {
@@ -151,7 +178,10 @@ let
       echo "secrets {"
       ${concatStringsSep "\n" (
         mapAttrsToList (name: t: ''
-          psk=$(${pkgs.coreutils}/bin/tr -d '\n' < ${escapeShellArg t.pskFile} | ${pkgs.xxd}/bin/xxd -p | ${pkgs.coreutils}/bin/tr -d '\n')
+          # Hex of the exact bytes, minus one trailing newline (from editors or
+          # `echo`); newlines inside a binary key are kept.
+          psk=$(${pkgs.xxd}/bin/xxd -p < ${escapeShellArg t.pskFile} | ${pkgs.coreutils}/bin/tr -d '\n')
+          psk=''${psk%0a}
           test -n "$psk"
           echo "  ike-${name} {"
           ${optionalString (t.local.id != null) "echo '    id-local = ${t.local.id}'"}
@@ -192,6 +222,16 @@ in
             message = "services.router-ipsec.tunnels: ifId values must be unique.";
           }
           {
+            assertion = allUnique (mapAttrsToList (_: t: t.interface) tunnels);
+            message = "services.router-ipsec.tunnels: interface names must be unique.";
+          }
+          {
+            # SECURITY: with no WAN interfaces the IKE/ESP rules would match
+            # every interface, including LANs.
+            assertion = !firewallEnabled || firewallWanInterfaces != [ ];
+            message = "services.router-ipsec needs WAN interfaces in router-firewall (wanInterfaces or a router-optimizations interface with role \"wan\") to scope IKE and ESP.";
+          }
+          {
             # GOTCHA: flowtable offload with XFRM interfaces is not verified
             # here; keep tunnels out of it (docs/router-ipsec.md#flowtables).
             assertion =
@@ -209,6 +249,14 @@ in
             {
               assertion = builtins.match "([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}" t.address != null;
               message = "services.router-ipsec.tunnels.${name}.address must be an IPv4 CIDR such as 169.254.10.1/30.";
+            }
+            {
+              # WHY: a route covering the peer's public address sends IKE and
+              # ESP into the tunnel itself, which then never comes up.
+              assertion =
+                !isIpv4Literal t.remote.address
+                || all (r: !(ipLib.cidrContainsIP r t.remote.address)) (filter (r: !hasInfix ":" r) (t.routes ++ t.remotePrefixes));
+              message = "services.router-ipsec.tunnels.${name}: routes or remotePrefixes cover the peer address ${t.remote.address}; IKE would be routed into the tunnel.";
             }
             {
               assertion = !hasPrefix "/nix/store" t.pskFile;
@@ -229,6 +277,9 @@ in
         name: t:
         "services.router-ipsec.tunnels.${name}: remote.address \"${t.remote.address}\" is not an IPv4 literal, so the firewall accepts IKE/ESP on the WAN from any source for it."
       ) (filterAttrs (_: t: firewallEnabled && !isIpv4Literal t.remote.address) tunnels);
+
+      # The XFRM interfaces, addresses and routes are networkd units.
+      systemd.network.enable = mkDefault true;
 
       systemd.network.netdevs = mapAttrs' (
         name: t:
@@ -251,7 +302,15 @@ in
         nameValuePair "40-${t.interface}" {
           matchConfig.Name = t.interface;
           address = [ t.address ];
-          routes = map (d: { Destination = d; }) t.routes;
+          routes =
+            map (d: { Destination = d; }) t.routes
+            # SECURITY: blackholes keep remote prefixes off the WAN when BGP
+            # withdraws them; BGP routes (metric 20) win while present.
+            ++ map (d: {
+              Destination = d;
+              Type = "blackhole";
+              Metric = blackholeMetric;
+            }) t.remotePrefixes;
           linkConfig.RequiredForOnline = "no";
         }
       ) tunnels;
@@ -282,7 +341,8 @@ in
               if_id_in = toString t.ifId;
               if_id_out = toString t.ifId;
               esp_proposals = t.proposals.esp;
-              dpd_action = "restart";
+              # A responder must not start an exchange of its own.
+              dpd_action = if t.initiate then "restart" else "clear";
               # WHY: "start" alone gives up for good if the peer is not ready
               # (NO_PROPOSAL_CHOSEN during its boot); the trap re-initiates on
               # the next packet routed into this if_id. A trap policy with an
@@ -317,8 +377,7 @@ in
     (optionalAttrs hasRouterFirewall {
       services.router-firewall.extraInputEarlyRules = mkIf firewallEnabled (
         let
-          wan = config.services.router-firewall.wanInterfaces;
-          wanMatch = optionalString (wan != [ ]) "iifname { ${concatMapStringsSep ", " quote wan} } ";
+          wanMatch = "iifname { ${concatMapStringsSep ", " quote firewallWanInterfaces} } ";
           peerRules =
             t:
             let

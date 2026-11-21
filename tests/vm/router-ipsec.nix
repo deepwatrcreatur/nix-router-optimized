@@ -60,7 +60,8 @@ let
       };
 
       # Test-only key; real deployments point pskFile at a secret manager path.
-      environment.etc."ipsec/site.psk".text = psk;
+      # One side ends in a newline: only a trailing newline is stripped.
+      environment.etc."ipsec/site.psk".text = if initiate then psk else psk + "\n";
 
       services.router-firewall = {
         enable = true;

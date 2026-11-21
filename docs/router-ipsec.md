@@ -26,7 +26,8 @@ selectors.
 ## What it configures
 
 - A systemd-networkd XFRM netdev (`xfrm-<name>`, `Independent=yes`) with the
-  tunnel address and static routes.
+  tunnel address and static routes. The module enables systemd-networkd for
+  these units if the host does not use it already.
 - A swanctl connection with PSK authentication, the IKE/ESP proposals,
   DPD (`dpd_action = restart`), and a child SA bound by `if_id_in/out`.
 - Initiators use `start_action = trap|start`: they start at boot, and if the
@@ -37,14 +38,19 @@ selectors.
   "%any"`.
 - The PSK is read from `pskFile` at service start, hex-encoded into
   `/run/router-ipsec/secrets.conf` (root only), and loaded through a swanctl
-  include. It never enters the Nix store.
+  include. It never enters the Nix store. One trailing newline is dropped;
+  any other byte, including newlines inside a binary key, is kept.
+- Responder-only tunnels (`initiate = false`) clear a dead SA on DPD instead
+  of starting an exchange of their own.
 
 ## Firewall and zones
 
 With `router-firewall`:
 
-- IKE (UDP 500/4500) and ESP are accepted on the WAN interfaces only, and
-  only from `remote.address` when it is an IPv4 literal. A hostname peer
+- IKE (UDP 500/4500) and ESP are accepted on the WAN interfaces only (the
+  firewall's `wanInterfaces`, or router-optimizations interfaces with role
+  `wan`; evaluation fails if there are none), and only from
+  `remote.address` when it is an IPv4 literal. A hostname peer
   gets a warning, because the firewall can then not restrict the source.
 - Nothing is reachable *through* the tunnel by default. TCP 179 opens on the
   tunnel interface automatically when a `router-bgp` neighbor sits inside
@@ -71,7 +77,15 @@ services.router-bgp = {
 };
 ```
 
-Learned routes point at the XFRM interface, so they are encrypted.
+Learned routes point at the XFRM interface, so they are encrypted. List the
+far side's prefixes in `remotePrefixes` too: each gets a blackhole route
+with metric 4000, below BGP's routes, so if BGP withdraws a prefix the
+traffic is dropped rather than sent in the clear via the WAN default route.
+
+Never route the peer's public address into the tunnel; IKE would follow it
+and the tunnel could not come up. Evaluation rejects `routes` or
+`remotePrefixes` that cover a literal peer address; for BGP, filter the
+peer's address out of what you import.
 
 ## No cleartext fallback
 

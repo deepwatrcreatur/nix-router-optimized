@@ -34,6 +34,7 @@ let
           pskFile = "/run/agenix/ipsec-branch";
           zone = "vpn";
           routes = [ "10.20.0.0/16" ];
+          remotePrefixes = [ "10.30.0.0/16" ];
         };
       };
     } extra)
@@ -61,8 +62,14 @@ in
         message = "the tunnel needs an independent XFRM netdev with its if_id.";
       }
       {
-        assertion = net.address == [ "169.254.10.1/30" ] && map (r: r.Destination) net.routes == [ "10.20.0.0/16" ];
-        message = "the tunnel network must carry its address and static routes.";
+        assertion = net.address == [ "169.254.10.1/30" ]
+          && lib.elem { Destination = "10.20.0.0/16"; } net.routes
+          && lib.elem { Destination = "10.30.0.0/16"; Type = "blackhole"; Metric = 4000; } net.routes;
+        message = "the tunnel network must carry its address, static routes and remote-prefix blackholes.";
+      }
+      {
+        assertion = config.systemd.network.enable && child.dpd_action == "restart";
+        message = "router-ipsec must enable networkd for its XFRM units; initiators restart on DPD.";
       }
       {
         assertion = child.if_id_in == "10" && child.if_id_out == "10" && child.local_ts == [ "0.0.0.0/0" ] && child.start_action == "trap|start";
@@ -98,6 +105,54 @@ in
       message = "without a BGP neighbor in the tunnel no input port opens on it.";
     }
   ]);
+
+  router-ipsec-responder-eval = check "router-ipsec-responder" (base {
+    services.router-ipsec.tunnels.branch.initiate = false;
+  }) (config: [
+    {
+      assertion = config.services.strongswan-swanctl.swanctl.connections.branch.children.branch.dpd_action == "clear";
+      message = "a responder-only tunnel must not re-initiate on DPD.";
+    }
+  ]);
+
+  router-ipsec-default-bundle-eval = check "router-ipsec-default-bundle" [
+    self.nixosModules.default
+    {
+      services.router-firewall.wanInterfaces = [ "wan0" ];
+      services.router-ipsec = {
+        enable = true;
+        tunnels.branch = {
+          ifId = 10;
+          address = "169.254.10.1/30";
+          remote.address = "203.0.113.20";
+          pskFile = "/run/agenix/ipsec-branch";
+        };
+      };
+    }
+  ] (config: [
+    {
+      assertion = config.systemd.network.netdevs ? "40-xfrm-branch";
+      message = "router-ipsec must be usable from the default bundle.";
+    }
+  ]);
+
+  router-ipsec-duplicate-interface-fails-eval = eval.mkNixosEvalFailureCheck "router-ipsec-duplicate-interface" (base {
+    services.router-ipsec.tunnels.other = {
+      ifId = 11;
+      interface = "xfrm-branch";
+      address = "169.254.11.1/30";
+      remote.address = "203.0.113.30";
+      pskFile = "/run/agenix/ipsec-other";
+    };
+  });
+
+  router-ipsec-peer-in-routes-fails-eval = eval.mkNixosEvalFailureCheck "router-ipsec-peer-in-routes" (base {
+    services.router-ipsec.tunnels.branch.routes = [ "0.0.0.0/0" ];
+  });
+
+  router-ipsec-no-wan-fails-eval = eval.mkNixosEvalFailureCheck "router-ipsec-no-wan" (base {
+    services.router-firewall.wanInterfaces = lib.mkForce [ ];
+  });
 
   router-ipsec-unknown-zone-fails-eval = eval.mkNixosEvalFailureCheck "router-ipsec-unknown-zone" (base {
     services.router-ipsec.tunnels.branch.zone = "vnp";

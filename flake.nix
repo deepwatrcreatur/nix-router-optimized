@@ -79,6 +79,7 @@
             self.nixosModules.router-dhcp
             self.nixosModules.router-dhcp-relay
             self.nixosModules.router-multicast
+            self.nixosModules.router-ipsec
             self.nixosModules.router-ddns
             self.nixosModules.router-dns-service
             self.nixosModules.router-firewall
