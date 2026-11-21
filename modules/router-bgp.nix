@@ -101,6 +101,8 @@ let
 
   ipv6Networks = cfg.addressFamilies.ipv6Unicast.networks;
 
+  # GOTCHA: a route-map entry without a match clause matches every route, so
+  # the deny entry exists only when there is a deny list to match.
   mkPolicyBlocks =
     neighborIp: direction: afi: policy:
     let
@@ -124,8 +126,10 @@ let
     ''
       ${optionalString (policy.denyCidrs != [ ]) (mkPrefixLines denyListName "permit" policy.denyCidrs)}
       ${optionalString (policy.allowCidrs != [ ]) (mkPrefixLines allowListName "permit" policy.allowCidrs)}
-      route-map ${routeMapName} deny 10
-       ${optionalString (policy.denyCidrs != [ ]) "${matchKeyword} ${denyListName}"}
+      ${optionalString (policy.denyCidrs != [ ]) ''
+        route-map ${routeMapName} deny 10
+         ${matchKeyword} ${denyListName}
+      ''}
       ${optionalString (policy.allowCidrs != [ ]) ''
         route-map ${routeMapName} permit 20
          ${matchKeyword} ${allowListName}
@@ -156,16 +160,10 @@ let
       )
       (attrsToList cfg.neighbors);
 
-  staticConfig = ''
-    router bgp ${toString cfg.asn}
-      ${optionalString (cfg.routerId != null) "bgp router-id ${cfg.routerId}"}
-      ${concatStringsSep "\n" (mapAttrsToList (ip: neighbor: ''
-        neighbor ${ip} remote-as ${toString neighbor.remoteAs}
-        ${optionalString (neighbor.description != "") "neighbor ${ip} description ${neighbor.description}"}
-        ${optionalString (neighbor.passwordFile != null) "neighbor ${ip} password __ROUTER_BGP_SECRET_${sanitize ip}__"}
-        ${optionalString cfg.ha.singleActiveOwner "neighbor ${ip} shutdown"}
-      '') cfg.neighbors)}
-      ${concatStringsSep "\n" (
+  # GOTCHA: prefix-lists and route-maps are top-level FRR commands. Inside
+  # `router bgp` they end the router context, and every later line
+  # (address-family, network, neighbor route-map) fails to parse.
+  policyConfig = concatStringsSep "\n" (
         concatMap
           (
             entry:
@@ -196,7 +194,18 @@ let
               enabledAddressFamilies
           )
           (attrsToList cfg.neighbors)
-      )}
+      );
+
+  staticConfig = ''
+    ${policyConfig}
+    router bgp ${toString cfg.asn}
+      ${optionalString (cfg.routerId != null) "bgp router-id ${cfg.routerId}"}
+      ${concatStringsSep "\n" (mapAttrsToList (ip: neighbor: ''
+        neighbor ${ip} remote-as ${toString neighbor.remoteAs}
+        ${optionalString (neighbor.description != "") "neighbor ${ip} description ${neighbor.description}"}
+        ${optionalString (neighbor.passwordFile != null) "neighbor ${ip} password __ROUTER_BGP_SECRET_${sanitize ip}__"}
+        ${optionalString cfg.ha.singleActiveOwner "neighbor ${ip} shutdown"}
+      '') cfg.neighbors)}
       ${concatStringsSep "\n" (map (afi: ''
         address-family ${afiHeading afi}
           ${concatStringsSep "\n" (

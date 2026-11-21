@@ -77,6 +77,11 @@ from module names alone.
 - [`router-dhcp-relay.md`](./router-dhcp-relay.md) — relaying a segment to a
   central DHCP server, with option 82
 
+### VPN
+
+- [`router-ipsec.md`](./router-ipsec.md) — route-based IPsec with XFRM
+  interfaces, BGP over the tunnel, failover and flowtable notes
+
 ### Service/module selection
 
 - [`DHCP_SELECTION.md`](./DHCP_SELECTION.md) — DHCP backend choice guide

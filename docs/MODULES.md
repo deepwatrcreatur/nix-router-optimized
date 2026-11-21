@@ -27,6 +27,12 @@ DHCPv4 relay (RFC 1542) for routed segments via `systemd-networkd`'s relay mode:
 - Kea and `router-dhcp` skip relayed segments; firewall rules for clients and server replies.
 - See [router-dhcp-relay.md](./router-dhcp-relay.md).
 
+### `router-ipsec`
+Route-based site-to-site IPsec (strongSwan swanctl, IKEv2, PSK) with XFRM interfaces:
+- One XFRM interface per tunnel; routing (static or BGP via `router-bgp`) decides what is encrypted.
+- PSK read from a runtime file; IKE/ESP admitted only on the WAN from the peer; optional `router-zones` zone.
+- See [router-ipsec.md](./router-ipsec.md).
+
 ### `router-kea`
 ISC Kea DHCPv4 (and DHCPv6) server for advanced environments:
 - Declarative pool ranges, subnet definitions, and static reservations.
