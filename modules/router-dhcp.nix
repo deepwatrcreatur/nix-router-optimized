@@ -6,6 +6,9 @@ let
   cfg = config.services.router-dhcp;
   ipLib = import ./lib/ip.nix { inherit lib; };
   routedIfaces = config.services.router-networking.routedInterfaces or { };
+  # Segments relayed to another server (router-dhcp-relay) are not served here.
+  relayedInterfaces =
+    if config.services.router-dhcp-relay.enable or false then config.services.router-dhcp-relay.interfaces else { };
 
   leaseModule = types.submodule {
     options = {
@@ -155,7 +158,7 @@ let
         staticLeases = [ ];
         option108 = { };
         extraDhcpServerConfig = { };
-      }) (filterAttrs (_name: iface: elem iface.role cfg.matchRoles) routedIfaces);
+      }) (filterAttrs (name: iface: elem iface.role cfg.matchRoles && !(relayedInterfaces ? ${name})) routedIfaces);
 
   mkDhcpNetwork =
     name: ifaceCfg:

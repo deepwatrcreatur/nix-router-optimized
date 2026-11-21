@@ -72,6 +72,11 @@ from module names alone.
 - [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md) — evidence
   gate for any future Kea HA re-entry
 
+### DHCP
+
+- [`router-dhcp-relay.md`](./router-dhcp-relay.md) — relaying a segment to a
+  central DHCP server, with option 82
+
 ### Service/module selection
 
 - [`DHCP_SELECTION.md`](./DHCP_SELECTION.md) — DHCP backend choice guide

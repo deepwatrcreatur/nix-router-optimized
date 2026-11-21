@@ -20,6 +20,13 @@ Lightweight DHCP server layer powered directly by `systemd-networkd`:
 - Per-segment IP pool sizing and static lease mapping.
 - PXE/iPXE boot option advertisements (DHCP option 66/67) for netboot endpoints like iVentoy.
 
+### `router-dhcp-relay`
+DHCPv4 relay (RFC 1542) for routed segments via `systemd-networkd`'s relay mode:
+- Forwards a segment's requests to a central DHCP server; no extra daemon.
+- Option 82 Circuit ID (default: the device name) and Remote ID.
+- Kea and `router-dhcp` skip relayed segments; firewall rules for clients and server replies.
+- See [router-dhcp-relay.md](./router-dhcp-relay.md).
+
 ### `router-kea`
 ISC Kea DHCPv4 (and DHCPv6) server for advanced environments:
 - Declarative pool ranges, subnet definitions, and static reservations.

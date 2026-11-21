@@ -77,6 +77,7 @@
           imports = [
             self.nixosModules.router-networking
             self.nixosModules.router-dhcp
+            self.nixosModules.router-dhcp-relay
             self.nixosModules.router-ddns
             self.nixosModules.router-dns-service
             self.nixosModules.router-firewall
@@ -125,6 +126,7 @@
 
         router-networking = import ./modules/router-networking.nix;
         router-dhcp = import ./modules/router-dhcp.nix;
+        router-dhcp-relay = import ./modules/router-dhcp-relay.nix;
         router-ddns = import ./modules/router-ddns.nix;
         router-dns-service = import ./modules/router-dns-service.nix;
         router-firewall = import ./modules/router-firewall.nix;
