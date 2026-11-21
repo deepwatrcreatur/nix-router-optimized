@@ -63,7 +63,7 @@ covers it), **gap** (not available).
 | VRRP | Keepalived, sync groups, health tracking | Keepalived (`router-ha.nix`): WAN takeover with MAC clone, `preemptDelay`, GARP options, password file | Shipped, VM-tested (`vm-router-ha-wan-failover`, `vm-router-ha-pair`). WAN health tracking (`wan.healthCheck`, router-afb): shipped, VM-tested (`vm-router-ha-wan-health`); no sync group needed (one instance) |
 | Stateful failover | conntrack-sync (conntrackd) | None; deferred until VRRP is rehearsed on hardware (discussion 21) | Gap (deferred) |
 | DHCPv4 HA | Kea HA (1.5 line) | Kea HA (`router-kea.dhcp4.ha`), port scoped to the peer | Shipped, VM-tested (`vm-router-kea-ha`) |
-| DHCPv6 / PD serving | Kea DHCPv6 and PD (1.5 line) | No DHCPv6 server module | **Gap**: router-xm6 |
+| DHCPv6 / PD serving | Kea DHCPv6 and PD (1.5 line) | SLAAC from the ISP delegation per segment (`ipv6SubnetId`); no DHCPv6 server or downstream PD by decision | Decided, VM-tested (`vm-router-ipv6-downstream`; router-xm6, [router-ipv6-downstream.md](./router-ipv6-downstream.md)) |
 | Delegated prefix across failover | — | Shared DUID-LL and IAID from the cloned MAC (`router-ha.wan.sharedDhcpIdentity`) | Shipped, VM-tested (`vm-router-ha-wan-failover`; router-5sa) |
 | DHCP relay | `service dhcp-relay` | `router-dhcp-relay` (networkd `RelayTarget=`, option 82 Circuit/Remote ID) | Shipped, VM-tested (`vm-router-dhcp-relay`; router-yix) |
 | Authoritative DNS | Forwarding with authoritative domains | Technitium with TSIG zone replication following VRRP | Shipped, VM-tested (`vm-router-technitium-zone-ha`) |
@@ -134,9 +134,11 @@ routerctl routes   # kernel FIB plus FRR (vtysh JSON)
   `RelayTarget=`, `RelayAgentCircuitId=` and `RelayAgentRemoteId=`; no new
   daemon. *Tested:* `vm-router-dhcp-relay` (client, relay router also running
   Kea, and a central Kea server that leases only on matching option 82).
-- **router-xm6: DHCPv6 and PD serving.** First document what networkd
-  already provides (RA, DHCPv6 server, sub-delegation of the ISP prefix),
-  then decide whether a module is needed.
+- **router-xm6: DHCPv6 and PD serving.** *Decided:* SLAAC from the ISP
+  delegation via networkd RAs, with stable per-segment subnet IDs
+  (`ipv6SubnetId`); no DHCPv6 server or downstream PD until a revisit trigger
+  in [router-ipv6-downstream.md](./router-ipv6-downstream.md) applies.
+  *Tested:* `vm-router-ipv6-downstream`.
 
 ### 3.5 Routed multicast (router-n3i, P3, after HA)
 
