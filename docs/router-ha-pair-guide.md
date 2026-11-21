@@ -148,7 +148,9 @@ services.router-ha.wan.healthCheck = {
 ```
 
 While a node is master it probes the WAN every `interval` seconds (default
-1, with a `timeoutMs` of 800). After `failures` consecutive failures
+1, with a `timeoutMs` of 500; the probe must leave at least 300 ms of the
+interval for the check's own start-up, or keepalived skips overlapping
+runs). After `failures` consecutive failures
 (default 3), and only once `startupGraceSec` (default 30) has passed since
 promotion so DHCP can finish, it:
 

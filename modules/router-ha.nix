@@ -585,10 +585,13 @@ in
 
         timeoutMs = mkOption {
           type = types.ints.between 100 10000;
-          default = 800;
+          default = 500;
           description = ''
-            Milliseconds to wait for an ARP or ping reply. Must be shorter
-            than `interval`, or keepalived skips runs that overlap.
+            Milliseconds to wait for an ARP or ping reply. A healthy WAN
+            answers in milliseconds. The whole check (probe plus process
+            start-up) must fit in `interval`, so this must leave at least
+            300 ms of it free; otherwise keepalived skips overlapping runs
+            and detection takes twice as long.
           '';
         };
 
@@ -697,8 +700,11 @@ in
           message = "services.router-ha.wan.healthCheck needs priority below 255; keepalived does not lower address-owner priority, so the WAN pin could not hold.";
         }
         {
-          assertion = !wanHealthEnabled || hc.timeoutMs < hc.interval * 1000;
-          message = "services.router-ha.wan.healthCheck.timeoutMs must be shorter than interval.";
+          # WHY: with 800 ms of a 1 s interval the script's own start-up
+          # overran on a loaded host; keepalived then skipped every other
+          # run and a 3-failure yield took ~6 s instead of ~3 s.
+          assertion = !wanHealthEnabled || hc.timeoutMs + 300 <= hc.interval * 1000;
+          message = "services.router-ha.wan.healthCheck.timeoutMs must leave at least 300 ms of interval free (timeoutMs <= interval*1000 - 300).";
         }
         {
           # WHY: a backup advertising itself as default router black-holes

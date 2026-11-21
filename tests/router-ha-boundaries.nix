@@ -473,7 +473,7 @@ in
             message = "router_ha_wan_health must use weight 0 (FAULT) and router_ha_wan_pin weight -253 (priority 1).";
           }
           {
-            assertion = lib.strings.hasInfix "-W 0.800" (builtins.readFile ka.vrrpScripts.router_ha_wan_health.script);
+            assertion = lib.strings.hasInfix "-W 0.500" (builtins.readFile ka.vrrpScripts.router_ha_wan_health.script);
             message = "router_ha_wan_health must probe targets with the fractional timeoutMs.";
           }
         ];
@@ -525,6 +525,35 @@ in
             enable = true;
             interval = 1;
             timeoutMs = 1000;
+          };
+        };
+      };
+    }
+  ];
+
+  # The old 800 ms default left too little of a 1 s interval for the
+  # script's own start-up; keepalived skipped runs on loaded hosts.
+  router-ha-wan-health-no-headroom-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-wan-health-no-headroom" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan" = {
+        matchConfig.Name = "eth1";
+        networkConfig.DHCP = "yes";
+      };
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          healthCheck = {
+            enable = true;
+            interval = 1;
+            timeoutMs = 800;
           };
         };
       };
