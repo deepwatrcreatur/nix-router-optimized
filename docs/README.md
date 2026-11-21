@@ -45,6 +45,8 @@ from module names alone.
 
 ### IPv6 and translation
 
+- [`router-ipv6-downstream.md`](./router-ipv6-downstream.md) — how segments get
+  IPv6 (SLAAC from the ISP delegation) and why there is no DHCPv6 server
 - [`router-ipv6-approach-guide.md`](./router-ipv6-approach-guide.md) — first stop
   for choosing among native IPv6, multi-prefix/PvD, NPTv6, NAT64/DNS64, CLAT,
   and NDP proxy approaches
