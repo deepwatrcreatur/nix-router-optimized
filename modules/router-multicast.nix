@@ -14,6 +14,7 @@ let
   cfg = config.services.router-multicast;
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   firewallEnabled = hasRouterFirewall && (config.services.router-firewall.enable or false);
+  nativeFirewall = !firewallEnabled && config.networking.firewall.enable;
   quote = d: ''"${d}"'';
   nftSet = ds: "{ ${concatMapStringsSep ", " quote ds} }";
 
@@ -40,6 +41,32 @@ let
     # unlisted interfaces disabled unless `defaultdown` is set, which this
     # module never writes (vm-router-multicast checks a second VLAN).
   );
+
+  # SECURITY: downstreams send reports and leaves; the upstream only needs
+  # membership queries (so the kernel keeps answering for joined groups).
+  # Reports arriving upstream could impersonate a receiver.
+  igmpInputRules = ''
+    iifname ${nftSet cfg.downstreams} ip protocol igmp accept comment "IGMP proxy receivers"
+    iifname ${quote cfg.upstream.interface} igmp type membership-query accept comment "IGMP proxy upstream queries"
+  '';
+
+  allInterfaces = [ cfg.upstream.interface ] ++ cfg.downstreams;
+
+  # WHY: igmpproxy reads interface addresses once at start and ignores an
+  # interface without IPv4, so wait for all of them; on timeout the unit
+  # fails and systemd retries.
+  waitForAddresses = pkgs.writeShellScript "router-multicast-wait-addresses" ''
+    for _ in $(${pkgs.coreutils}/bin/seq 60); do
+      missing=0
+      for i in ${escapeShellArgs allInterfaces}; do
+        ${pkgs.iproute2}/bin/ip -4 -o addr show dev "$i" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q inet || missing=1
+      done
+      [ "$missing" = 0 ] && exit 0
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+    echo "router-multicast: waiting for IPv4 on ${concatStringsSep " " allInterfaces}" >&2
+    exit 1
+  '';
 
   groupList =
     description:
@@ -139,8 +166,10 @@ in
         after = [ "network-online.target" ];
         wants = [ "network-online.target" ];
         wantedBy = [ "multi-user.target" ];
+        # Keep retrying until the interfaces have addresses.
+        startLimitIntervalSec = 0;
         serviceConfig = {
-          ExecStartPre = optional cfg.looseReversePathFilter "+${pkgs.writeShellScript "router-multicast-rp-filter" ''
+          ExecStartPre = [ "${waitForAddresses}" ] ++ optional cfg.looseReversePathFilter "+${pkgs.writeShellScript "router-multicast-rp-filter" ''
             ${pkgs.coreutils}/bin/echo 2 > ${escapeShellArg "/proc/sys/net/ipv4/conf/${cfg.upstream.interface}/rp_filter"}
           ''}";
           ExecStart = "${pkgs.igmpproxy}/bin/igmpproxy -n ${configFile}";
@@ -161,14 +190,26 @@ in
     (optionalAttrs hasRouterFirewall {
       # WHY: early hooks run before the per-zone jumps; WAN_LOCAL and WAN_IN
       # end in drop, and the upstream is often a WAN-zone VLAN.
-      services.router-firewall.extraInputEarlyRules = mkIf firewallEnabled ''
-        iifname ${nftSet ([ cfg.upstream.interface ] ++ cfg.downstreams)} ip protocol igmp accept comment "IGMP proxy"
-      '';
-      # GOTCHA: only the listed downstreams get group traffic; other
-      # segments fall through to the forward chain's drop policy.
-      services.router-firewall.extraForwardEarlyRules = mkIf firewallEnabled ''
+      services.router-firewall.extraInputEarlyRules = mkIf firewallEnabled igmpInputRules;
+      # GOTCHA: ordered ahead of router-zones' jump (mkBefore), whose zone
+      # chains can end in drop. Only the listed downstreams get streams;
+      # other segments fall through to the forward chain's drop policy.
+      services.router-firewall.extraForwardEarlyRules = mkIf firewallEnabled (mkOrder 400 ''
         iifname ${quote cfg.upstream.interface} oifname ${nftSet cfg.downstreams} ip daddr 224.0.0.0/4 accept comment "IGMP proxy streams"
-      '';
+      '');
     })
+
+    # The stock NixOS firewall filters input only; forwarding is not filtered.
+    # INVARIANT: fixed attribute names with conditional values; choosing the
+    # names from networking.firewall config would recurse.
+    {
+      networking.firewall.extraInputRules = mkIf (nativeFirewall && config.networking.nftables.enable) igmpInputRules;
+      networking.firewall.extraCommands = mkIf (nativeFirewall && !config.networking.nftables.enable) ''
+        ${concatMapStrings (d: "iptables -A nixos-fw -i ${d} -p igmp -j nixos-fw-accept\n") cfg.downstreams}
+        # Membership queries only: first IGMP byte 0x11 (iptables has no IGMP
+        # type match).
+        iptables -A nixos-fw -i ${cfg.upstream.interface} -p igmp -m u32 --u32 "0>>22&0x3C@0>>24=0x11" -j nixos-fw-accept
+      '';
+    }
   ]);
 }

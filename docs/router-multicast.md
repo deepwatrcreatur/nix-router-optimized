@@ -22,10 +22,19 @@ and forwards only the groups someone downstream is watching.
   `upstream.denyGroups`, `allowGroups`, `denyGroups`).
 - Every other interface stays disabled for multicast routing. igmpproxy 0.4
   leaves unlisted interfaces disabled; the module never sets `defaultdown`.
-- With `router-firewall`: IGMP is accepted on the upstream and downstreams,
-  and `224.0.0.0/4` from the upstream is forwarded to the listed
-  downstreams only. Both rules sit in the early hooks, ahead of the WAN
-  chains, so they work when the upstream is a WAN-zone VLAN.
+- With `router-firewall`: IGMP is accepted from the downstreams, and only
+  membership queries from the upstream (the kernel must keep answering them
+  or the ISP prunes the stream; reports arriving upstream could impersonate
+  a receiver). `224.0.0.0/4` from the upstream is forwarded to the listed
+  downstreams only. The rules sit in the early hooks, ahead of the WAN
+  chains and of `router-zones`, so a WAN-zone upstream VLAN or a zone that
+  ends in drop does not block them.
+- Without `router-firewall`, the same IGMP rules go into the stock NixOS
+  firewall (nftables or iptables). It does not filter forwarding.
+- The service waits until the upstream and every downstream have an IPv4
+  address, because igmpproxy reads interfaces once at start and ignores one
+  without an address. If they are not ready within a minute the start fails
+  and systemd retries.
 - `upstream.sources` (default `0.0.0.0/0`) are the networks multicast may
   come from. igmpproxy otherwise only accepts sources on the upstream's own
   subnet, and IPTV sources are usually remote.
@@ -45,8 +54,10 @@ source, normally the default route.
 - **Upstream is not assumed to be the WAN.** Many ISPs carry IPTV on its own
   VLAN; set that interface.
 - **quickleave** (default on): the router leaves a group upstream as soon as
-  the last receiver leaves, so channel changes are fast and unwatched
-  channels stop using upstream bandwidth. With several receivers of the
+  the last receiver leaves, so unwatched channels stop using upstream
+  bandwidth. igmpproxy checks on its own timer, so the stream to a segment
+  stops 10 to 30 seconds after its last receiver leaves (measured in the VM
+  test). With several receivers of the
   same group on one segment, the others can see a short gap while igmpproxy
   re-queries. Turn it off if that matters more than upstream bandwidth.
 - **IGMPv3 / SSM:** igmpproxy handles IGMPv3 reports as any-source joins.

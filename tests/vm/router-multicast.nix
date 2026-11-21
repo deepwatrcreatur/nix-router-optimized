@@ -33,7 +33,9 @@ let
             n += 1
         except socket.timeout:
             pass
-    s.close()  # sends the IGMP leave
+    # Explicit leave (the kernel sends the IGMP leave report now).
+    s.setsockopt(socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, struct.pack("4s4s", socket.inet_aton(group), socket.inet_aton(local)))
+    s.close()
     print(n)
   '';
 
@@ -152,6 +154,7 @@ mkRouterTest {
 
   testScript = ''
     import threading
+    import time
 
     start_all()
     router.wait_for_unit("router-multicast.service")
@@ -180,8 +183,11 @@ mkRouterTest {
         assert results["iot"] == 0, f"iot received {results['iot']} packets"
 
     with subtest("the stream stops on the lan after the leave"):
-        # quickleave: igmpproxy queries once more, then drops the route.
-        router.wait_until_succeeds("! ip mroute show | grep '(192.0.2.10,${group})' | grep -q eth2", timeout=20)
+        # quickleave: igmpproxy queries once more and drops the route on its
+        # own timer, which takes a variable 10-30 s.
+        t_leave = time.monotonic()
+        router.wait_until_succeeds("! ip mroute show | grep '(192.0.2.10,${group})' | grep -q eth2", timeout=60)
+        print(f"route withdrawn {time.monotonic() - t_leave:.1f} s after the leave")
         print(router.succeed("ip mroute show"))
         # Let packets already queued drain, then the link must stay silent.
         lan.sleep(2)
