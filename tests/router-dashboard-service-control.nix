@@ -109,4 +109,15 @@ in
     python3 test_service_control.py -v
     touch $out
   '';
+
+  # A burst of connections must fit the listen backlog (TcpExtListenOverflows
+  # on :8888 with socketserver's default request_queue_size of 5).
+  router-dashboard-listen-backlog = pkgs.runCommand "router-dashboard-listen-backlog" {
+    nativeBuildInputs = [ pkgs.python3 ];
+  } ''
+    cp ${self}/modules/router-dashboard/api/server.py server.py
+    cp ${self}/modules/router-dashboard/api/test_server_backlog.py test_server_backlog.py
+    python3 test_server_backlog.py -v
+    touch $out
+  '';
 }

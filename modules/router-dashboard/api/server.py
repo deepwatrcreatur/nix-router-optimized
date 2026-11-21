@@ -3670,15 +3670,23 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
         return int(rx_rate), int(tx_rate)
 
 
+class DashboardHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    """Threaded HTTP server for the dashboard API."""
+
+    allow_reuse_address = True
+    daemon_threads = True
+    # WHY: TCPServer passes request_queue_size to listen(); the default is 5.
+    # Threads only help after accept(), so a burst of widget polls filled the
+    # accept queue and the kernel dropped SYNs (TcpExtListenOverflows, ~7/min
+    # on a production router). The kernel caps this at net.core.somaxconn.
+    request_queue_size = 128
+
+
 def run_server():
     """Start the HTTP server"""
     handler = RouterAPIHandler
 
-    class ThreadingHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-        allow_reuse_address = True
-        daemon_threads = True
-
-    with ThreadingHTTPServer((BIND, PORT), handler) as httpd:
+    with DashboardHTTPServer((BIND, PORT), handler) as httpd:
         print(f"Router Dashboard serving on http://{BIND}:{PORT}")
         print(f"Static files from: {STATIC_DIR}")
         try:
