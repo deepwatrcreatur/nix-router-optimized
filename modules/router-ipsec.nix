@@ -31,6 +31,16 @@ let
     in
     if firewallEnabled then (if fw.wanInterfaces != [ ] then fw.wanInterfaces else byRole) else [ ];
 
+  remoteId = t: if t.remote.id != null then t.remote.id else t.remote.address;
+  # swanctl.conf has no escape syntax inside quoted values.
+  safeId = v: v == null || builtins.match "[^\"\\\n{}]+" v != null;
+  isIpv4Cidr =
+    s:
+    let
+      m = builtins.match "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})/([0-9]{1,2})" s;
+    in
+    m != null && all (o: toInt o <= 255) (take 4 m) && toInt (elemAt m 4) <= 32;
+
   isIpv4Literal = s: builtins.match "([0-9]{1,3}\\.){3}[0-9]{1,3}" s != null;
   secretsFile = "/run/router-ipsec/secrets.conf";
   # Above any routing daemon's metric (FRR installs BGP routes with 20).
@@ -183,10 +193,12 @@ let
           psk=$(${pkgs.xxd}/bin/xxd -p < ${escapeShellArg t.pskFile} | ${pkgs.coreutils}/bin/tr -d '\n')
           psk=''${psk%0a}
           test -n "$psk"
-          echo "  ike-${name} {"
-          ${optionalString (t.local.id != null) "echo '    id-local = ${t.local.id}'"}
-          echo '    id-remote = ${if t.remote.id != null then t.remote.id else t.remote.address}'
-          echo "    secret = 0x$psk"
+          # SECURITY: names and IDs reach a root shell; pass them as escaped
+          # printf arguments (and they are validated: no quotes or newlines).
+          printf '  ike-%s {\n' ${escapeShellArg name}
+          ${optionalString (t.local.id != null) "printf '    id-local = \"%s\"\\n' ${escapeShellArg t.local.id}"}
+          printf '    id-remote = "%s"\n' ${escapeShellArg (remoteId t)}
+          printf '    secret = 0x%s\n' "$psk"
           echo "  }"
         '') tunnels
       )}
@@ -247,7 +259,7 @@ in
               message = "services.router-ipsec.tunnels.${name}.interface \"${t.interface}\" is longer than 15 characters.";
             }
             {
-              assertion = builtins.match "([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}" t.address != null;
+              assertion = isIpv4Cidr t.address;
               message = "services.router-ipsec.tunnels.${name}.address must be an IPv4 CIDR such as 169.254.10.1/30.";
             }
             {
@@ -267,8 +279,12 @@ in
               message = "services.router-ipsec.tunnels.${name}: a peer at %any cannot be initiated to; set initiate = false.";
             }
             {
-              assertion = t.zone == null || elem t.zone definedZones;
-              message = "services.router-ipsec.tunnels.${name}.zone \"${toString t.zone}\" is not a services.router-zones zone.";
+              assertion = t.zone == null || ((config.services.router-zones.enable or false) && elem t.zone definedZones);
+              message = "services.router-ipsec.tunnels.${name}.zone \"${toString t.zone}\" is not a zone of an enabled services.router-zones.";
+            }
+            {
+              assertion = builtins.match "[A-Za-z0-9_-]+" name != null && safeId t.local.id && safeId (remoteId t);
+              message = "services.router-ipsec.tunnels.${name}: the tunnel name may use letters, digits, - and _, and IKE identities may not contain quotes, backslashes, braces or newlines.";
             }
           ]) tunnels
         );

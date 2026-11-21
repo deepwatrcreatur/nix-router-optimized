@@ -154,6 +154,18 @@ in
     services.router-firewall.wanInterfaces = lib.mkForce [ ];
   });
 
+  router-ipsec-bad-cidr-fails-eval = eval.mkNixosEvalFailureCheck "router-ipsec-bad-cidr" (base {
+    services.router-ipsec.tunnels.branch.address = "169.254.300.1/30";
+  });
+
+  router-ipsec-unsafe-id-fails-eval = eval.mkNixosEvalFailureCheck "router-ipsec-unsafe-id" (base {
+    services.router-ipsec.tunnels.branch.remote.id = "peer\"; touch /tmp/x; \"";
+  });
+
+  router-ipsec-zones-disabled-fails-eval = eval.mkNixosEvalFailureCheck "router-ipsec-zones-disabled" (base {
+    services.router-zones.enable = lib.mkForce false;
+  });
+
   router-ipsec-unknown-zone-fails-eval = eval.mkNixosEvalFailureCheck "router-ipsec-unknown-zone" (base {
     services.router-ipsec.tunnels.branch.zone = "vnp";
   });
