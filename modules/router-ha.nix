@@ -275,6 +275,76 @@ let
 
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
   virtualIpIsIpv6 = hasInfix ":" virtualIpAddress;
+
+  # INVARIANT: mirrors router-networking's "20-router-<name>" naming.
+  autoVrrpNetwork =
+    if hasRouterNetworking && config.services.router-networking.enable then
+      let
+        matching = filterAttrs (_: iface: iface.device == cfg.vrrpInterface) config.services.router-networking.routedInterfaces;
+      in
+      if matching != { } then "20-router-${head (attrNames matching)}" else null
+    else
+      null;
+  vrrpNet = if cfg.vrrpNetwork == null then { } else config.systemd.network.networks.${cfg.vrrpNetwork} or { };
+
+  ra = cfg.routerAdvertisements;
+  raOwner = ra.mode == "vrrp-owner";
+  raOwnerUnit = "router-ha-ra-owner.service";
+  # INVARIANT: mirrors router-networking's "20-router-<name>" naming.
+  autoRaNetworks =
+    if hasRouterNetworking && config.services.router-networking.enable then
+      mapAttrsToList (name: _: "20-router-${name}") (
+        filterAttrs (_: iface: iface.ipv6SendRA) config.services.router-networking.routedInterfaces
+      )
+    else
+      [ ];
+  isTrue = v: v == true || elem v [ "yes" "true" "on" "1" ];
+  raSendsRa = n: isTrue (config.systemd.network.networks.${n}.networkConfig.IPv6SendRA or false);
+  raSenders = filter (n: !(raOwner && elem n ra.networks)) (
+    attrNames (filterAttrs (n: _: raSendsRa n) config.systemd.network.networks)
+  );
+  unknownRaNetworks = filter (
+    n: (config.systemd.network.networks.${n}.matchConfig or { }) == { }
+  ) ra.networks;
+  silentRaNetworks = filter (n: !raSendsRa n) ra.networks;
+  # The MASTER's router lifetime: router-networking's routerLifetimeSec, else
+  # empty, which resets networkd to its default (1800 s).
+  masterRouterLifetime =
+    n:
+    let
+      routed = config.services.router-networking.routedInterfaces or { };
+      name = removePrefix "20-router-" n;
+      lifetime = if hasPrefix "20-router-" n && routed ? ${name} then routed.${name}.routerLifetimeSec else null;
+      lifetime' = ra.masterRouterLifetimeSec.${n} or lifetime;
+    in
+    if lifetime' == null then "" else toString lifetime';
+  # WHY: the static config advertises router lifetime 0 ("not a default
+  # router"); only the MASTER's runtime drop-in restores the real lifetime.
+  # A node whose LAN link died could not send its final RA, so its BACKUP
+  # adverts clear stale client routes once the link returns. `networkctl
+  # reload` reconfigures only the matching links, and networkd advertises at
+  # once when RA restarts (sd-radv), so clients switch within seconds.
+  raOwnerScript =
+    enable:
+    pkgs.writeShellScript "router-ha-ra-${if enable then "start" else "stop"}" ''
+      # Stop is best effort: demotion must finish even if networkd is gone.
+      set -u${optionalString enable "e"}
+      ${concatMapStringsSep "\n" (
+        n:
+        let
+          dir = "/run/systemd/network/${n}.network.d";
+          file = "${dir}/90-router-ha-ra.conf";
+        in
+        if enable then
+          ''
+            ${pkgs.coreutils}/bin/install -d -m 0755 ${escapeShellArg dir}
+            ${pkgs.coreutils}/bin/printf '[IPv6SendRA]\nRouterLifetimeSec=%s\n' ${escapeShellArg (masterRouterLifetime n)} > ${escapeShellArg file}
+          ''
+        else
+          "${pkgs.coreutils}/bin/rm -f ${escapeShellArg file}"
+      ) ra.networks}
+      ${pkgs.systemd}/bin/networkctl reload ${optionalString (!enable) "|| true"}
+    '';
 in
 {
   options.services.router-ha = {
@@ -380,6 +450,67 @@ in
         fault transitions. This is intentionally generic and does not claim a
         typed ownership model for every LAN-facing service.
       '';
+    };
+
+    vrrpNetwork = mkOption {
+      type = types.nullOr types.str;
+      default = autoVrrpNetwork;
+      defaultText = literalExpression ''"20-router-<name>" of the router-networking routed interface whose device is vrrpInterface, else null'';
+      example = "20-lan";
+      description = ''
+        Attribute name under `systemd.network.networks` of the VRRP
+        interface's `.network`. router-ha sets `KeepConfiguration=static` on
+        it: otherwise systemd-networkd removes the VIP (an address it did not
+        configure) whenever it reconfigures the link or restarts, and
+        keepalived drops to BACKUP. Detected automatically for
+        `router-networking` routed interfaces.
+      '';
+    };
+
+    routerAdvertisements = {
+      mode = mkOption {
+        type = types.nullOr (types.enum [ "vrrp-owner" "both-nodes" ]);
+        default = null;
+        description = ''
+          Who sends IPv6 Router Advertisements on the shared LANs. Required
+          when any systemd-networkd network has `IPv6SendRA` enabled.
+
+          - `"vrrp-owner"`: only the VRRP MASTER advertises itself as a
+            default router. `networks` advertise router lifetime 0 in their
+            static config ("not a default router"); router-ha adds a runtime
+            drop-in with the real lifetime on promotion and removes it on
+            demotion, so clients switch routers within seconds.
+          - `"both-nodes"`: both nodes advertise, as before. Clients then use
+            either node as their IPv6 default router, including a backup
+            whose WAN is down; only choose this if each node has its own
+            working IPv6 uplink.
+        '';
+      };
+
+      networks = mkOption {
+        type = types.listOf types.str;
+        default = autoRaNetworks;
+        defaultText = literalExpression ''
+          [ "20-router-<name>" for each services.router-networking.routedInterfaces.<name> with ipv6SendRA ]
+        '';
+        example = [ "20-router-lan" ];
+        description = "systemd-networkd network names whose RAs follow the VRRP MASTER in `\"vrrp-owner\"` mode.";
+      };
+
+      masterRouterLifetimeSec = mkOption {
+        type = types.attrsOf (types.ints.between 0 9000);
+        default = { };
+        example = {
+          "20-lan" = 600;
+        };
+        description = ''
+          Router lifetime the MASTER advertises, per network in `networks`.
+          `"vrrp-owner"` forces the static `RouterLifetimeSec` to 0, so a value
+          set on the network itself is not seen. Unset networks use
+          router-networking's `routerLifetimeSec`, else networkd's default
+          (1800 s).
+        '';
+      };
     };
 
     wan = {
@@ -570,6 +701,49 @@ in
           message = "services.router-ha.wan.healthCheck.timeoutMs must be shorter than interval.";
         }
         {
+          # WHY: a backup advertising itself as default router black-holes
+          # IPv6 for the clients that pick it, since its WAN is down.
+          assertion = raSenders == [ ] || ra.mode == "both-nodes";
+          message =
+            if ra.mode == "vrrp-owner" then
+              "services.router-ha.routerAdvertisements: networks ${concatStringsSep ", " raSenders} send RAs but are not in routerAdvertisements.networks."
+            else
+              ''
+                services.router-ha: networks ${concatStringsSep ", " raSenders} send IPv6 Router
+                Advertisements on both nodes. Set services.router-ha.routerAdvertisements.mode
+                to "vrrp-owner" (only the MASTER advertises) or "both-nodes".
+              '';
+        }
+        {
+          # WHY: anything else lets networkd delete the VIP on reconfigure.
+          assertion = cfg.vrrpNetwork == null || elem (vrrpNet.networkConfig.KeepConfiguration or "static") [ "static" "yes" true ];
+          message = "services.router-ha: ${toString cfg.vrrpNetwork} sets KeepConfiguration=${toString (vrrpNet.networkConfig.KeepConfiguration or "")}; the VRRP network needs \"static\" or \"yes\" so networkd keeps the VIP.";
+        }
+        {
+          assertion = !raOwner || all (n: elem n ra.networks) (attrNames ra.masterRouterLifetimeSec);
+          message = "services.router-ha.routerAdvertisements.masterRouterLifetimeSec names networks that are not in routerAdvertisements.networks.";
+        }
+        {
+          assertion = cfg.vrrpNetwork == null || (vrrpNet.matchConfig.Name or null) == cfg.vrrpInterface;
+          message = "services.router-ha.vrrpNetwork \"${toString cfg.vrrpNetwork}\" must name the systemd.network.networks attribute whose matchConfig.Name is ${cfg.vrrpInterface}.";
+        }
+        {
+          # WHY: the RA drop-in reconfigures links; without KeepConfiguration
+          # the MASTER would delete its own VIP and flap.
+          assertion = !raOwner || cfg.vrrpNetwork != null;
+          message = "services.router-ha.routerAdvertisements.mode = \"vrrp-owner\" needs services.router-ha.vrrpNetwork (none detected for ${cfg.vrrpInterface}).";
+        }
+        {
+          assertion = !raOwner || (ra.networks != [ ] && unknownRaNetworks == [ ] && silentRaNetworks == [ ]);
+          message =
+            if ra.networks == [ ] then
+              "services.router-ha.routerAdvertisements.mode = \"vrrp-owner\" needs at least one network in routerAdvertisements.networks."
+            else if unknownRaNetworks != [ ] then
+              "services.router-ha.routerAdvertisements.networks names unknown systemd-networkd networks: ${concatStringsSep ", " unknownRaNetworks}."
+            else
+              "services.router-ha.routerAdvertisements.networks ${concatStringsSep ", " silentRaNetworks} do not send RAs (IPv6SendRA); remove them from the list.";
+        }
+        {
           # WHY: Kea HA needs both servers running; stopping the backup's Kea
           # on every VRRP transition would force partner-down on the master.
           assertion = keaHaEnabled -> !(elem "kea-dhcp4-server.service" cfg.singleActiveUnits || elem "kea-dhcp4-server" cfg.singleActiveUnits);
@@ -680,6 +854,32 @@ in
         "+${keepalivedStopScript}"
       ];
     }
+
+    (mkIf (cfg.vrrpNetwork != null) {
+      # WHY: keeps keepalived's VIP (a permanent foreign address) across
+      # networkd reconfigures and restarts; see the vrrpNetwork option.
+      systemd.network.networks.${cfg.vrrpNetwork}.networkConfig.KeepConfiguration = mkDefault "static";
+    })
+
+    (mkIf raOwner {
+      systemd.network.networks = genAttrs ra.networks (_: {
+        ipv6SendRAConfig.RouterLifetimeSec = mkForce 0;
+      });
+
+      services.router-ha.singleActiveUnits = [ raOwnerUnit ];
+
+      # Started by router-ha on MASTER, stopped on BACKUP/FAULT.
+      systemd.services.router-ha-ra-owner = {
+        description = "IPv6 Router Advertisements for the VRRP MASTER";
+        after = [ "systemd-networkd.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = raOwnerScript true;
+          ExecStop = raOwnerScript false;
+        };
+      };
+    })
 
     (mkIf usePasswordFile {
       # SECURITY: the upstream module envsubsts secretFile into

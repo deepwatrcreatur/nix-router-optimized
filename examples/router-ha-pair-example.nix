@@ -18,8 +18,11 @@ let
         # manages the WAN.
         network = "10-wan";
       };
+      # Your own units without a typed owner option. Services from this
+      # flake declare ownership themselves, e.g.
+      # services.router-ddns.ha.singleActiveOwner = true.
       singleActiveUnits = [
-        "inadyn.service"
+        "site-vpn.service"
       ];
     };
 

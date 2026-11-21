@@ -240,7 +240,10 @@ master is idle.
 |---|---|---|
 | `services.router-ha.wan` | promotion-aware | the active router should own WAN activity |
 | LAN VIP | promotion-aware | clients need one stable gateway IP |
-| DDNS updater | promotion-aware | public identity should follow the active node |
+| DDNS updater | `router-ddns.ha.singleActiveOwner` | public identity should follow the active node |
+| UPnP / NAT-PMP | `router-upnp.ha.singleActiveOwner` | mappings belong to the node holding the WAN |
+| IPv6 RAs on the LAN | `router-ha.routerAdvertisements.mode = "vrrp-owner"` | clients must not route IPv6 to a backup |
+| Kea D2 | `router-kea.ddns.ha.mode` | updates must reach the zone primary |
 | Chrony / `router-ntp` | shared on both nodes | standby time sync is operationally useful |
 | Suricata / observability | often shared | passive visibility can stay useful on standby |
 | DHCP / other LAN services | only promote after explicit testing | these are the easiest place to break clients |
@@ -257,9 +260,15 @@ At minimum, replace these values from the example:
   decrypts the shared VRRP password to (see below)
 - `10.10.10.0/24` with your real LAN subnet
 
-If you use `router-ddns`, keep `inadyn.service` in `singleActiveUnits`. Add the
-matching timer unit only if your evaluated system actually exposes it under that
-name.
+router-ha sets `KeepConfiguration=static` on the VRRP interface's
+`.network` (`vrrpNetwork`, detected for router-networking). Without it a
+networkd restart, for example during a deploy that changes network config,
+deletes the VIP and the MASTER briefly fails over. If your LAN `.network` is
+not managed by router-networking, set `vrrpNetwork` to its attribute name.
+
+Evaluation fails until each of these services has an owner. See
+[`router-ha-ownership.md`](./router-ha-ownership.md) for what each option does.
+`singleActiveUnits` remains for your own units without a typed option.
 
 ## VRRP Authentication
 

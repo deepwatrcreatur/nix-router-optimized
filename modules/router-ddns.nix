@@ -1,5 +1,6 @@
 {
   config,
+  options,
   lib,
   pkgs,
   ...
@@ -9,6 +10,17 @@ with lib;
 
 let
   cfg = config.services.router-ddns;
+  hasRouterHa = options ? services.router-ha.singleActiveUnits;
+  routerHaEnabled = hasRouterHa && (config.services.router-ha.enable or false);
+  haUnits = [
+    "router-ddns-ha-owner.service"
+    "inadyn.timer"
+    "inadyn.service"
+  ];
+  # Units the consumer listed by hand; the old documented pattern. systemctl
+  # treats a bare name as ".service".
+  listed = u: hasRouterHa && (elem u config.services.router-ha.singleActiveUnits || elem (removeSuffix ".service" u) config.services.router-ha.singleActiveUnits);
+  manualHaUnits = listed "inadyn.service" && listed "inadyn.timer";
   runtimeDir = "/run/router-ddns";
   cloudflareIncludeFile = "${runtimeDir}/cloudflare.conf";
   cloudflareZoneName = if cfg.cloudflare.zoneName == null then "" else cfg.cloudflare.zoneName;
@@ -111,10 +123,35 @@ in
         description = "Whether Cloudflare should proxy the managed DNS records.";
       };
     };
+
+    ha.singleActiveOwner = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Run DDNS updates only on the VRRP MASTER. inadyn and its timer are not
+        started at boot; `services.router-ha` starts both on promotion and
+        stops both on backup or fault. Requires `services.router-ha.enable`.
+      '';
+    };
   };
 
-  config = mkIf cfg.enable {
+  config = mkIf cfg.enable (mkMerge [
+  {
     assertions = [
+      {
+        # WHY: the backup would publish the address it sees through the
+        # master, and its timer keeps firing; ownership must be explicit.
+        assertion = !routerHaEnabled || cfg.ha.singleActiveOwner || manualHaUnits;
+        message = ''
+          services.router-ddns with services.router-ha needs explicit ownership. Set
+            services.router-ddns.ha.singleActiveOwner = true;
+          so inadyn and inadyn.timer run only on the VRRP MASTER.
+        '';
+      }
+      {
+        assertion = cfg.ha.singleActiveOwner -> routerHaEnabled;
+        message = "services.router-ddns.ha.singleActiveOwner requires services.router-ha.enable = true.";
+      }
       {
         assertion = cfg.cloudflare.zoneName != null;
         message = "services.router-ddns.cloudflare.zoneName must be set.";
@@ -150,5 +187,41 @@ in
       RuntimeDirectory = "router-ddns";
       RuntimeDirectoryMode = "0750";
     };
-  };
+
+    warnings = optional (routerHaEnabled && !cfg.ha.singleActiveOwner && manualHaUnits) ''
+      services.router-ddns: inadyn units are listed in services.router-ha.singleActiveUnits
+      by hand. Set services.router-ddns.ha.singleActiveOwner = true instead; it also
+      keeps them from starting at boot on the backup.
+    '';
+  }
+
+  (mkIf cfg.ha.singleActiveOwner {
+    # INVARIANT: only router-ha notify_master starts these.
+    systemd.services.inadyn = {
+      wantedBy = mkForce [ ];
+      after = [ "router-ddns-ha-owner.service" ];
+    };
+    systemd.timers.inadyn.wantedBy = mkForce [ ];
+
+    # WHY: inadyn skips the update when its per-node cache matches the WAN
+    # address, so a node returning as MASTER would leave the peer's address
+    # published. Promotion clears the cache first, forcing one update.
+    systemd.services.router-ddns-ha-owner = {
+      description = "Force a DDNS update after VRRP promotion";
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = pkgs.writeShellScript "router-ddns-clear-cache" ''
+          if [ -d /var/cache/inadyn ]; then
+            ${pkgs.findutils}/bin/find /var/cache/inadyn -mindepth 1 -delete
+          fi
+        '';
+      };
+    };
+  })
+
+  (optionalAttrs hasRouterHa {
+    services.router-ha.singleActiveUnits = mkIf cfg.ha.singleActiveOwner haUnits;
+  })
+  ]);
 }

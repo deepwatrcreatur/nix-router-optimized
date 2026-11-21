@@ -111,6 +111,7 @@ Declarative Technitium DNS ad-blocking and threat intelligence:
 Thin Dynamic DNS updater using `inadyn`:
 - Native Cloudflare API token support loaded from runtime files.
 - Automatically updates apex (`@`) and subdomains (`homelab`, `vpn`, etc.) on WAN address changes.
+- On a `router-ha` pair, `ha.singleActiveOwner` runs updates on the VRRP MASTER only.
 
 ### `caddy-reverse-proxy`
 Declarative reverse proxy with automated Let's Encrypt / ACME TLS certificates:
