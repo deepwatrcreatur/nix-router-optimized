@@ -37,13 +37,17 @@ let
     builtins.readFile ./router-kea/router-kea-exporter.py
   );
 
+  # Segments relayed to another server (router-dhcp-relay) are not served here.
+  relayedInterfaces =
+    if config.services.router-dhcp-relay.enable or false then config.services.router-dhcp-relay.interfaces else { };
+
   # Auto-derive LAN interfaces from router-networking when none are specified.
   effectiveInterfaces =
     if cfg.dhcp4.interfaces != [ ] then
       cfg.dhcp4.interfaces
     else
       mapAttrsToList (_name: iface: iface.device) (
-        filterAttrs (_name: iface: elem iface.role [ "lan" ]) routedIfaces
+        filterAttrs (name: iface: elem iface.role [ "lan" ] && !(relayedInterfaces ? ${name})) routedIfaces
       );
 
   # TECHNICAL GUARDRAIL: Kea 3.x on Linux fails to poll the raw socket for

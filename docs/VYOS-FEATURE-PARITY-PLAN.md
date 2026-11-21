@@ -65,7 +65,7 @@ covers it), **gap** (not available).
 | DHCPv4 HA | Kea HA (1.5 line) | Kea HA (`router-kea.dhcp4.ha`), port scoped to the peer | Shipped, VM-tested (`vm-router-kea-ha`) |
 | DHCPv6 / PD serving | Kea DHCPv6 and PD (1.5 line) | No DHCPv6 server module | **Gap**: router-xm6 |
 | Delegated prefix across failover | — | Shared DUID-LL and IAID from the cloned MAC (`router-ha.wan.sharedDhcpIdentity`) | Shipped, VM-tested (`vm-router-ha-wan-failover`; router-5sa) |
-| DHCP relay | `service dhcp-relay` | Not exposed (networkd supports `RelayTarget=`) | **Gap**: router-yix |
+| DHCP relay | `service dhcp-relay` | `router-dhcp-relay` (networkd `RelayTarget=`, option 82 Circuit/Remote ID) | Shipped, VM-tested (`vm-router-dhcp-relay`; router-yix) |
 | Authoritative DNS | Forwarding with authoritative domains | Technitium with TSIG zone replication following VRRP | Shipped, VM-tested (`vm-router-technitium-zone-ha`) |
 | BGP | FRR | FRR (`router-bgp.nix`) | Shared engine; compare address families and policy before claiming parity |
 | OSPF / IS-IS | FRR | None | Gap (deferred: router-j93) |
@@ -129,10 +129,11 @@ routerctl routes   # kernel FIB plus FRR (vtysh JSON)
 
 ### 3.4 Common edge needs (P3)
 
-- **router-yix: DHCP relay and option 82.** Wrap systemd-networkd's
-  `[DHCPServer]` `RelayTarget=`, `RelayAgentCircuitId=` and
-  `RelayAgentRemoteId=`; no new daemon. *Test:* client, relay and DHCP
-  server VMs.
+- **router-yix: DHCP relay and option 82.** *Shipped* as
+  `router-dhcp-relay`: wraps systemd-networkd's `[DHCPServer]`
+  `RelayTarget=`, `RelayAgentCircuitId=` and `RelayAgentRemoteId=`; no new
+  daemon. *Tested:* `vm-router-dhcp-relay` (client, relay router also running
+  Kea, and a central Kea server that leases only on matching option 82).
 - **router-xm6: DHCPv6 and PD serving.** First document what networkd
   already provides (RA, DHCPv6 server, sub-delegation of the ISP prefix),
   then decide whether a module is needed.
