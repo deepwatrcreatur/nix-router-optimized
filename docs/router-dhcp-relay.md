@@ -21,14 +21,20 @@ server. It uses systemd-networkd's built-in relay mode (`[DHCPServer]`
 
 ## What it configures
 
+- `server` must be a unicast IPv4 address; `0.0.0.0` is rejected because
+  networkd ignores it and would serve leases locally instead.
 - The segment's `.network` (`20-router-<name>`) gets `DHCPServer=yes` with
   `RelayTarget=`, plus `RelayAgentCircuitId=` / `RelayAgentRemoteId=`
   when set.
 - With `router-firewall`: UDP 67 from clients on the relayed interface, and
-  UDP 67 from each server address (its replies to the relay).
+  UDP 67 from each `replyFrom` address (default: `server`) only when that
+  address is routed via the interface the reply arrives on (`fib` reverse
+  path check), so a host on another segment cannot spoof the server.
 - `router-kea` and `router-dhcp` skip relayed segments when they detect
-  interfaces automatically. Listing a relayed segment explicitly in either
-  fails evaluation, because two DHCP sources on one link both answer.
+  interfaces automatically. Serving a relayed segment explicitly in either
+  (including Kea's `*` binding) fails evaluation, because two DHCP sources
+  on one link both answer. A `router-dhcp` entry with `enable = false` is
+  fine.
 
 ## Option 82
 
@@ -36,6 +42,16 @@ The relay adds the Relay Agent Information option to every request it
 forwards. By default the Circuit ID is the segment's device name, so the
 server can tell segments apart even when they share a relay address range.
 Remote ID is off unless you set it. Values are sent as plain strings.
+
+At least one of the two must be set: with neither, networkd forwards any
+option 82 the client put in its request, and a client could claim another
+segment's identity. Evaluation enforces this.
+
+## Chained relays
+
+`server` may be another relay. The DHCP server then answers this relay
+directly (replies go to the first relay's address, the giaddr), so set
+`replyFrom` to the DHCP server's address for the firewall rule.
 
 On a Kea server, match them in a client class and keep them with the lease:
 

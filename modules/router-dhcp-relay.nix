@@ -14,20 +14,34 @@ let
   routedIfaces = config.services.router-networking.routedInterfaces or { };
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   firewallEnabled = hasRouterFirewall && (config.services.router-firewall.enable or false);
-  isIpv4 = s: builtins.match "([0-9]{1,3}\\.){3}[0-9]{1,3}" s != null;
+  # A unicast-usable IPv4 address: four octets 0-255, not 0.0.0.0 (networkd
+  # ignores a null RelayTarget and would serve leases locally instead).
+  isIpv4 =
+    s:
+    let
+      m = builtins.match "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})" s;
+      octets = map toInt m;
+    in
+    m != null && all (o: o <= 255) octets && s != "0.0.0.0" && s != "255.255.255.255";
 
   devices = mapAttrsToList (name: _: routedIfaces.${name}.device or name) cfg.interfaces;
   keaInterfaces = map (i: head (splitString "/" i)) (
     config.services.kea.dhcp4.settings.interfaces-config.interfaces or [ ]
   );
   keaEnabled = config.services.kea.dhcp4.enable or false;
-  routerDhcpInterfaces = if (config.services.router-dhcp.enable or false) then attrNames (config.services.router-dhcp.interfaces or { }) else [ ];
+  # Kea's "*" binds every interface.
+  keaServes = dev: keaEnabled && (elem dev keaInterfaces || elem "*" keaInterfaces);
+  routerDhcpInterfaces =
+    if config.services.router-dhcp.enable or false then
+      attrNames (filterAttrs (_: iface: iface.enable) (config.services.router-dhcp.interfaces or { }))
+    else
+      [ ];
 
   # networkd's option-82 suboption format is "string:<value>".
   suboption = v: "string:${v}";
 
   relayInterfaceModule =
-    { name, ... }:
+    { name, config, ... }:
     {
       options = {
         server = mkOption {
@@ -56,6 +70,18 @@ let
           default = null;
           example = "branch-router";
           description = "Agent Remote ID (option 82, suboption 2). `null` omits it.";
+        };
+
+        replyFrom = mkOption {
+          type = types.listOf types.str;
+          default = [ config.server ];
+          defaultText = literalExpression "[ server ]";
+          example = [ "10.10.10.5" ];
+          description = ''
+            Addresses whose DHCP replies (UDP 67) the firewall admits for this
+            segment. The DHCP server answers the first relay directly, so when
+            `server` is another relay, list the DHCP server here instead.
+          '';
         };
       };
     };
@@ -108,7 +134,17 @@ in
               message = "services.router-dhcp-relay.interfaces.${name}: services.router-dhcp.interfaces.${name} also serves this segment; remove one.";
             }
             {
-              assertion = !(keaEnabled && elem (routedIfaces.${name}.device or name) keaInterfaces);
+              # SECURITY: with neither ID set, networkd forwards option 82 as
+              # the client sent it, so a client could claim a relay identity.
+              assertion = relay.circuitId != null || relay.remoteId != null;
+              message = "services.router-dhcp-relay.interfaces.${name}: set circuitId or remoteId; with neither, client-supplied option 82 reaches the server unchanged.";
+            }
+            {
+              assertion = all isIpv4 relay.replyFrom && relay.replyFrom != [ ];
+              message = "services.router-dhcp-relay.interfaces.${name}.replyFrom must be a non-empty list of IPv4 addresses.";
+            }
+            {
+              assertion = !(keaServes (routedIfaces.${name}.device or name));
               message = "services.router-dhcp-relay.interfaces.${name}: Kea also serves ${routedIfaces.${name}.device or name}; remove it from services.router-kea.dhcp4.interfaces.";
             }
           ]) cfg.interfaces
@@ -134,8 +170,10 @@ in
       services.router-firewall.extraInputRules = mkIf firewallEnabled (
         concatStringsSep "\n" (
           [ "iifname { ${concatMapStringsSep ", " (d: ''"${d}"'') devices} } udp dport 67 accept comment \"DHCP relay clients\"" ]
-          ++ map (s: "ip saddr ${s} udp sport 67 udp dport 67 accept comment \"DHCP relay server\"") (
-            unique (mapAttrsToList (_: r: r.server) cfg.interfaces)
+          # SECURITY: fib checks that the server's address is routed via the
+          # arriving interface, so a host on another segment cannot spoof it.
+          ++ map (s: "ip saddr ${s} udp sport 67 udp dport 67 fib saddr . iif oif exists accept comment \"DHCP relay server\"") (
+            unique (concatLists (mapAttrsToList (_: r: r.replyFrom) cfg.interfaces))
           )
         )
       );
