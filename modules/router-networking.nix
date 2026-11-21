@@ -193,7 +193,26 @@ let
       prefixDelegationMode = mkOption {
         type = types.enum [ "slaac" "managed" ];
         default = "slaac";
-        description = "Whether the segment should advertise SLAAC-only or managed DHCPv6-style RAs.";
+        description = ''
+          RA flags for the segment. `"slaac"` (M=0, O=0): clients form
+          addresses from the advertised prefix. `"managed"` (M=1, O=1) tells
+          clients to ask a DHCPv6 server; this flake ships none, so only use
+          it with your own DHCPv6 server. Addresses still come from SLAAC
+          either way. See docs/router-ipv6-downstream.md.
+        '';
+      };
+
+      ipv6SubnetId = mkOption {
+        type = types.nullOr (types.strMatching "(0x)?[0-9a-fA-F]{1,16}");
+        default = null;
+        example = "0x10";
+        description = ''
+          Subnet ID (hex) of this segment's /64 inside the delegated prefix
+          (networkd `[DHCPPrefixDelegation] SubnetId=`). `null` lets networkd
+          pick one, which can change when segments are added or removed;
+          set it to keep each segment's prefix stable. Set it on every
+          delegated segment or on none.
+        '';
       };
 
       dns = mkOption {
@@ -228,7 +247,11 @@ let
       ipv6Prefix = mkOption {
         type = types.str;
         default = "::/64";
-        description = "Delegated IPv6 prefix slice to advertise on this segment.";
+        description = ''
+          A static global /64 to advertise on this segment, for a prefix you
+          own. The default `"::/64"` means none: the segment's /64 comes from
+          the ISP delegation (`dhcpPrefixDelegation`, `ipv6SubnetId`).
+        '';
       };
 
       ulaPrefix = mkOption {
@@ -567,6 +590,9 @@ let
       }
       // optionalAttrs (iface.dns != [ ]) { DNS = iface.dns; }
       // optionalAttrs (iface.domains != [ ]) { Domains = iface.domains; };
+    dhcpPrefixDelegationConfig = optionalAttrs (iface.ipv6SubnetId != null) {
+      SubnetId = iface.ipv6SubnetId;
+    };
     ipv6SendRAConfig =
       (if iface.prefixDelegationMode == "managed" then
         {
@@ -602,13 +628,14 @@ let
 
         ${concatMapStrings mkPvDSection allPvds}
       '');
-    ipv6Prefixes = [
-      {
-        Prefix = iface.ipv6Prefix;
-        PreferredLifetimeSec = iface.preferredLifetimeSec;
-        ValidLifetimeSec = iface.validLifetimeSec;
-      }
-    ] ++ optional (iface.ulaPrefix != null) {
+    # GOTCHA: the "::/64" default is networkd's null prefix; a section with
+    # it is ignored with a warning. Delegated /64s come from
+    # DHCPPrefixDelegation, so only static prefixes need a section.
+    ipv6Prefixes = optional (iface.ipv6Prefix != "::/64") {
+      Prefix = iface.ipv6Prefix;
+      PreferredLifetimeSec = iface.preferredLifetimeSec;
+      ValidLifetimeSec = iface.validLifetimeSec;
+    } ++ optional (iface.ulaPrefix != null) {
       Prefix = iface.ulaPrefix;
       PreferredLifetimeSec = iface.preferredLifetimeSec;
       ValidLifetimeSec = iface.validLifetimeSec;
@@ -674,8 +701,37 @@ in
   };
 
   config = mkIf cfg.enable {
+    # WHY: networkd has no DHCPv6 server; the M flag sends clients to one
+    # nobody runs. docs/router-ipv6-downstream.md
+    warnings = mapAttrsToList (
+      name: _:
+      "router-networking.routedInterfaces.${name}.prefixDelegationMode = \"managed\" sets the RA managed flag, but this flake runs no DHCPv6 server; clients still use SLAAC. Use \"slaac\" unless you run your own DHCPv6 server (docs/router-ipv6-downstream.md)."
+    ) (filterAttrs (_: iface: iface.prefixDelegationMode == "managed" && iface.ipv6SendRA) cfg.routedInterfaces);
+
     assertions =
       [
+        {
+          assertion =
+            let
+              ids = map (i: toLower (removePrefix "0x" i.ipv6SubnetId)) (
+                filter (i: i.ipv6SubnetId != null && i.dhcpPrefixDelegation) (attrValues cfg.routedInterfaces)
+              );
+              norm = map (i: let t = builtins.match "0*(.+)" i; in if t == null then "0" else head t) ids;
+            in
+            allUnique norm;
+          message = "router-networking.routedInterfaces: ipv6SubnetId values must be unique.";
+        }
+        {
+          # WHY: networkd keeps an automatic subnet ID across reloads, so a
+          # newly pinned ID can collide with one it already gave another
+          # segment, and both would advertise the same /64.
+          assertion =
+            let
+              pd = filter (i: i.dhcpPrefixDelegation) (attrValues cfg.routedInterfaces);
+            in
+            all (i: i.ipv6SubnetId == null) pd || all (i: i.ipv6SubnetId != null) pd;
+          message = "router-networking.routedInterfaces: once one segment sets ipv6SubnetId, every segment with dhcpPrefixDelegation must set one (mixing pinned and automatic IDs can assign the same /64 twice).";
+        }
         {
           assertion = cfg.wan.vlanId == null || cfg.wan.parentDevice != null;
           message = "router-networking.wan.parentDevice must be set when wan.vlanId is used.";
