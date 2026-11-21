@@ -70,11 +70,8 @@ covers it), **gap** (not available).
 | BGP | FRR | FRR (`router-bgp.nix`) | Shared engine; compare address families and policy before claiming parity |
 | OSPF / IS-IS | FRR | None | Gap (deferred: router-j93) |
 | BFD | FRR, tied to routing and VRRP | None; nixpkgs keepalived is built without BFD | Gap (deferred: router-j93) |
-| IPsec | Route-based (VTI), policy-based, DMVPN | None (WireGuard, OpenVPN, Tailscale, Headscale, Netbird, ZeroTier, Twingate exist) | Gap: router-3op |
-| Multicast | IGMP proxy, PIM | IGMP proxy (`router-multicast`, igmpproxy) and mDNS reflector (`router-mdns.nix`); no PIM | IGMP proxy shipped, VM-tested (`vm-router-multicast`; router-n3i). PIM: not planned |
-
 | IPsec | Route-based (VTI), policy-based, DMVPN | Route-based with XFRM interfaces (`router-ipsec`, strongSwan swanctl, PSK); no policy-based or DMVPN | Shipped, VM-tested (`vm-router-ipsec`; router-3op) |
-| Multicast | IGMP proxy, PIM | mDNS reflector only (`router-mdns.nix`) | Gap: router-n3i |
+| Multicast | IGMP proxy, PIM | IGMP proxy (`router-multicast`, igmpproxy) and mDNS reflector (`router-mdns.nix`); no PIM | IGMP proxy shipped, VM-tested (`vm-router-multicast`; router-n3i). PIM: not planned |
 | PPPoE client | Yes | `router-pppoe.nix` | Shipped |
 | Multi-WAN | WAN load balancing | `router-mwan.nix` | Shipped |
 | Zone firewall | Zone-based firewall | `router-zones.nix`, `routerctl firewall explain/trace` | Shipped; UX improvements are docs and `routerctl` work |
