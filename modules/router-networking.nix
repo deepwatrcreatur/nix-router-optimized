@@ -210,7 +210,8 @@ let
           Subnet ID (hex) of this segment's /64 inside the delegated prefix
           (networkd `[DHCPPrefixDelegation] SubnetId=`). `null` lets networkd
           pick one, which can change when segments are added or removed;
-          set it to keep each segment's prefix stable.
+          set it to keep each segment's prefix stable. Set it on every
+          delegated segment or on none.
         '';
       };
 
@@ -719,6 +720,17 @@ in
             in
             allUnique norm;
           message = "router-networking.routedInterfaces: ipv6SubnetId values must be unique.";
+        }
+        {
+          # WHY: networkd keeps an automatic subnet ID across reloads, so a
+          # newly pinned ID can collide with one it already gave another
+          # segment, and both would advertise the same /64.
+          assertion =
+            let
+              pd = filter (i: i.dhcpPrefixDelegation) (attrValues cfg.routedInterfaces);
+            in
+            all (i: i.ipv6SubnetId == null) pd || all (i: i.ipv6SubnetId != null) pd;
+          message = "router-networking.routedInterfaces: once one segment sets ipv6SubnetId, every segment with dhcpPrefixDelegation must set one (mixing pinned and automatic IDs can assign the same /64 twice).";
         }
         {
           assertion = cfg.wan.vlanId == null || cfg.wan.parentDevice != null;

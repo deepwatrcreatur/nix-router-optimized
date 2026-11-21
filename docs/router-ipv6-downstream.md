@@ -39,8 +39,10 @@ services.router-networking.routedInterfaces = {
 };
 ```
 
-The IDs must fit in the delegation (a /56 gives 0x0 to 0xff) and be unique;
-evaluation checks uniqueness.
+The IDs must fit in the delegation (a /56 gives 0x0 to 0xff) and be unique.
+Set them on every delegated segment or on none: networkd keeps an automatic
+ID across reloads, so a newly pinned ID could collide with one it already
+handed to another segment. Evaluation checks both rules.
 
 ### `prefixDelegationMode = "managed"`
 

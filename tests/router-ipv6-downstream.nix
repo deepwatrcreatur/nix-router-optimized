@@ -66,6 +66,20 @@ in
     iot.ipv6SubnetId = "01";
   });
 
+  router-ipv6-subnet-id-mixed-fails-eval = eval.mkNixosEvalFailureCheck "router-ipv6-subnet-id-mixed" (base {
+    lan.ipv6SubnetId = "0x1";
+  });
+
+  router-ipv6-subnet-id-mixed-no-pd-eval = check "router-ipv6-subnet-id-mixed-no-pd" (base {
+    lan.ipv6SubnetId = "0x1";
+    iot.dhcpPrefixDelegation = false;
+  }) (config: [
+    {
+      assertion = config.systemd.network.networks."20-router-lan".dhcpPrefixDelegationConfig.SubnetId == "0x1";
+      message = "a segment without delegation does not need a subnet ID.";
+    }
+  ]);
+
   router-ipv6-subnet-id-invalid-fails-eval = eval.mkNixosEvalFailureCheck "router-ipv6-subnet-id-invalid" (base {
     lan.ipv6SubnetId = "lan";
   });
