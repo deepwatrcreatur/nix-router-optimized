@@ -958,6 +958,105 @@ in
         default = 0.9;
         description = "Memory utilization fraction (0.0–1.0) above which an alert fires.";
       };
+
+      ruleGroups = mkOption {
+        type = types.attrs;
+        internal = true;
+        readOnly = true;
+        description = ''
+          The built-in alert rule groups, as written to the
+          router-monitoring.rules.json entry of services.prometheus.ruleFiles.
+          Read-only; exposed so checks and consumers can inspect the rules at
+          evaluation time.
+        '';
+        default = {
+          groups = [{
+            name = "router";
+            rules = [
+              {
+                alert = "ConntrackSaturation";
+                expr = "node_nf_conntrack_entries / node_nf_conntrack_entries_limit > ${toString cfg.alerting.conntrackThreshold}";
+                for = "2m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "Conntrack table near capacity";
+                  description = "Conntrack utilization is {{ humanizePercentage $value }} (threshold: ${toString (cfg.alerting.conntrackThreshold * 100)}%).";
+                };
+              }
+              {
+                alert = "HighMemoryUsage";
+                expr = "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > ${toString cfg.alerting.memoryThreshold}";
+                for = "5m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "High memory usage";
+                  description = "Memory utilization is {{ humanizePercentage $value }} (threshold: ${toString (cfg.alerting.memoryThreshold * 100)}%).";
+                };
+              }
+              {
+                alert = "NetworkInterfaceErrors";
+                expr = "rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) > 10";
+                for = "5m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "Network interface errors on {{ $labels.device }}";
+                  description = "Interface {{ $labels.device }} is experiencing {{ $value | humanize }} errors/s.";
+                };
+              }
+              {
+                alert = "KeaDhcpPoolUtilizationWarning";
+                expr = "kea_dhcp4_pool_utilization_percent > 75";
+                for = "2m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "Kea DHCP IP pool utilization warning (>75%)";
+                  description = "Dynamic IP pool utilization is {{ $value }}% (threshold: 75%).";
+                };
+              }
+              {
+                alert = "KeaDhcpPoolUtilizationCritical";
+                expr = "kea_dhcp4_pool_utilization_percent > 90";
+                for = "1m";
+                labels.severity = "critical";
+                annotations = {
+                  summary = "Kea DHCP IP pool utilization critical (>90%)";
+                  description = "Dynamic IP pool utilization is {{ $value }}% (threshold: 90%).";
+                };
+              }
+              {
+                alert = "KeaDhcpDeclinedAddressesWarning";
+                expr = "kea_dhcp4_declined_addresses > 5";
+                for = "1m";
+                labels.severity = "warning";
+                annotations = {
+                  summary = "Kea DHCP DECLINED address count high (>5)";
+                  description = "Kea DHCP declined-addresses count is {{ $value }} (threshold: 5).";
+                };
+              }
+              {
+                alert = "KeaDhcpNakRateCritical";
+                expr = "rate(kea_dhcp4_pkt4_nak_sent[1m]) * 60 > 10";
+                for = "1m";
+                labels.severity = "critical";
+                annotations = {
+                  summary = "Kea DHCP NAK rate critical (>10/min)";
+                  description = "Kea DHCP pkt4-nak-sent rate is {{ $value }} NAKs/min (threshold: 10/min).";
+                };
+              }
+              {
+                alert = "AccessPointDown";
+                expr = "probe_success{job=\"blackbox-icmp\"} == 0";
+                for = "2m";
+                labels.severity = "critical";
+                annotations = {
+                  summary = "Access point or critical target unreachable";
+                  description = "{{ $labels.friendly_name }} ({{ $labels.instance }}) is unreachable via ICMP ping.";
+                };
+              }
+            ];
+          }];
+        };
+      };
     };
 
     blackbox = {
@@ -1070,94 +1169,12 @@ in
       retentionTime = cfg.prometheusRetentionTime;
       extraFlags = optional (cfg.prometheusRetentionSize != null) "--storage.tsdb.retention.size=${cfg.prometheusRetentionSize}";
 
-      rules = mkIf cfg.alerting.enable [
-        (builtins.toJSON {
-          groups = [{
-            name = "router";
-            rules = [
-              {
-                alert = "ConntrackSaturation";
-                expr = "node_nf_conntrack_entries / node_nf_conntrack_entries_limit > ${toString cfg.alerting.conntrackThreshold}";
-                for = "2m";
-                labels.severity = "warning";
-                annotations = {
-                  summary = "Conntrack table near capacity";
-                  description = "Conntrack utilization is {{ humanizePercentage $value }} (threshold: ${toString (cfg.alerting.conntrackThreshold * 100)}%).";
-                };
-              }
-              {
-                alert = "HighMemoryUsage";
-                expr = "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > ${toString cfg.alerting.memoryThreshold}";
-                for = "5m";
-                labels.severity = "warning";
-                annotations = {
-                  summary = "High memory usage";
-                  description = "Memory utilization is {{ humanizePercentage $value }} (threshold: ${toString (cfg.alerting.memoryThreshold * 100)}%).";
-                };
-              }
-              {
-                alert = "NetworkInterfaceErrors";
-                expr = "rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) > 10";
-                for = "5m";
-                labels.severity = "warning";
-                annotations = {
-                  summary = "Network interface errors on {{ $labels.device }}";
-                  description = "Interface {{ $labels.device }} is experiencing {{ $value | humanize }} errors/s.";
-                };
-              }
-              {
-                alert = "KeaDhcpPoolUtilizationWarning";
-                expr = "kea_dhcp4_pool_utilization_percent > 75";
-                for = "2m";
-                labels.severity = "warning";
-                annotations = {
-                  summary = "Kea DHCP IP pool utilization warning (>75%)";
-                  description = "Dynamic IP pool utilization is {{ $value }}% (threshold: 75%).";
-                };
-              }
-              {
-                alert = "KeaDhcpPoolUtilizationCritical";
-                expr = "kea_dhcp4_pool_utilization_percent > 90";
-                for = "1m";
-                labels.severity = "critical";
-                annotations = {
-                  summary = "Kea DHCP IP pool utilization critical (>90%)";
-                  description = "Dynamic IP pool utilization is {{ $value }}% (threshold: 90%).";
-                };
-              }
-              {
-                alert = "KeaDhcpDeclinedAddressesWarning";
-                expr = "kea_dhcp4_declined_addresses > 5";
-                for = "1m";
-                labels.severity = "warning";
-                annotations = {
-                  summary = "Kea DHCP DECLINED address count high (>5)";
-                  description = "Kea DHCP declined-addresses count is {{ $value }} (threshold: 5).";
-                };
-              }
-              {
-                alert = "KeaDhcpNakRateCritical";
-                expr = "rate(kea_dhcp4_pkt4_nak_sent[1m]) * 60 > 10";
-                for = "1m";
-                labels.severity = "critical";
-                annotations = {
-                  summary = "Kea DHCP NAK rate critical (>10/min)";
-                  description = "Kea DHCP pkt4-nak-sent rate is {{ $value }} NAKs/min (threshold: 10/min).";
-                };
-              }
-              {
-                alert = "AccessPointDown";
-                expr = "probe_success{job=\"blackbox-icmp\"} == 0";
-                for = "2m";
-                labels.severity = "critical";
-                annotations = {
-                  summary = "Access point or critical target unreachable";
-                  description = "{{ $labels.friendly_name }} ({{ $labels.instance }}) is unreachable via ICMP ping.";
-                };
-              }
-            ];
-          }];
-        })
+      # WHY: emit a rules file, not a services.prometheus.rules entry. NixOS
+      # joins every rules entry into one file, and Prometheus reads only the
+      # first JSON document in it, so a consumer adding its own rules entry
+      # silently lost either theirs or this group (seen on elitedesk).
+      ruleFiles = mkIf cfg.alerting.enable [
+        (pkgs.writeText "router-monitoring.rules.json" (builtins.toJSON cfg.alerting.ruleGroups))
       ];
     };
 

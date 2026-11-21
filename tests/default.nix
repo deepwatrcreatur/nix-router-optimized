@@ -13,6 +13,28 @@ let
 
   exportedModuleNames = builtins.attrNames self.nixosModules;
 
+  routerMonitoringConsumerRules = builtins.toJSON {
+    groups = [
+      {
+        name = "consumer";
+        rules = [ { alert = "ConsumerAlert"; expr = "vector(1)"; } ];
+      }
+    ];
+  };
+  routerMonitoringRulesCfg = (nixpkgs.lib.nixosSystem {
+    inherit system;
+    modules = [
+      self.nixosModules.monitoring
+      {
+        router.monitoring = {
+          enable = true;
+          alerting.enable = true;
+        };
+        services.prometheus.rules = [ routerMonitoringConsumerRules ];
+      }
+    ];
+  }).config.services.prometheus;
+
   vpnSmokeChecks = import ./vpn-smoke.nix {
     inherit self lib eval;
   };
@@ -249,6 +271,44 @@ in
         ];
       })
   ];
+
+  # A consumer's services.prometheus.rules entry must not share a file with the
+  # built-in alert group: NixOS joins all rules entries into one file and
+  # Prometheus reads only the first JSON document (seen on elitedesk).
+  router-monitoring-alert-rules-coexist-eval = eval.mkNixosEvalCheck "router-monitoring-alert-rules-coexist" [
+    self.nixosModules.monitoring
+    {
+      router.monitoring = {
+        enable = true;
+        alerting.enable = true;
+      };
+      services.prometheus.rules = [ routerMonitoringConsumerRules ];
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = config.services.prometheus.rules == [ routerMonitoringConsumerRules ];
+          message = "router.monitoring must not add entries to services.prometheus.rules; consumers' entries would share one file with it.";
+        }
+        {
+          assertion = builtins.any (f: lib.hasSuffix "router-monitoring.rules.json" (toString f)) config.services.prometheus.ruleFiles;
+          message = "router.monitoring.alerting must ship its alert group as a services.prometheus.ruleFiles entry.";
+        }
+      ];
+    })
+  ];
+
+  # Every rules file Prometheus loads in that setup must be valid, and the
+  # built-in group and the consumer's group must both be present.
+  router-monitoring-alert-rules-promtool = pkgs.runCommand "router-monitoring-alert-rules-promtool" {
+    nativeBuildInputs = [ pkgs.prometheus.cli or pkgs.prometheus ];
+  } ''
+    for f in ${lib.escapeShellArgs (map toString routerMonitoringRulesCfg.ruleFiles)} ${pkgs.writeText "consumer.rules" routerMonitoringConsumerRules}; do
+      promtool check rules "$f"
+    done
+    grep -q '"name":"router"' ${lib.escapeShellArgs (map toString routerMonitoringRulesCfg.ruleFiles)}
+    touch $out
+  '';
 
   router-monitoring-hardware-sensors-default-off-eval = eval.mkNixosEvalCheck "router-monitoring-hardware-sensors-default-off" [
     self.nixosModules.monitoring
