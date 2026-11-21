@@ -140,12 +140,13 @@ services.router-ha = {
     interface = "enp6s17";
     clonedMac = "02:76:c6:01:2a:b0"; # Your ISP modem's locked Golden MAC
   };
-  singleActiveUnits = [
-    "kea-dhcp4-server.service"
-    "inadyn.service"
-    "miniupnpd.service"
-  ];
+  routerAdvertisements.mode = "vrrp-owner"; # only the MASTER sends RAs
 };
+# Typed owners: router-ha starts these on the MASTER only.
+services.router-ddns.ha.singleActiveOwner = true;
+services.router-upnp.ha.singleActiveOwner = true;
+# DHCP: run Kea HA on both nodes (services.router-kea.dhcp4.ha) with
+# services.router-kea.ddns.ha.mode = "follow-vip"; see router-ha-ownership.md.
 
 # Node B (Backup / Standby)
 services.router-ha = {
@@ -159,7 +160,9 @@ services.router-ha = {
     interface = "enp1s0f0";
     clonedMac = "02:76:c6:01:2a:b0";
   };
+  routerAdvertisements.mode = "vrrp-owner";
 };
+# Same typed owners as Node A.
 ```
 
 ---

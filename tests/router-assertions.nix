@@ -211,6 +211,8 @@ in
         role = "master";
         vrrpInterface = "eth1";
         virtualIp = "10.10.10.1/24"; # Collides with static IP 10.10.10.1
+        # Keeps the RA guard out of the way: only the VIP collision may fail.
+        routerAdvertisements.mode = "vrrp-owner";
       };
     }
   ];

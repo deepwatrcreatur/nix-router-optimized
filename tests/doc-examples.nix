@@ -335,7 +335,7 @@ in
       message = "router-ha pair master example should render a MASTER instance.";
     }
     {
-      assertion = config.services.router-ha.singleActiveUnits == [ "inadyn.service" ];
+      assertion = config.services.router-ha.singleActiveUnits == [ "site-vpn.service" ];
       message = "router-ha pair master example should keep a narrow singleActiveUnits list.";
     }
     {

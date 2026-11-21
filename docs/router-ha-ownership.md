@@ -18,114 +18,90 @@ If you want a concrete starting point instead of a boundary note, start with
 
 ## Current Upstream Shape
 
-Today the repo has bounded ownership behavior in these areas:
+Each service that must run on one node only declares that itself, with a
+typed option. The module registers its units with router-ha, removes them
+from boot, and evaluation fails on a pair where the choice is missing.
 
-- **WAN role transitions** through `services.router-ha.wan`
-- **Kea DHCPv4 HA** through `services.router-kea.dhcp4.ha`. It runs Kea
-  on both nodes independently of VRRP, so `kea-dhcp4-server` must not be in
-  `singleActiveUnits` (evaluation fails if it is). The old
-  `services.router-ha.keaSync` option is retired: it now only warns.
-- **BGP single-active-owner behavior** where the `router-bgp` integration makes
-  promotion semantics explicit
+| Service | Option | On a `router-ha` pair |
+|---|---|---|
+| WAN | `services.router-ha.wan` | MASTER raises the WAN, others hold it down |
+| IPv6 Router Advertisements | `services.router-ha.routerAdvertisements.mode` | required when any networkd network sends RAs |
+| DDNS (inadyn) | `services.router-ddns.ha.singleActiveOwner` | required |
+| UPnP / NAT-PMP (miniupnpd) | `services.router-upnp.ha.singleActiveOwner` | required |
+| Kea DHCP-DDNS (D2) | `services.router-kea.ddns.ha.mode` | required when `ddns.enable` |
+| Kea DHCPv4 | `services.router-kea.dhcp4.ha` | Kea HA on both nodes; never single-active |
+| Technitium zones | `services.router-technitium.zoneReplication.ha` | zone primary follows the VIP |
+| BGP | `services.router-bgp.ha.singleActiveOwner` | required |
+| NDP proxy | `services.router-ndp-proxy.ha.singleActiveOwner` | required |
 
-That does **not** mean every LAN-facing service is promotion-aware by default.
+`services.router-ha.singleActiveUnits` stays for consumer units that have no
+typed option. router-ha starts the listed units on promotion and stops them
+on backup or fault. It does not take them out of boot; do that yourself
+(`wantedBy = lib.mkForce [ ];`).
 
-## Validated Consumer Pattern
+### IPv6 Router Advertisements
 
-The currently validated consumer pattern for a VRRP router pair is:
+When both nodes advertise, clients take either node as their IPv6 default
+router. A backup's WAN is down, so the clients that picked it lose IPv6.
+`routerAdvertisements.mode` makes the choice explicit:
 
-- let `router-ha` own **WAN/VIP role transition**
-- let `router-ha.singleActiveUnits` own **specific single-owner runtime units**
-- keep some services **shared on both nodes**
-- keep some services **manual-promotion only**
+- `"vrrp-owner"`: only the MASTER advertises itself as a default router.
+  The listed networks (by default every `router-networking` routed
+  interface with `ipv6SendRA`) keep sending RAs, but their static config
+  sets router lifetime 0, which tells clients "not a default router". On
+  promotion, `router-ha-ra-owner.service` writes
+  `/run/systemd/network/<network>.network.d/90-router-ha-ra.conf` with the
+  real lifetime (router-networking's `routerLifetimeSec`, else networkd's
+  1800 s) and runs `networkctl reload`; on demotion it removes the drop-in.
+  networkd restarts RA on the change, sending a final lifetime-0 RA from the
+  old state and fresh RAs at once, so clients switch router within seconds.
+  A node that lost its LAN link cannot say goodbye; clients stop using it
+  through neighbour unreachability detection, and its first BACKUP RA after
+  the link returns clears the stale route. The `vm-router-ha-pair` check
+  measures this from a LAN client at every transition.
+- `"both-nodes"`: keep RAs on both. Only correct when each node has its own
+  working IPv6 uplink.
 
-In other words, do **not** collapse all router services behind one blanket
-"backup becomes master, therefore everything should start" assumption.
+The reload reconfigures the listed links. On reconfigure (and on every
+networkd restart) networkd deletes addresses it did not configure, which
+includes keepalived's VIP; keepalived then drops to BACKUP. router-ha
+therefore sets `KeepConfiguration=static` on the VRRP interface's network
+(`services.router-ha.vrrpNetwork`, detected for router-networking routed
+interfaces), and `"vrrp-owner"` requires it. The VM check confirms the VIP
+survives each handover. Expect a brief IPv6 blip on the LAN at each handover.
 
-### A practical split that is working
+To take a node out of service, stop keepalived (`systemctl stop
+keepalived`) or lower its priority. Do not use `ip link set <lan> down`: the
+demotion's `networkctl reload` reconfigures the link and networkd brings it
+back up. A real carrier loss (cable, switch port) is unaffected.
 
-- **Promotion-aware / VRRP-owned**
-  - WAN interface ownership via `services.router-ha.wan`
-  - public DDNS update execution when the consumer makes both
-    `inadyn.service` and `inadyn.timer` `singleActiveUnits`
-  - any other service the consumer explicitly adds to
-    `services.router-ha.singleActiveUnits`
-- **Shared on both nodes**
-  - `router-ntp` / Chrony, when the consumer wants standby time-sync
-    continuity instead of single-owner NTP
-  - passive/observability services such as Suricata when the deployment wants
-    them running on both nodes
-- **Still consumer-owned and often manual**
-  - DHCP ownership for the current reference pair
-  - any DNS, UPnP, or other LAN-facing service that the consumer has not wired
-    explicitly behind a tested ownership boundary
+### DDNS and UPnP
 
-### Minimal consumer sketch
+`ha.singleActiveOwner = true` takes the units out of boot and registers them:
+`inadyn.timer` plus `inadyn.service` for router-ddns (nixpkgs runs inadyn as
+a oneshot from a timer, so listing only the service left the backup's timer
+running updates), and `miniupnpd.service` for router-upnp. UPnP port mappings
+do not move to the new MASTER; clients re-request them.
 
-```nix
-{
-  services.router-ha = {
-    enable = true;
-    role = "master"; # or "backup" per host
-    virtualIp = "10.10.10.1/16";
-    vrrpInterface = "br-lan";
-    wan = {
-      enable = true;
-      interface = "wan0";
-      clonedMac = "02:00:00:00:00:01";
-    };
-    singleActiveUnits = [
-      "inadyn.service"
-      "inadyn.timer"
-    ];
-  };
+Configs that list these units in `singleActiveUnits` by hand still evaluate
+(both inadyn units are needed), with a warning to switch to the typed option.
 
-  services.router-ddns.enable = true;
+### Kea D2
 
-  # Shared service example: keep Chrony on both nodes.
-  services.router-ntp.enable = true;
+- `ddns.ha.mode = "single-active"`: D2 runs only on the MASTER. Use it when
+  DHCPv4 is also single-active.
+- `ddns.ha.mode = "follow-vip"`: D2 runs on both nodes and `serverAddress`
+  defaults to the VIP, where the zone primary lives under
+  `zoneReplication.ha`. Required with `dhcp4.ha`, because both Kea servers
+  hand out leases. Add both nodes' LAN addresses to the zone's
+  `services.router-technitium.rfc2136.zones.<zone>.updateNetworkACL`; updates
+  arrive from the node's own address, not from loopback.
 
-  # Manual / consumer-owned example: gate DHCP separately if your pair is still
-  # single-active rather than promotion-aware.
-  systemd.services.kea-dhcp4-server.serviceConfig.ExecCondition = [
-    ''/bin/sh -c "exit 1"''
-  ];
-}
-```
+### Shared on both nodes
 
-That example is intentionally schematic. The important part is the **split of
-ownership models**, not the literal placeholder values.
-
-## Validated Consumer Pattern
-
-The currently validated consumer pattern for a VRRP router pair is:
-
-- let `router-ha` own **WAN/VIP role transition**
-- let `router-ha.singleActiveUnits` own **specific single-owner runtime units**
-- keep some services **shared on both nodes**
-- keep some services **manual-promotion only**
-
-In other words, do **not** collapse all router services behind one blanket
-"backup becomes master, therefore everything should start" assumption.
-
-### A practical split that is working
-
-- **Promotion-aware / VRRP-owned**
-  - WAN interface ownership via `services.router-ha.wan`
-  - public DDNS update execution when the consumer makes `inadyn.service` and,
-    if present in the evaluated system, the corresponding inadyn timer unit
-    `singleActiveUnits`
-  - any other service the consumer explicitly adds to
-    `services.router-ha.singleActiveUnits`
-- **Shared on both nodes**
-  - `router-ntp` / Chrony, when the consumer wants standby time-sync
-    continuity instead of single-owner NTP
-  - passive/observability services such as Suricata when the deployment wants
-    them running on both nodes
-- **Still consumer-owned and often manual**
-  - DHCP ownership for the current reference pair
-  - any DNS, UPnP, or other LAN-facing service that the consumer has not wired
-    explicitly behind a tested ownership boundary
+- `router-ntp` / Chrony, when the deployment wants standby time sync (see
+  [NTP Boundary](#ntp-boundary)).
+- Passive observability such as Suricata.
 
 ### Minimal consumer sketch
 
@@ -136,30 +112,30 @@ In other words, do **not** collapse all router services behind one blanket
     role = "master"; # or "backup" per host
     virtualIp = "10.10.10.1/16";
     vrrpInterface = "br-lan";
+    routerAdvertisements.mode = "vrrp-owner";
     wan = {
       enable = true;
       interface = "wan0";
       clonedMac = "02:00:00:00:00:01";
     };
-    singleActiveUnits = [
-      "inadyn.service"
-      # Include the matching timer unit only if your evaluated system exposes
-      # one under this name.
-      "inadyn.timer"
-    ];
   };
 
-  services.router-ddns.enable = true;
+  services.router-ddns = {
+    enable = true;
+    ha.singleActiveOwner = true;
+  };
+  services.router-upnp = {
+    enable = true;
+    ha.singleActiveOwner = true;
+  };
+  services.router-kea.ddns.ha.mode = "follow-vip"; # with dhcp4.ha
 
   # Shared service example: keep Chrony on both nodes.
   services.router-ntp.enable = true;
 }
 ```
 
-That example is intentionally schematic. The important part is the **split of
-ownership models**, not the literal placeholder values. Consumers should verify
-the actual unit names in their evaluated config before listing timer units in
-`singleActiveUnits`. For a more copyable two-node layout, use
+For a copyable two-node layout, use
 [`router-ha-pair-guide.md`](./router-ha-pair-guide.md).
 
 ## NTP Boundary

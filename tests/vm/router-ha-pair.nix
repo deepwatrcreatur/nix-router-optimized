@@ -4,10 +4,12 @@
   pkgs,
 }:
 
-# VRRP lifecycle on two routers with preemptDelay and a single-active unit:
+# VRRP lifecycle on two routers with preemptDelay and single-active units:
 # election, crash of the MASTER, delayed fail-back, FAULT on LAN loss, and a
 # reboot of the MASTER. At every steady state exactly one node holds the
-# VIP, the WAN link and the single-active unit, sampled for a few seconds.
+# VIP, the WAN link and the owned units (a stand-in, inadyn.timer, miniupnpd,
+# LAN RAs), and a LAN client routes IPv6 via that node only, sampled for a
+# few seconds.
 let
   mkRouterTest = import ./lib/mk-router-test.nix {
     inherit pkgs lib self;
@@ -20,6 +22,32 @@ let
   pairModule =
     { pkgs, ... }:
     {
+      imports = [
+        self.nixosModules.router-ddns
+        self.nixosModules.router-upnp
+      ];
+
+      # Typed owners: router-ha starts inadyn (timer), miniupnpd and the RA
+      # drop-in on MASTER only. inadyn fails without internet; the test
+      # watches its timer.
+      # miniupnpd's iptables build needs legacy iptables; routers use nftables.
+      networking.nftables.enable = true;
+      environment.etc."router-ddns/token".text = "vmtest";
+      services.router-ddns = {
+        enable = true;
+        ha.singleActiveOwner = true;
+        cloudflare = {
+          zoneName = "example.net";
+          labels = [ "home" ];
+          apiTokenFile = "/etc/router-ddns/token";
+        };
+      };
+      services.router-upnp = {
+        enable = true;
+        internalIPs = [ "eth2" ];
+        ha.singleActiveOwner = true;
+      };
+
       services.router-ha = {
         inherit preemptDelay;
         singleActiveUnits = [ "ha-owned.service" ];
@@ -51,6 +79,21 @@ mkRouterTest {
       mgmtAddress = "192.168.100.3/24";
       extraModule = pairModule;
     };
+
+    # Learns its IPv6 default router from RAs; only the MASTER may send them.
+    client = {
+      virtualisation.vlans = [ 2 ];
+      networking = {
+        useNetworkd = true;
+        useDHCP = false;
+        firewall.enable = false;
+      };
+      systemd.network.networks."10-lan" = {
+        matchConfig.Name = "eth1";
+        address = [ "10.0.10.50/24" ];
+        networkConfig.IPv6AcceptRA = true;
+      };
+    };
   };
 
   testScript = ''
@@ -73,8 +116,40 @@ mkRouterTest {
     def has_vip(r):
         return r.execute("ip -4 addr show dev eth2 | grep -q 'inet 10.0.10.1/'")[0] == 0
 
+    OWNED = ["ha-owned.service", "inadyn.timer", "miniupnpd.service", "router-ha-ra-owner.service"]
+
     def owned_active(r):
-        return r.execute("systemctl is-active --quiet ha-owned.service")[0] == 0
+        return all(r.execute(f"systemctl is-active --quiet {u}")[0] == 0 for u in OWNED)
+
+    def owned_inactive(r):
+        return all(r.execute(f"systemctl is-active --quiet {u}")[0] != 0 for u in OWNED)
+
+    LL = {}
+
+    def lan_ll(r):
+        # Cached: the address is gone while eth2 is down (FAULT subtest).
+        if r.name not in LL:
+            r.wait_until_succeeds("ip -6 -o addr show dev eth2 scope link | grep -q fe80")
+            LL[r.name] = r.succeed("ip -6 -o addr show dev eth2 scope link | awk '{print $4}' | cut -d/ -f1").strip()
+        return LL[r.name]
+
+    def lan_down(r):
+        return "LOWER_UP" not in r.succeed("ip -o link show dev eth2").split(">")[0]
+
+    def client_routers():
+        # Default routes learned from RAs: one "via fe80::..." per router.
+        out = client.succeed("ip -6 route show default dev eth1 proto ra")
+        return sorted(l.split("via ")[1].split()[0] for l in out.splitlines() if "via " in l)
+
+    def expected_routers(master, others):
+        # A node whose LAN link is down cannot send its final RA; the client
+        # keeps that stale route until the link returns (NUD skips it).
+        ok = {lan_ll(master)} | {lan_ll(r) for r in others if lan_down(r)}
+        return lambda routers: lan_ll(master) in routers and set(routers) <= ok
+
+    def assert_ra_owner(master, others):
+        ok = expected_routers(master, others)
+        retry(lambda _: ok(client_routers()), 40)
 
     def keepalived_running(r):
         r.wait_until_succeeds("systemctl is-active keepalived.service", timeout=60)
@@ -83,10 +158,13 @@ mkRouterTest {
         """Exactly one owner: wait for the handover to finish, then sample."""
         wait_role(master, "master")
         master.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
-        master.wait_until_succeeds("systemctl is-active --quiet ha-owned.service", timeout=30)
+        retry(lambda _: owned_active(master), 30)
         for r in others:
-            r.wait_until_succeeds("! systemctl is-active --quiet ha-owned.service", timeout=30)
+            retry(lambda _: owned_inactive(r), 30)
             r.wait_until_succeeds("! ip -4 addr show dev eth1 | grep -q inet", timeout=30)
+        # The demoted node's final RA (lifetime 0) removes it at once; the new
+        # MASTER advertises as soon as its drop-in lands.
+        assert_ra_owner(master, others)
         end = time.monotonic() + hold
         while time.monotonic() < end:
             assert role(master) == "master", f"{master.name} lost MASTER"
@@ -95,7 +173,8 @@ mkRouterTest {
                 assert role(r) in ("backup", "fault"), f"{r.name} is {role(r)} next to {master.name}"
                 assert not wan_up(r), f"both {master.name} and {r.name} hold the WAN"
                 assert not has_vip(r), f"both {master.name} and {r.name} hold the VIP"
-                assert not owned_active(r), f"ha-owned runs on {r.name} and {master.name}"
+                assert owned_inactive(r), f"owned units run on {r.name} and {master.name}"
+            assert expected_routers(master, others)(client_routers()), f"client routers {client_routers()}, MASTER {master.name}"
             time.sleep(0.5)
 
     def seconds_since_backup(r):
@@ -117,7 +196,7 @@ mkRouterTest {
             assert role(new_master) == "master", f"{old_master.name} preempted before preemptDelay"
             assert not wan_up(old_master), f"{old_master.name} raised its WAN while BACKUP"
             assert not has_vip(old_master), f"{old_master.name} took the VIP while BACKUP"
-            assert not owned_active(old_master), f"ha-owned runs on BACKUP {old_master.name}"
+            assert owned_inactive(old_master), f"owned units run on BACKUP {old_master.name}"
             time.sleep(0.5)
         wait_role(old_master, "master", timeout=PREEMPT_DELAY + 30)
         assert_steady(old_master, [new_master])
@@ -127,6 +206,9 @@ mkRouterTest {
     isp.wait_for_unit("radvd.service")
     for r in routers:
         keepalived_running(r)
+    client.wait_for_unit("systemd-networkd.service")
+    for r in routers:
+        lan_ll(r)
 
     with subtest("election: router1 (priority 100) owns VIP, WAN and the unit"):
         assert_steady(router1, [router2])
@@ -142,10 +224,12 @@ mkRouterTest {
         assert_delayed_failback(router2, router1)
 
     with subtest("FAULT on LAN loss: router1 hands over, then returns after preemptDelay"):
-        router1.succeed("ip link set dev eth2 down")
+        # GOTCHA: pull the cable (carrier loss), not `ip link set down`: the
+        # RA owner's networkctl reload re-ups an admin-down link.
+        router1.send_monitor_command("set_link vlan2 off")
         wait_role(router1, "fault", timeout=30)
         assert_steady(router2, [router1])
-        router1.succeed("ip link set dev eth2 up")
+        router1.send_monitor_command("set_link vlan2 on")
         assert_delayed_failback(router2, router1)
 
     with subtest("MASTER reboot: router2 takes over, router1 boots as BACKUP"):

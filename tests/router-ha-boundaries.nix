@@ -339,6 +339,7 @@ in
         vrrpPasswordFile = "/run/keys/vrrp-password";
         virtualIp = "10.10.10.1/24";
         vrrpInterface = "eth2";
+        routerAdvertisements.mode = "vrrp-owner";
         wan = {
           enable = true;
           interface = "eth1";

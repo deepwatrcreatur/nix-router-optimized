@@ -58,6 +58,8 @@ rec {
         vrrpPasswordFile = "/etc/router-ha/vrrp-password";
         virtualIp = "10.0.10.1/24";
         vrrpInterface = "eth2";
+        # The LAN sends RAs (router-networking default); only the MASTER may.
+        routerAdvertisements.mode = "vrrp-owner";
         wan = {
           enable = true;
           interface = "eth1";

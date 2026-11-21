@@ -1,5 +1,6 @@
 {
   config,
+  options,
   lib,
   pkgs,
   ...
@@ -9,6 +10,14 @@ with lib;
 
 let
   cfg = config.services.router-ddns;
+  hasRouterHa = options ? services.router-ha.singleActiveUnits;
+  routerHaEnabled = hasRouterHa && (config.services.router-ha.enable or false);
+  haUnits = [
+    "inadyn.timer"
+    "inadyn.service"
+  ];
+  # Units the consumer listed by hand; the old documented pattern.
+  manualHaUnits = hasRouterHa && all (u: elem u config.services.router-ha.singleActiveUnits) haUnits;
   runtimeDir = "/run/router-ddns";
   cloudflareIncludeFile = "${runtimeDir}/cloudflare.conf";
   cloudflareZoneName = if cfg.cloudflare.zoneName == null then "" else cfg.cloudflare.zoneName;
@@ -111,10 +120,35 @@ in
         description = "Whether Cloudflare should proxy the managed DNS records.";
       };
     };
+
+    ha.singleActiveOwner = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Run DDNS updates only on the VRRP MASTER. inadyn and its timer are not
+        started at boot; `services.router-ha` starts both on promotion and
+        stops both on backup or fault. Requires `services.router-ha.enable`.
+      '';
+    };
   };
 
-  config = mkIf cfg.enable {
+  config = mkIf cfg.enable (mkMerge [
+  {
     assertions = [
+      {
+        # WHY: the backup would publish the address it sees through the
+        # master, and its timer keeps firing; ownership must be explicit.
+        assertion = !routerHaEnabled || cfg.ha.singleActiveOwner || manualHaUnits;
+        message = ''
+          services.router-ddns with services.router-ha needs explicit ownership. Set
+            services.router-ddns.ha.singleActiveOwner = true;
+          so inadyn and inadyn.timer run only on the VRRP MASTER.
+        '';
+      }
+      {
+        assertion = cfg.ha.singleActiveOwner -> routerHaEnabled;
+        message = "services.router-ddns.ha.singleActiveOwner requires services.router-ha.enable = true.";
+      }
       {
         assertion = cfg.cloudflare.zoneName != null;
         message = "services.router-ddns.cloudflare.zoneName must be set.";
@@ -150,5 +184,22 @@ in
       RuntimeDirectory = "router-ddns";
       RuntimeDirectoryMode = "0750";
     };
-  };
+
+    warnings = optional (routerHaEnabled && !cfg.ha.singleActiveOwner && manualHaUnits) ''
+      services.router-ddns: inadyn units are listed in services.router-ha.singleActiveUnits
+      by hand. Set services.router-ddns.ha.singleActiveOwner = true instead; it also
+      keeps them from starting at boot on the backup.
+    '';
+  }
+
+  (mkIf cfg.ha.singleActiveOwner {
+    # INVARIANT: only router-ha notify_master starts these.
+    systemd.services.inadyn.wantedBy = mkForce [ ];
+    systemd.timers.inadyn.wantedBy = mkForce [ ];
+  })
+
+  (optionalAttrs hasRouterHa {
+    services.router-ha.singleActiveUnits = mkIf cfg.ha.singleActiveOwner haUnits;
+  })
+  ]);
 }

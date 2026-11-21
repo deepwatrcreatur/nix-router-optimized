@@ -991,11 +991,13 @@
       <span class="syn-a">clonedMac</span> = <span class="syn-s">"02:76:c6:01:2a:b0"</span>; <span class="syn-c"># Cloned ISP modem lease MAC</span>
     };
 
-    <span class="syn-a">singleActiveUnits</span> = [
-      <span class="syn-s">"kea-dhcp4-server.service"</span>
-      <span class="syn-s">"inadyn.service"</span>
-    ];
+    <span class="syn-a">routerAdvertisements.mode</span> = <span class="syn-s">"vrrp-owner"</span>; <span class="syn-c"># Only the MASTER sends IPv6 RAs</span>
   };
+
+  <span class="syn-c"># Typed owners: started on the MASTER, stopped on the backup</span>
+  <span class="syn-a">services.router-ddns.ha.singleActiveOwner</span> = <span class="syn-k">true</span>;
+  <span class="syn-a">services.router-upnp.ha.singleActiveOwner</span> = <span class="syn-k">true</span>;
+  <span class="syn-a">services.router-kea.ddns.ha.mode</span> = <span class="syn-s">"follow-vip"</span>; <span class="syn-c"># With Kea HA on both nodes</span>
 }</pre>
             </div>
 
