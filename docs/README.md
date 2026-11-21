@@ -77,6 +77,11 @@ from module names alone.
 - [`router-dhcp-relay.md`](./router-dhcp-relay.md) — relaying a segment to a
   central DHCP server, with option 82
 
+### Multicast
+
+- [`router-multicast.md`](./router-multicast.md) — IGMP proxy for IPTV, with
+  firewall and rp_filter handling and IGMPv3/quickleave limits
+
 ### Service/module selection
 
 - [`DHCP_SELECTION.md`](./DHCP_SELECTION.md) — DHCP backend choice guide

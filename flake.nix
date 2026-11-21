@@ -127,6 +127,7 @@
         router-networking = import ./modules/router-networking.nix;
         router-dhcp = import ./modules/router-dhcp.nix;
         router-dhcp-relay = import ./modules/router-dhcp-relay.nix;
+        router-multicast = import ./modules/router-multicast.nix;
         router-ddns = import ./modules/router-ddns.nix;
         router-dns-service = import ./modules/router-dns-service.nix;
         router-firewall = import ./modules/router-firewall.nix;
