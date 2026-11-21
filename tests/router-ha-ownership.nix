@@ -88,6 +88,25 @@ let
 
   raOwner.routerAdvertisements.mode = "vrrp-owner";
 
+  # Technitium on the same host; listenEndPoints needs a token source.
+  technitium = endPoints: [
+    self.nixosModules.router-technitium
+    {
+      options.age.secrets = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule { options.path = lib.mkOption { type = lib.types.str; }; });
+        default = { };
+      };
+    }
+    {
+      age.secrets.technitium-admin-password.path = "/run/agenix/technitium-admin-password";
+      services.router-technitium = {
+        enable = true;
+        bootstrapPasswordSecretName = "technitium-admin-password";
+        listenEndPoints = endPoints;
+      };
+    }
+  ];
+
   check = name: modules: assertions: eval.mkNixosEvalCheck name (modules ++ [ ({ config, ... }: { assertions = assertions config; }) ]);
 in
 {
@@ -127,6 +146,7 @@ in
           }
           {
             assertion = lib.all (u: lib.elem u units) [
+              "router-ddns-ha-owner.service"
               "router-ha-ra-owner.service"
               "inadyn.timer"
               "inadyn.service"
@@ -142,6 +162,10 @@ in
               && svc.miniupnpd.wantedBy == [ ]
               && svc.kea-dhcp-ddns-server.wantedBy == [ ];
             message = "single-active units must not start at boot.";
+          }
+          {
+            assertion = lib.elem "router-ddns-ha-owner.service" svc.inadyn.after;
+            message = "inadyn must run after the promotion cache reset.";
           }
           {
             assertion = svc.kea-dhcp4-server.wantedBy != [ ];
@@ -183,6 +207,23 @@ in
       };
     }
     ++ [ { services.router-networking.routedInterfaces.lan.ipv6SendRA = false; } ]
+  );
+
+  router-ha-ra-custom-lifetime-eval = check "router-ha-ra-custom-lifetime" (pair {
+    ha.routerAdvertisements = {
+      mode = "vrrp-owner";
+      masterRouterLifetimeSec."20-router-lan" = 600;
+    };
+  }) (config: [
+    {
+      assertion = lib.hasInfix "RouterLifetimeSec=%s\\n' 600 >" config.systemd.services.router-ha-ra-owner.serviceConfig.ExecStart.text;
+      message = "masterRouterLifetimeSec must reach the MASTER drop-in.";
+    }
+  ]);
+
+  router-ha-vrrp-keep-configuration-no-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-vrrp-keep-configuration-no" (
+    pair { ha = raOwner; }
+    ++ [ { systemd.network.networks."20-router-lan".networkConfig.KeepConfiguration = lib.mkForce "no"; } ]
   );
 
   router-ha-ra-both-nodes-eval = check "router-ha-ra-both-nodes" (pair {
@@ -262,6 +303,41 @@ in
     ha = raOwner;
     extra = lib.recursiveUpdate (kea { ha.mode = "single-active"; }) keaHa;
   });
+
+  router-ha-kea-d2-follow-vip-node-address-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-kea-d2-follow-vip-node-address" (pair {
+    ha = raOwner;
+    extra = kea {
+      ha.mode = "follow-vip";
+      serverAddress = "10.10.10.2";
+    };
+  });
+
+  router-ha-kea-d2-follow-vip-manual-unit-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-kea-d2-follow-vip-manual-unit" (pair {
+    # A bare name still reaches systemctl stop as kea-dhcp-ddns-server.service.
+    ha = raOwner // { singleActiveUnits = [ "kea-dhcp-ddns-server" ]; };
+    extra = kea { ha.mode = "follow-vip"; };
+  });
+
+  router-ha-kea-d2-follow-vip-technitium-wildcard-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-kea-d2-follow-vip-technitium-wildcard" (
+    pair {
+      ha = raOwner;
+      extra = kea { ha.mode = "follow-vip"; };
+    }
+    ++ technitium [ "127.0.0.1:53" ]
+  );
+
+  router-ha-kea-d2-follow-vip-technitium-vip-eval = check "router-ha-kea-d2-follow-vip-technitium-vip" (
+    pair {
+      ha = raOwner;
+      extra = kea { ha.mode = "follow-vip"; };
+    }
+    ++ technitium [ "127.0.0.1:53" "10.10.10.1:53" ]
+  ) (config: [
+    {
+      assertion = config.services.router-kea.ddns.serverAddress == "10.10.10.1";
+      message = "follow-vip with Technitium on the VIP must evaluate.";
+    }
+  ]);
 
   router-ha-kea-d2-follow-vip-loopback-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-kea-d2-follow-vip-loopback" (pair {
     ha = raOwner;

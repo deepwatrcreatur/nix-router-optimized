@@ -24,8 +24,14 @@ let
     if routerHaEnabled then head (splitString "/" config.services.router-ha.virtualIp) else null;
   d2Unit = "kea-dhcp-ddns-server.service";
   d2HaMode = cfg.ddns.ha.mode;
-  d2ManualHaUnit = hasRouterHa && elem d2Unit config.services.router-ha.singleActiveUnits;
-  isLoopback = addr: hasPrefix "127." addr || addr == "::1" || addr == "localhost";
+  # systemctl treats a bare name as ".service".
+  d2ManualHaUnit = hasRouterHa && (elem d2Unit config.services.router-ha.singleActiveUnits || elem (removeSuffix ".service" d2Unit) config.services.router-ha.singleActiveUnits);
+  hasRouterTechnitium = hasAttrByPath [ "services" "router-technitium" "listenEndPoints" ] options;
+  localTechnitium = hasRouterTechnitium && (config.services.router-technitium.enable or false);
+  vipEndPoint =
+    if routerHaVipAddress == null then null
+    else if hasInfix ":" routerHaVipAddress then "[${routerHaVipAddress}]:53"
+    else "${routerHaVipAddress}:53";
 
   routerKeaExporter = pkgs.writers.writePython3Bin "router-kea-exporter" { } (
     builtins.readFile ./router-kea/router-kea-exporter.py
@@ -628,16 +634,31 @@ in
         {
           # WHY: with Kea HA both servers allocate leases; a stopped backup D2
           # would drop the DNS updates for every lease the backup hands out.
-          assertion = !(cfg.dhcp4.ha.enable && cfg.ddns.enable && routerHaEnabled) || (d2HaMode == "follow-vip" && !d2ManualHaUnit);
+          assertion = !(cfg.dhcp4.ha.enable && cfg.ddns.enable && routerHaEnabled) || d2HaMode == "follow-vip";
           message = ''
             router-kea: dhcp4.ha runs Kea on both nodes, so D2 must too. Set
-            services.router-kea.ddns.ha.mode = "follow-vip" and keep ${d2Unit}
-            out of services.router-ha.singleActiveUnits.
+            services.router-kea.ddns.ha.mode = "follow-vip".
           '';
         }
         {
-          assertion = d2HaMode != "follow-vip" || !isLoopback cfg.ddns.serverAddress;
-          message = "router-kea: ddns.ha.mode = \"follow-vip\" needs ddns.serverAddress to be the VIP (the default), not a loopback address.";
+          assertion = !(cfg.ddns.enable && d2HaMode == "follow-vip" && d2ManualHaUnit);
+          message = "router-kea: ddns.ha.mode = \"follow-vip\" runs D2 on both nodes; remove ${d2Unit} from services.router-ha.singleActiveUnits.";
+        }
+        {
+          assertion = !(cfg.ddns.enable && d2HaMode == "follow-vip") || cfg.ddns.serverAddress == routerHaVipAddress;
+          message = "router-kea: ddns.ha.mode = \"follow-vip\" needs ddns.serverAddress to be the VIP address ${toString routerHaVipAddress} (the default); a node address would miss the zone primary after failover.";
+        }
+        {
+          # WHY: on a wildcard listener Technitium answers from the node's
+          # primary LAN address, and Kea drops replies whose source is not
+          # the address it queried, so updates from the peer time out.
+          assertion = !(cfg.ddns.enable && d2HaMode == "follow-vip" && localTechnitium) || elem vipEndPoint config.services.router-technitium.listenEndPoints;
+          message = ''
+            router-kea: ddns.ha.mode = "follow-vip" needs Technitium to listen on the VIP
+            explicitly so replies come from it: add ${toString routerHaVipAddress} to
+            services.router-dns-service.serviceListenAddresses (or ${toString vipEndPoint}
+            to services.router-technitium.listenEndPoints).
+          '';
         }
         {
           assertion = cfg.dhcp4.ha.enable -> cfg.dhcp4.ha.maxResponseDelaySec > cfg.dhcp4.ha.heartbeatDelaySec;
@@ -854,6 +875,12 @@ in
       # The TSIG key must not reach the Nix store. We supply a minimal placeholder
       # to satisfy the NixOS kea module assertion, then override ExecStart so the
       # real service reads from the runtime-generated config instead.
+
+      warnings = optional (routerHaEnabled && cfg.ddns.enable && d2HaMode == null && d2ManualHaUnit) ''
+        router-kea: ${d2Unit} is listed in services.router-ha.singleActiveUnits by hand.
+        Set services.router-kea.ddns.ha.mode = "single-active" instead; it also keeps D2
+        from starting at boot on the backup.
+      '';
 
       services.kea.dhcp-ddns = mkIf cfg.ddns.enable {
         enable = true;

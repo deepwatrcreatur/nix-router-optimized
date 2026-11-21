@@ -8,7 +8,7 @@ let
   hasRouterNetworking = hasAttrByPath [ "services" "router-networking" "wan" "device" ] options;
   hasRouterHa = options ? services.router-ha.singleActiveUnits;
   routerHaEnabled = hasRouterHa && (config.services.router-ha.enable or false);
-  manualHaUnit = hasRouterHa && elem "miniupnpd.service" config.services.router-ha.singleActiveUnits;
+  manualHaUnit = hasRouterHa && (elem "miniupnpd.service" config.services.router-ha.singleActiveUnits || elem "miniupnpd" config.services.router-ha.singleActiveUnits);
 in
 {
   options.services.router-upnp = {

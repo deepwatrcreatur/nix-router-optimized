@@ -19,8 +19,9 @@ If you want a concrete starting point instead of a boundary note, start with
 ## Current Upstream Shape
 
 Each service that must run on one node only declares that itself, with a
-typed option. The module registers its units with router-ha, removes them
-from boot, and evaluation fails on a pair where the choice is missing.
+typed option, and evaluation fails on a pair where the choice is missing.
+Most register their units with router-ha and remove them from boot; BGP
+keeps `bgpd` running on both nodes and shuts its neighbours down instead.
 
 | Service | Option | On a `router-ha` pair |
 |---|---|---|
@@ -52,7 +53,9 @@ router. A backup's WAN is down, so the clients that picked it lose IPv6.
   promotion, `router-ha-ra-owner.service` writes
   `/run/systemd/network/<network>.network.d/90-router-ha-ra.conf` with the
   real lifetime (router-networking's `routerLifetimeSec`, else networkd's
-  1800 s) and runs `networkctl reload`; on demotion it removes the drop-in.
+  1800 s, or `routerAdvertisements.masterRouterLifetimeSec.<network>` for
+  networks you define yourself) and runs `networkctl reload`; on demotion it
+  removes the drop-in.
   networkd restarts RA on the change, sending a final lifetime-0 RA from the
   old state and fresh RAs at once, so clients switch router within seconds.
   A node that lost its LAN link cannot say goodbye; clients stop using it
@@ -83,6 +86,11 @@ a oneshot from a timer, so listing only the service left the backup's timer
 running updates), and `miniupnpd.service` for router-upnp. UPnP port mappings
 do not move to the new MASTER; clients re-request them.
 
+On promotion `router-ddns-ha-owner.service` clears inadyn's cache before the
+first run. inadyn skips the update when its cache matches the WAN address,
+so without this a node returning as MASTER would leave the peer's address
+published when the two nodes have different public IPs.
+
 Configs that list these units in `singleActiveUnits` by hand still evaluate
 (both inadyn units are needed), with a warning to switch to the typed option.
 
@@ -93,9 +101,15 @@ Configs that list these units in `singleActiveUnits` by hand still evaluate
 - `ddns.ha.mode = "follow-vip"`: D2 runs on both nodes and `serverAddress`
   defaults to the VIP, where the zone primary lives under
   `zoneReplication.ha`. Required with `dhcp4.ha`, because both Kea servers
-  hand out leases. Add both nodes' LAN addresses to the zone's
-  `services.router-technitium.rfc2136.zones.<zone>.updateNetworkACL`; updates
-  arrive from the node's own address, not from loopback.
+  hand out leases. `serverAddress` must be the VIP address.
+  - Add both nodes' LAN addresses to the zone's
+    `services.router-technitium.rfc2136.zones.<zone>.updateNetworkACL`;
+    updates arrive from the node's own address, not from loopback.
+  - Technitium must listen on the VIP explicitly (put the VIP in
+    `services.router-dns-service.serviceListenAddresses`). On a wildcard
+    listener it answers from the node's primary LAN address, and Kea drops
+    replies whose source is not the address it queried. Evaluation checks
+    this when Technitium runs on the same host.
 
 ### Shared on both nodes
 

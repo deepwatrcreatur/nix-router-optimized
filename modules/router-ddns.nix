@@ -13,11 +13,14 @@ let
   hasRouterHa = options ? services.router-ha.singleActiveUnits;
   routerHaEnabled = hasRouterHa && (config.services.router-ha.enable or false);
   haUnits = [
+    "router-ddns-ha-owner.service"
     "inadyn.timer"
     "inadyn.service"
   ];
-  # Units the consumer listed by hand; the old documented pattern.
-  manualHaUnits = hasRouterHa && all (u: elem u config.services.router-ha.singleActiveUnits) haUnits;
+  # Units the consumer listed by hand; the old documented pattern. systemctl
+  # treats a bare name as ".service".
+  listed = u: hasRouterHa && (elem u config.services.router-ha.singleActiveUnits || elem (removeSuffix ".service" u) config.services.router-ha.singleActiveUnits);
+  manualHaUnits = listed "inadyn.service" && listed "inadyn.timer";
   runtimeDir = "/run/router-ddns";
   cloudflareIncludeFile = "${runtimeDir}/cloudflare.conf";
   cloudflareZoneName = if cfg.cloudflare.zoneName == null then "" else cfg.cloudflare.zoneName;
@@ -194,8 +197,27 @@ in
 
   (mkIf cfg.ha.singleActiveOwner {
     # INVARIANT: only router-ha notify_master starts these.
-    systemd.services.inadyn.wantedBy = mkForce [ ];
+    systemd.services.inadyn = {
+      wantedBy = mkForce [ ];
+      after = [ "router-ddns-ha-owner.service" ];
+    };
     systemd.timers.inadyn.wantedBy = mkForce [ ];
+
+    # WHY: inadyn skips the update when its per-node cache matches the WAN
+    # address, so a node returning as MASTER would leave the peer's address
+    # published. Promotion clears the cache first, forcing one update.
+    systemd.services.router-ddns-ha-owner = {
+      description = "Force a DDNS update after VRRP promotion";
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = pkgs.writeShellScript "router-ddns-clear-cache" ''
+          if [ -d /var/cache/inadyn ]; then
+            ${pkgs.findutils}/bin/find /var/cache/inadyn -mindepth 1 -delete
+          fi
+        '';
+      };
+    };
   })
 
   (optionalAttrs hasRouterHa {

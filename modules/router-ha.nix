@@ -315,8 +315,9 @@ let
       routed = config.services.router-networking.routedInterfaces or { };
       name = removePrefix "20-router-" n;
       lifetime = if hasPrefix "20-router-" n && routed ? ${name} then routed.${name}.routerLifetimeSec else null;
+      lifetime' = ra.masterRouterLifetimeSec.${n} or lifetime;
     in
-    if lifetime == null then "" else toString lifetime;
+    if lifetime' == null then "" else toString lifetime';
   # WHY: the static config advertises router lifetime 0 ("not a default
   # router"); only the MASTER's runtime drop-in restores the real lifetime.
   # A node whose LAN link died could not send its final RA, so its BACKUP
@@ -494,6 +495,21 @@ in
         '';
         example = [ "20-router-lan" ];
         description = "systemd-networkd network names whose RAs follow the VRRP MASTER in `\"vrrp-owner\"` mode.";
+      };
+
+      masterRouterLifetimeSec = mkOption {
+        type = types.attrsOf (types.ints.between 0 9000);
+        default = { };
+        example = {
+          "20-lan" = 600;
+        };
+        description = ''
+          Router lifetime the MASTER advertises, per network in `networks`.
+          `"vrrp-owner"` forces the static `RouterLifetimeSec` to 0, so a value
+          set on the network itself is not seen. Unset networks use
+          router-networking's `routerLifetimeSec`, else networkd's default
+          (1800 s).
+        '';
       };
     };
 
@@ -697,6 +713,15 @@ in
                 Advertisements on both nodes. Set services.router-ha.routerAdvertisements.mode
                 to "vrrp-owner" (only the MASTER advertises) or "both-nodes".
               '';
+        }
+        {
+          # WHY: anything else lets networkd delete the VIP on reconfigure.
+          assertion = cfg.vrrpNetwork == null || elem (vrrpNet.networkConfig.KeepConfiguration or "static") [ "static" "yes" true ];
+          message = "services.router-ha: ${toString cfg.vrrpNetwork} sets KeepConfiguration=${toString (vrrpNet.networkConfig.KeepConfiguration or "")}; the VRRP network needs \"static\" or \"yes\" so networkd keeps the VIP.";
+        }
+        {
+          assertion = !raOwner || all (n: elem n ra.networks) (attrNames ra.masterRouterLifetimeSec);
+          message = "services.router-ha.routerAdvertisements.masterRouterLifetimeSec names networks that are not in routerAdvertisements.networks.";
         }
         {
           assertion = cfg.vrrpNetwork == null || (vrrpNet.matchConfig.Name or null) == cfg.vrrpInterface;

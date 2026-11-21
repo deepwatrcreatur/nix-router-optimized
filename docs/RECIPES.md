@@ -140,7 +140,7 @@ services.router-ha = {
     interface = "enp6s17";
     clonedMac = "02:76:c6:01:2a:b0"; # Your ISP modem's locked Golden MAC
   };
-  routerAdvertisements.mode = "vrrp-owner"; # only the MASTER sends RAs
+  routerAdvertisements.mode = "vrrp-owner"; # only the MASTER is the IPv6 default router
 };
 # Typed owners: router-ha starts these on the MASTER only.
 services.router-ddns.ha.singleActiveOwner = true;
