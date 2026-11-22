@@ -89,6 +89,10 @@ let
     inherit self eval lib;
   };
 
+  routerObservabilityChecks = import ./router-observability.nix {
+    inherit self lib eval;
+  };
+
   routerClatObservabilityChecks = import ./router-clat-observability.nix {
     inherit self lib eval;
   };
@@ -381,6 +385,7 @@ in
 // routerSecurityHardeningChecks
 // routerZonesChecks
 // routerClatObservabilityChecks
+// routerObservabilityChecks
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
 // routerHaBoundaryChecks
