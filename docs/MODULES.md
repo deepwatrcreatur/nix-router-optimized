@@ -194,6 +194,11 @@ Kernel tuning, hardware offloading, and queue optimization:
 - Ethtool ring buffer pre-set tuning.
 - Sysctl optimization for routing throughput and conntrack table sizing.
 
+### `router-observability`
+Netfilter flow logging:
+- ulogd2 on an NFLOG group, text (`logemu`, `/var/log/ulogd/flow.log`) by default or JSON (`ulogdOutputPlugin = "json"`, `/var/log/ulogd/flow.json`; needs the flake overlay's ulogd).
+- Vector parses the JSON log and forwards it to the journal and, with `exportLogs`, to an upstream Vector. It runs only with JSON output (`enableVector` defaults to that), so don't list `vector` in `router-dashboard.services` on a `logemu` router.
+
 ### `router-slices`
 Systemd resource slice hierarchy:
 - `router-core.slice`: Guarantees CPU and memory priority for packet forwarding and core networking.

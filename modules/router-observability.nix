@@ -17,8 +17,16 @@ in
 
     enableVector = mkOption {
       type = types.bool;
-      default = true;
-      description = "Enable Vector for log and metric routing.";
+      # WHY: Vector only parses ulogd's JSON output. Defaulting to true made
+      # it look enabled (and dashboards expect it) while it never started.
+      default = cfg.ulogdOutputPlugin == "json";
+      defaultText = literalExpression ''config.services.router-observability.ulogdOutputPlugin == "json"'';
+      description = ''
+        Run Vector to parse ulogd's JSON flow log and forward it (to the
+        journal, and to `exportLogs.upstreamVectorAddr` when set). Vector
+        needs `ulogdOutputPlugin = "json"`; with `logemu` it does not start
+        and evaluation warns.
+      '';
     };
 
     ulogdGroup = mkOption {
@@ -59,6 +67,13 @@ in
   };
 
   config = mkIf cfg.enable {
+    warnings = optional (cfg.enableVector && cfg.ulogdOutputPlugin != "json") ''
+      services.router-observability.enableVector is set, but Vector only
+      reads ulogd's JSON output, so it will not start. Set
+      services.router-observability.ulogdOutputPlugin = "json" (needs the
+      flake's overlay for ulogd_output_JSON) or enableVector = false.
+    '';
+
     services.ulogd = mkIf cfg.enableUlogd {
       enable = true;
       settings = {
