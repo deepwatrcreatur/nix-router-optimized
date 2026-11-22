@@ -79,6 +79,7 @@
             self.nixosModules.router-dhcp
             self.nixosModules.router-dhcp-relay
             self.nixosModules.router-multicast
+            self.nixosModules.router-ipsec
             self.nixosModules.router-ddns
             self.nixosModules.router-dns-service
             self.nixosModules.router-firewall
@@ -129,6 +130,7 @@
         router-dhcp = import ./modules/router-dhcp.nix;
         router-dhcp-relay = import ./modules/router-dhcp-relay.nix;
         router-multicast = import ./modules/router-multicast.nix;
+        router-ipsec = import ./modules/router-ipsec.nix;
         router-ddns = import ./modules/router-ddns.nix;
         router-dns-service = import ./modules/router-dns-service.nix;
         router-firewall = import ./modules/router-firewall.nix;

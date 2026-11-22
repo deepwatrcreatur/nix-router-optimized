@@ -373,6 +373,23 @@ in
         message = "router-bgp should render bounded route-map policy blocks.";
       }
       {
+        # An entry without a match clause would deny every route.
+        assertion = !(lib.hasInfix "route-map RBGP_10_10_254_2_ipv4_unicast_in deny 10\n" config.services.frr.config)
+          && lib.hasInfix "route-map RBGP_10_10_254_2_ipv4_unicast_in permit 20" config.services.frr.config;
+        message = "an allow-only policy must not render a match-less deny entry ahead of its permit.";
+      }
+      {
+        # Policies are top-level FRR commands; inside `router bgp` they end the
+        # router context and the address-family lines after them fail to parse.
+        assertion =
+          let
+            beforeRouter = lib.head (lib.splitString "router bgp 65001" config.services.frr.config);
+          in
+          lib.hasInfix "route-map RBGP_10_10_254_2_ipv4_unicast_in permit 20" beforeRouter
+          && lib.hasInfix "ip prefix-list RBGP_10_10_254_2_ipv4_unicast_in_ALLOW" beforeRouter;
+        message = "router-bgp must render prefix-lists and route-maps before `router bgp`.";
+      }
+      {
         assertion = lib.hasInfix "/run/agenix/bgp-proxmox-password" config.systemd.services.frr.preStart;
         message = "router-bgp should consume BGP neighbor secrets from runtime files in frr preStart.";
       }
