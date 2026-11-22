@@ -288,6 +288,13 @@ Bugs that reached a live router, and the rule each one implies for new modules:
   server that more than one client polls (see `DashboardHTTPServer` in
   `modules/router-dashboard/api/server.py`), and test with a burst of
   connections while the server isn't accepting.
+- **Ship Prometheus rules as `ruleFiles`, never `services.prometheus.rules`.**
+  NixOS joins every `rules` entry into one file, and Prometheus reads only the
+  first JSON document in it. When `router.monitoring.alerting` added its group
+  as a `rules` entry, a consumer's own entry silently lost one of them
+  (elitedesk). Write rules with `pkgs.writeText` into `ruleFiles`, and keep
+  the data in an option (like `router.monitoring.alerting.ruleGroups`) so
+  checks can read it without import-from-derivation.
 
 ## Evaluation Tests
 

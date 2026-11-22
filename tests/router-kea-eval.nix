@@ -471,8 +471,7 @@ in
         {
           assertion =
             let
-              rulesJson = builtins.fromJSON (builtins.head config.services.prometheus.rules);
-              rulesList = (builtins.head rulesJson.groups).rules;
+              rulesList = (builtins.head config.router.monitoring.alerting.ruleGroups.groups).rules;
               alertNames = map (r: r.alert) rulesList;
             in
             builtins.elem "KeaDhcpPoolUtilizationWarning" alertNames
