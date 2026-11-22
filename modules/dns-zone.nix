@@ -469,16 +469,20 @@ in
       };
 
       script = let
-        technitiumSecretName =
+        # WHY: without router-technitium, keep the historical
+        # technitium-api-key age secret as the fallback.
+        technitiumTokenFile =
           if config.services ? router-technitium then
-            config.services.router-technitium.apiKeySecretName
+            config.services.router-technitium.resolvedApiKeyFile
+          else if (config.age.secrets or { }) ? technitium-api-key then
+            config.age.secrets.technitium-api-key.path
           else
             null;
         apiToken =
           if config.systemd.services ? technitium-bootstrap-api-token then
             "/var/lib/private/technitium-dns-server/nix-router-api-token"
-          else if technitiumSecretName != null && builtins.hasAttr technitiumSecretName (config.age.secrets or { }) then
-            config.age.secrets.${technitiumSecretName}.path
+          else if technitiumTokenFile != null then
+            technitiumTokenFile
           else
             "/dev/null";
       in

@@ -8,34 +8,46 @@ it, and how to check that the units actually did something.
 
 ## Recommended setup: let the module mint the token
 
-Give the module the Technitium admin password as an age secret and let
-`technitium-bootstrap-api-token` create and maintain the automation token:
+Give the module the Technitium admin password as a file and let
+`technitium-bootstrap-api-token` create and maintain the automation token.
+Any secret backend works (clan vars, sops-nix, agenix); pass the runtime path:
+
+```nix
+services.router-technitium = {
+  enable = true;
+  bootstrapPasswordFile = "/run/secrets/technitium-admin-password";
+  # No separately managed API key: everything uses the bootstrapped token.
+  apiKeySecretName = null;
+};
+# With router-dns-service, set the key options there; it passes them through:
+# services.router-dns-service.technitium.apiKeySecretName = null;
+```
+
+With agenix you can instead name the age secret and let the module look up
+its path:
 
 ```nix
 age.secrets.technitium-admin-password = {
   file = ./secrets/technitium-admin-password.age;
   mode = "0400";
 };
-
-services.router-technitium = {
-  enable = true;
-  bootstrapPasswordSecretName = "technitium-admin-password";
-};
-
-# No separately managed API key: everything uses the bootstrapped token.
-# If you use router-dns-service, set it there; router-dns-service passes it
-# through to router-technitium.
-services.router-dns-service.technitium.apiKeySecretName = null;
-# Without router-dns-service:
-# services.router-technitium.apiKeySecretName = null;
+services.router-technitium.bootstrapPasswordSecretName = "technitium-admin-password";
 ```
+
+The `*File` options (`apiKeyFile`, `bootstrapPasswordFile`) take precedence
+over the `*SecretName` options. They are strings, not Nix paths, so the secret
+is never copied into the store. Modules that call the API (dns-zone,
+dns-blocklists, router-dashboard) read the resolved token path from
+`services.router-technitium.resolvedApiKeyFile`, so they need no agenix
+module either.
 
 On every start, `technitium-bootstrap-api-token`:
 
 1. keeps the existing token at
    `/var/lib/private/technitium-dns-server/nix-router-api-token` if Technitium
    still accepts it;
-2. otherwise tries the `apiKeySecretName` secret, if one is configured and valid;
+2. otherwise tries the configured API key (`apiKeyFile`, or the
+   `apiKeySecretName` secret), if one is configured and valid;
 3. otherwise logs in as `bootstrapUsername` (default `admin`) and mints a new
    token named `nix-router-<hostname>`.
 

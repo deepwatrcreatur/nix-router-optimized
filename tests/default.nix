@@ -85,6 +85,10 @@ let
     inherit self eval lib pkgs;
   };
 
+  routerSecretFileChecks = import ./router-secret-files.nix {
+    inherit self lib eval;
+  };
+
   routerDashboardFirewallChecks = import ./router-dashboard-firewall.nix {
     inherit self eval lib;
   };
@@ -378,6 +382,7 @@ in
 // routerIpv6RaControlChecks
 // keaChecks
 // routerDashboardInventoryChecks
+// routerSecretFileChecks
 // routerDashboardFirewallChecks
 // routerDashboardServiceControlChecks
 // routerNetworkSecurityChecks

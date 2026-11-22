@@ -579,8 +579,9 @@ in
     }
     ({ config, ... }: assertModule [
       {
-        assertion = config.systemd.services.technitium-dns-server.environment.DNS_SERVER_ADMIN_PASSWORD_FILE == "/run/agenix/technitium-admin-password";
-        message = "router-technitium should pass the bootstrap admin password file to Technitium.";
+        assertion = config.systemd.services.technitium-dns-server.environment.DNS_SERVER_ADMIN_PASSWORD_FILE == "%d/admin-password"
+          && builtins.elem "admin-password:/run/agenix/technitium-admin-password" config.systemd.services.technitium-dns-server.serviceConfig.LoadCredential;
+        message = "router-technitium should pass the bootstrap admin password to Technitium through LoadCredential.";
       }
       {
         assertion = config.systemd.services.technitium-bootstrap-api-token.wantedBy == [ "multi-user.target" ];
