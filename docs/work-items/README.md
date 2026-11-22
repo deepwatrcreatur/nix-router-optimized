@@ -10,7 +10,9 @@ tracked separately from the dashboard planning docs.
 The authority split is:
 
 - [`START-HERE.md`](./START-HERE.md) for onboarding and claiming rules
-- `beads-rust` (`.beads/issues.jsonl`) as the authoritative state and prioritization tracker
+- the beads queue on the `beads-queue` branch, used through `beads-q` (see
+  [AGENTS.md](../../AGENTS.md#work-queue-beads)), as the authoritative state and
+  prioritization tracker
 - this file and markdown documents as design and implementation specs
 
 ## Current Ranked Queue

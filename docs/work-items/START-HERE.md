@@ -15,20 +15,22 @@ Read first:
 - [`README.md`](./README.md)
 - [`agent-prompts.md`](./agent-prompts.md)
 
-The authoritative work queue is the ordered list in [`README.md`](./README.md).
+The authoritative work queue is the beads queue on the `beads-queue` branch,
+used through `beads-q` (see [AGENTS.md](../../AGENTS.md#work-queue-beads)).
+The markdown work items here are design and implementation specs.
 
 ## How To Choose Work
 
-0. Refresh remote state first if multiple agents may be active (`git fetch origin`).
-1. Start with the ordered list in [`README.md`](./README.md).
-2. Find the first item whose header says `Status: ready`.
-3. Claim by **work-item path/title**, not only by number, because numbering can
-   move when new higher-priority items are inserted.
-4. Before taking it, check whether the suggested branch/worktree already exists.
-5. If a branch/worktree exists but there is no sign of active ownership,
-   treat it as stale and proceed carefully rather than assuming the queue is
-   wrong.
-6. Mark the item `in-progress` in your branch as part of the same PR.
+1. `beads-q ready --json` lists unblocked work; `beads-q show <id>` has the
+   acceptance criteria and any linked work-item spec.
+2. Claim with `beads-q update <id> --claim --actor <you>`. The claim is pushed
+   at once, so agents on other machines see it. `CLAIM_CONFLICT` means someone
+   else holds it: pick other work.
+3. Before starting, check whether the suggested branch/worktree already exists.
+   If it does but the bead is not claimed, treat it as stale and proceed
+   carefully.
+4. Don't mark progress in your branch; the bead's status is the claim. Close
+   the bead after the PR merges, citing it.
 
 ## Worktree Guardrails
 
