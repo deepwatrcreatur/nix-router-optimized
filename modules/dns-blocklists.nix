@@ -47,18 +47,21 @@ let
 
   ageSecrets = config.age.secrets or { };
   hasTokenBootstrap = config.systemd.services ? technitium-bootstrap-api-token;
-  technitiumSecretName =
+  # WHY: router-technitium resolves apiKeyFile / apiKeySecretName once; without
+  # that module, fall back to the historical technitium-api-key age secret.
+  technitiumTokenFile =
     if config.services ? router-technitium then
-      config.services.router-technitium.apiKeySecretName
+      config.services.router-technitium.resolvedApiKeyFile
+    else if ageSecrets ? technitium-api-key then
+      ageSecrets.technitium-api-key.path
     else
-      "technitium-api-key";
+      null;
   # WHY: candidate token files in order of preference: the token maintained by
   # technitium-bootstrap-api-token (validated and re-minted when it stops
-  # working), then the configured age secret.
+  # working), then the configured token file.
   apiTokenPaths =
     optional hasTokenBootstrap "/var/lib/private/technitium-dns-server/nix-router-api-token"
-    ++ optional (technitiumSecretName != null && ageSecrets ? ${technitiumSecretName})
-      ageSecrets.${technitiumSecretName}.path;
+    ++ optional (technitiumTokenFile != null) technitiumTokenFile;
 
   blockListScript = pkgs.writeShellScript "technitium-sync-blocklists" ''
     set -euo pipefail

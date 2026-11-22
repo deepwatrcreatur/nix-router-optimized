@@ -998,10 +998,9 @@ in {
             if config.services.router-technitium.enable or false then technitiumTokenSnapshotFile else "";
           TECHNITIUM_API_KEY_FILE =
             let
-              secretName = config.services.router-technitium.apiKeySecretName or "technitium-api-key";
-              secrets = config.age.secrets or { };
+              tokenFile = config.services.router-technitium.resolvedApiKeyFile or null;
             in
-            if secretName != null && secrets ? ${secretName} then secrets.${secretName}.path else "";
+            if tokenFile != null then tokenFile else "";
         };
 
         serviceConfig = {

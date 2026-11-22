@@ -111,6 +111,17 @@ in
         description = "Age secret name exported as TECHNITIUM_API_KEY_FILE for Technitium.";
       };
 
+      # SECURITY: str, not path, so the token file is never copied into the store.
+      apiKeyFile = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = ''
+          Runtime path of a Technitium API token file (any secret backend);
+          passed to services.router-technitium.apiKeyFile and preferred over
+          apiKeySecretName.
+        '';
+      };
+
       enableBlockLists = mkOption {
         type = types.bool;
         default = true;
@@ -211,6 +222,7 @@ in
     services.router-technitium = mkIf (cfg.provider == "technitium") {
       enable = true;
       apiKeySecretName = cfg.technitium.apiKeySecretName;
+      apiKeyFile = cfg.technitium.apiKeyFile;
       enableBlockLists = cfg.technitium.enableBlockLists;
       blockListPresets = cfg.technitium.blockListPresets;
       extraBlockListUrls = cfg.technitium.extraBlockListUrls;

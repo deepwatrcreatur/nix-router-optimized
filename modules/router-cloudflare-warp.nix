@@ -13,7 +13,11 @@ let
   hasRouterFirewallOption = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   ageSecrets = config.age.secrets or { };
   hasLicenseSecret = cfg.licenseKeySecretName != null && hasAttr cfg.licenseKeySecretName ageSecrets;
-  licenseKeyPath = if hasLicenseSecret then config.age.secrets.${cfg.licenseKeySecretName}.path else null;
+  # WHY: an explicit licenseKeyFile (any secret backend) wins over the age lookup.
+  licenseKeyPath =
+    if cfg.licenseKeyFile != null then cfg.licenseKeyFile
+    else if hasLicenseSecret then ageSecrets.${cfg.licenseKeySecretName}.path
+    else null;
 in
 {
   options.services.router-cloudflare-warp = {
@@ -29,6 +33,18 @@ in
       type = types.nullOr types.str;
       default = null;
       description = "Optional Age secret name containing a Cloudflare WARP+ license key for higher speeds.";
+    };
+
+    # SECURITY: str, not path, so the key file is never copied into the store.
+    licenseKeyFile = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "/run/secrets/warp-license-key";
+      description = ''
+        Runtime path of a file holding a Cloudflare WARP+ license key. Works
+        with any secret backend and takes precedence over
+        `licenseKeySecretName`.
+      '';
     };
 
     routingMode = mkOption {

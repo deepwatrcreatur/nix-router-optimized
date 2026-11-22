@@ -13,12 +13,22 @@ let
   secretName = cfg.apiKeySecretName;
   bootstrapSecretName = cfg.bootstrapPasswordSecretName;
   ageSecrets = config.age.secrets or { };
-  hasApiSecret = secretName != null && hasAttr secretName ageSecrets;
-  hasBootstrapSecret = bootstrapSecretName != null && hasAttr bootstrapSecretName ageSecrets;
+  # WHY: an explicit *File path (any secret backend: clan vars, sops-nix,
+  # agenix) wins; the *SecretName age.secrets lookup stays for compatibility.
+  apiTokenFile =
+    if cfg.apiKeyFile != null then cfg.apiKeyFile
+    else if secretName != null && hasAttr secretName ageSecrets then ageSecrets.${secretName}.path
+    else null;
+  bootstrapFile =
+    if cfg.bootstrapPasswordFile != null then cfg.bootstrapPasswordFile
+    else if bootstrapSecretName != null && hasAttr bootstrapSecretName ageSecrets then ageSecrets.${bootstrapSecretName}.path
+    else null;
+  hasApiSecret = apiTokenFile != null;
+  hasBootstrapSecret = bootstrapFile != null;
   hasTokenSource = hasApiSecret || hasBootstrapSecret;
-  configuredApiTokenPath = if hasApiSecret then config.age.secrets.${secretName}.path else "/nonexistent";
+  configuredApiTokenPath = if hasApiSecret then apiTokenFile else "/nonexistent";
   runtimeApiTokenPath = "/var/lib/private/technitium-dns-server/nix-router-api-token";
-  bootstrapPasswordFile = if hasBootstrapSecret then config.age.secrets.${bootstrapSecretName}.path else "/nonexistent";
+  bootstrapPasswordPath = if hasBootstrapSecret then bootstrapFile else "/nonexistent";
   encryptedDnsModule = types.submodule {
     options = {
       enable = mkEnableOption "native encrypted DNS features in Technitium";
@@ -527,7 +537,7 @@ let
 
     TOKEN_FILE="${runtimeApiTokenPath}"
     SEEDED_TOKEN_FILE="${configuredApiTokenPath}"
-    BOOTSTRAP_PASSWORD_FILE="${bootstrapPasswordFile}"
+    BOOTSTRAP_PASSWORD_FILE="${bootstrapPasswordPath}"
     BOOTSTRAP_USERNAME="${cfg.bootstrapUsername}"
     TOKEN_NAME="nix-router-${config.networking.hostName}"
 
@@ -1483,6 +1493,43 @@ in
       '';
     };
 
+    # SECURITY: str, not path: a Nix path literal would be copied into the
+    # world-readable store. Pass a runtime path such as /run/secrets/...
+    apiKeyFile = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "/run/secrets/technitium-api-key";
+      description = ''
+        Runtime path of a file holding a Technitium API token, exported as
+        TECHNITIUM_API_KEY_FILE. Works with any secret backend and takes
+        precedence over `apiKeySecretName`.
+      '';
+    };
+
+    bootstrapPasswordFile = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "/run/secrets/technitium-admin-password";
+      description = ''
+        Runtime path of a file holding the Technitium admin password, used to
+        mint and refresh a node-local automation token at
+        `${runtimeApiTokenPath}`. Works with any secret backend and takes
+        precedence over `bootstrapPasswordSecretName`.
+      '';
+    };
+
+    resolvedApiKeyFile = mkOption {
+      type = types.nullOr types.str;
+      internal = true;
+      readOnly = true;
+      default = apiTokenFile;
+      description = ''
+        The configured API token file after resolving `apiKeyFile` and
+        `apiKeySecretName`, or null. Other modules (dns-zone, dns-blocklists,
+        router-dashboard) read this instead of looking up age.secrets.
+      '';
+    };
+
     bootstrapUsername = mkOption {
       type = types.str;
       default = "admin";
@@ -1825,7 +1872,7 @@ in
     services.technitium-dns-server.enable = true;
 
     systemd.services.technitium-dns-server.environment = mkIf hasBootstrapSecret {
-      DNS_SERVER_ADMIN_PASSWORD_FILE = bootstrapPasswordFile;
+      DNS_SERVER_ADMIN_PASSWORD_FILE = bootstrapPasswordPath;
     };
 
     services.router.dnsBlockLists = mkIf cfg.enableBlockLists {
@@ -1837,7 +1884,7 @@ in
     };
 
     environment.variables = mkIf hasApiSecret {
-      TECHNITIUM_API_KEY_FILE = config.age.secrets.${secretName}.path;
+      TECHNITIUM_API_KEY_FILE = apiTokenFile;
     };
 
     environment.etc."technitium/dhcp-reservations.json" = mkIf (cfg.dhcpReservations != { }) {

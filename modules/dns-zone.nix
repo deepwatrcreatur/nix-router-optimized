@@ -469,16 +469,12 @@ in
       };
 
       script = let
-        technitiumSecretName =
-          if config.services ? router-technitium then
-            config.services.router-technitium.apiKeySecretName
-          else
-            null;
+        technitiumTokenFile = config.services.router-technitium.resolvedApiKeyFile or null;
         apiToken =
           if config.systemd.services ? technitium-bootstrap-api-token then
             "/var/lib/private/technitium-dns-server/nix-router-api-token"
-          else if technitiumSecretName != null && builtins.hasAttr technitiumSecretName (config.age.secrets or { }) then
-            config.age.secrets.${technitiumSecretName}.path
+          else if technitiumTokenFile != null then
+            technitiumTokenFile
           else
             "/dev/null";
       in
