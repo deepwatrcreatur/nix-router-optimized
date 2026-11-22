@@ -26,6 +26,17 @@ let
         example = [ "alias1" "alias2" ];
         description = "CNAME aliases for this host";
       };
+
+      ssh = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Add a `Host` entry for this name to the system SSH client config
+          (`/etc/ssh/ssh_config`), so SSH host pickers such as `sshs` list
+          it. Plain `ssh <name>.<zone>` works through DNS without it. Leave it
+          off for devices without SSH (cameras, access points, doorbells).
+        '';
+      };
     };
   };
 
@@ -337,7 +348,10 @@ let
               Host ${name}.${zoneName}${shortPatterns}
                   Hostname ${name}.${zoneName}
             ''
-          ) zone.staticHosts
+          )
+          # WHY: only hosts that opt in. Every record used to get an entry, so
+          # host pickers listed doorbells, APs and the zone apex `@`.
+          (filterAttrs (name: host: host.ssh && name != "@") zone.staticHosts)
         ) allZones
       )
     );
