@@ -5,7 +5,7 @@
 **Homelab Consumers Analyzed**: `router` (Primary, Proxmox VM / igc 2.5G) and `elitedesk` (Standby, HP EliteDesk 8300 SFF / X520 10G SFP+)  
 **Infrastructure Context**: Migration from `unified-nix-configuration` to `nix-clan-homelab` (Clan-core, Den aspects, `clan vars`, `deploy-rs`)  
 **Date**: November 2026 (revision 1)  
-**Revised**: 2026-11-19 (revision 2: panel review, see §0)  
+**Revised**: 2026-11-19 (revision 2: panel review, see §0); 2026-11-21 (revision 3: shipped work, see §0.2.1)  
 
 ---
 
@@ -23,6 +23,7 @@ input, with factual errors corrected in place (marked *[rev 2]*).
 | --- | --- | --- | --- |
 | 1 | 2026-11 | external chatbot | Original research, survey and proposals |
 | 2 | 2026-11-19 | Claude (IC), after a five-voice panel (Codex, Gemini, Claude, Copilot, DeepSeek) | State of the project; priorities and verdicts from discussion 21; factual corrections |
+| 3 | 2026-11-21 | Claude (bead router-ytw) | §0.2.1 lists what shipped in #153–#174; stale items in §0.2–§0.3 and the feature matrix are marked *[rev 3]* |
 
 ### 0.2 State of the project as of 2026-11-19
 
@@ -44,7 +45,34 @@ input, with factual errors corrected in place (marked *[rev 2]*).
   isolation (beads `router-a2z`, `router-inl`, `router-osv`, `router-tat`,
   `router-qmu`, all closed).
 
-**Not done:**
+#### 0.2.1 Shipped since revision 2 (as of 2026-11-21)
+
+Every item has a NixOS VM test unless noted. The test names are flake checks
+(`nix build .#checks.x86_64-linux.<name>`).
+
+| Area | What shipped | PR | Proof |
+| --- | --- | --- | --- |
+| VRRP secret | `router-ha.vrrpPasswordFile` via a systemd credential; no default password, no store copy | #153 | eval checks |
+| GARP/NA refresh | keepalived gratuitous ARP and NA options | #154 | eval checks |
+| WAN promotion | `networkctl` up/reconfigure instead of restarting systemd-networkd | #155 | `vm-router-ha-wan-failover` |
+| DHCPv4 HA | Kea HA made real; HA port scoped to the peer; `keaSync` retired | #156 | `vm-router-kea-ha` |
+| VRRP lifecycle | crash, FAULT on LAN loss, reboot, `preemptDelay`, single-active units | #158 | `vm-router-ha-pair` |
+| Zone ownership | Technitium zones follow VRRP; NOTIFY from HA peers | #159 | `vm-router-technitium-zone-ha` |
+| WAN health | a master with a dark WAN yields at once (FAULT), then pins its priority; interval headroom | #161, #174 | `vm-router-ha-wan-health` |
+| Prefix across failover | shared DUID-LL/IAID keeps the delegated prefix | #162 | `vm-router-ha-wan-failover` |
+| Operations | `routerctl ha/leases/dns/routes` with `--json` | #163 | JSON asserted in `vm-router-kea-ha`, `vm-router-technitium-zone-ha` |
+| Safe change | `router-apply` switch/confirm/diff with auto-revert | #164 | `vm-router-apply` |
+| Single-active services | RA owner, DDNS, UPnP and Kea D2 follow VRRP | #166 | `vm-router-ha-pair`, eval checks |
+| DHCP relay | `router-dhcp-relay` with option 82 | #167 | `vm-router-dhcp-relay` |
+| Downstream IPv6 | SLAAC from the delegation, `ipv6SubnetId`; DHCPv6/PD serving decided against for now | #168 | `vm-router-ipv6-downstream` |
+| Multicast | `router-multicast` (igmpproxy) for IPTV | #169 | `vm-router-multicast` |
+| IPsec | `router-ipsec` (strongSwan swanctl, XFRM interfaces); router-bgp policy rendering fixed | #170 | `vm-router-ipsec` |
+| Dashboard | API listen backlog 5 → 128 | #171 | — |
+
+Still true: VRRP is not enabled on the homelab pair, and there has been no
+live failover on hardware (`nch-sny.36`).
+
+**Not done** *[rev 3: the three items below were fixed in #156, #155 and #153]*:
 
 - VRRP is **not** enabled on the homelab pair. There has been **no** live
   failover; the zone promotion and demotion was rehearsed by hand on elitedesk.
@@ -77,6 +105,7 @@ input, with factual errors corrected in place (marked *[rev 2]*).
   - With Flow Director ATR off (`ntuple on`), 0 of 6920 TCP queries failed
     over 2 h.
   - An ATR-on control is running.
+  - *[rev 3: elitedesk now runs the ConnectX-4 Lx; its 24 h gate is in progress.]*
 - The same card once dropped off the PCIe bus (homelab bead `nch-sny.31`).
 - Together they **gate any promotion of elitedesk**: a 24 h pass/fail
   threshold (`nch-sny.34`). A Mellanox ConnectX-4 Lx is available as the
@@ -87,11 +116,11 @@ input, with factual errors corrected in place (marked *[rev 2]*).
 | Order | Work | Beads |
 | --- | --- | --- |
 | P0 | Hardware gate: close the X520 incident against its threshold, add AER and link-flap alerting, or swap the NIC | `nch-sny.34`, `nch-sny.31` |
-| P1 | Failover correctness: WAN promotion without restarting networkd; two-node VRRP VM test (promote, demote, fault, reboot, zone HA, single-active units); VRRP secret as a file | `router-53n`, `router-0lh`, `router-ehu` |
+| P1 | Failover correctness: WAN promotion without restarting networkd; two-node VRRP VM test (promote, demote, fault, reboot, zone HA, single-active units); VRRP secret as a file *[rev 3: done, #153, #155, #158, #159]* | `router-53n`, `router-0lh`, `router-ehu` |
 | P1 | Supervised failover rehearsal with measured outage and tested fail-back, before VRRP is enabled | `nch-sny.36` |
-| P2 | Typed per-service single-active ownership, and one DHCP HA model (`keaSync` retired or made real) | `router-4dk` |
-| P2 | Dashboard listen backlog (5 → larger); fix the doc errors in this file | `nch-sny.35`, `router-q5k` |
-| P3 | Keepalived's built-in GARP and NA refresh options | `router-3m7` |
+| P2 | Typed per-service single-active ownership, and one DHCP HA model (`keaSync` retired or made real) *[rev 3: done, #156, #166]* | `router-4dk`, `router-d9g` |
+| P2 | Dashboard listen backlog (5 → larger); fix the doc errors in this file *[rev 3: done, #171]* | `nch-sny.35`, `router-q5k` |
+| P3 | Keepalived's built-in GARP and NA refresh options *[rev 3: done, #154]* | `router-3m7` |
 | Later | conntrackd, IRQ/RPS/XPS tuning, automatic CAKE, SSE, netns, CoreRAD (see 0.4) | none yet |
 
 The panel was unanimous: hardware validation and plain failover correctness
@@ -254,12 +283,12 @@ To identify potential architectural improvements, we surveyed leading open-sourc
 | **Firewall Backend** | ✅ nftables + FastTrack | ✅ nftables | ✅ nftables | ✅ Hardened nftables | N/A | nftables (VyOS) / pf (OPN) |
 | **Network Namespaces (`netns`)** | ❌ No (Single namespace) | ✅ Full netns isolation | ❌ No | ❌ No | N/A | ✅ VRF / netns |
 | **SMP IRQ / RPS / XPS Tuning** | ⚠️ ethtool offload script | ❌ No | ✅ Explicit IRQ affinity | ❌ No | N/A | ✅ Automatic multi-queue |
-| **Observability Pipeline** | ✅ Netdata, Grafana, custom UI | ❌ No | ✅ Vector + ulogd (JSON) | ⚠️ Minimal | ✅ CoreRAD Prometheus | ✅ Telegraf / Influx |
+| **Observability Pipeline** | ✅ Netdata, Grafana, custom UI; Vector + ulogd (`router-observability`) *[rev 3]* | ❌ No | ✅ Vector + ulogd (JSON) | ⚠️ Minimal | ✅ CoreRAD Prometheus | ✅ Telegraf / Influx |
 | **IPv6 RA Observability** | ⚠️ Opaque systemd-networkd | ⚠️ radvd | ⚠️ systemd-networkd | ⚠️ dnsmasq | ✅ CoreRAD (Native metrics)| ⚠️ radvd / FRR |
-| **High Availability (HA)** | ⚠️ VRRP (Keepalived) + shell | ❌ No | ❌ No | ❌ No | ❌ No | ✅ CARP + pfsync / VRRP |
-| **Conntrack Synchronization** | ⚠️ Designed (Ledger 2026-04) | ❌ No | ❌ No | ❌ No | N/A | ✅ pfsync / conntrackd |
-| **Secret Backend Agnosticism** | ⚠️ Historically agenix-centric | ⚠️ agenix | ⚠️ agenix | ⚠️ Plain text / age | N/A | ✅ Vault / Decoupled |
-| **Unit / Eval Test Harness** | ✅ Extensive eval checks | ⚠️ Minimal | ✅ Pure Nix unit tests | ❌ No | ✅ Go test suite | ✅ Pytest / CI bats |
+| **High Availability (HA)** | ✅ VRRP (Keepalived) with WAN takeover and health-driven yield, `preemptDelay`, Kea HA, zone and service ownership; VM-tested (`vm-router-ha-*`, `vm-router-kea-ha`, `vm-router-technitium-zone-ha`), not yet on hardware *[rev 3]* | ❌ No | ❌ No | ❌ No | ❌ No | ✅ CARP + pfsync / VRRP |
+| **Conntrack Synchronization** | ❌ Deferred until VRRP is rehearsed on hardware *[rev 3]* | ❌ No | ❌ No | ❌ No | N/A | ✅ pfsync / conntrackd |
+| **Secret Backend Agnosticism** | ✅ Runtime file paths (`vrrpPasswordFile`, `pskFile`, TSIG key files); any secret manager; router-technitium also picks up matching `age.secrets` when agenix is present *[rev 3]* | ⚠️ agenix | ⚠️ agenix | ⚠️ Plain text / age | N/A | ✅ Vault / Decoupled |
+| **Unit / Eval Test Harness** | ✅ Extensive eval checks plus 11 NixOS VM tests, most of them multi-node *[rev 3]* | ⚠️ Minimal | ✅ Pure Nix unit tests | ❌ No | ✅ Go test suite | ✅ Pytest / CI bats |
 
 ---
 

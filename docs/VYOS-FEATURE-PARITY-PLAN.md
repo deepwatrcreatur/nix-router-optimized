@@ -1,7 +1,8 @@
 # VyOS Comparison and Gap Analysis
 
-**Status:** comparison and backlog input, not a roadmap. Revision 2
-(2026-11-20) applies the review in
+**Status:** comparison and backlog input, not a roadmap. Revision 3
+(2026-11-21, bead router-ytw) records that every §3 work item except the
+hardware rehearsal has shipped. Revision 2 (2026-11-20) applies the review in
 [discussion 22](./discussions/22-vyos-parity-plan-review.md). Revision 1
 (commit 44992a6) was written by another chatbot and overstated several
 points; those are corrected here.
@@ -14,8 +15,6 @@ quoting this page.
 - [`ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md`](./ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md)
 - [`MODULES.md`](./MODULES.md) (56 modules)
 
-Bead router-ytw refreshes this page and the ecosystem feature matrix once
-the work items below land.
 
 ---
 
@@ -39,7 +38,7 @@ What each side honestly offers:
 | | VyOS | `nix-router-optimized` |
 | :--- | :--- | :--- |
 | **Strengths** | A mature operational CLI; `commit-confirm` and `compare`; a wide protocol set (OSPF, IS-IS, BFD, PIM, IGMP proxy, IPsec, EVPN); conntrack-sync; long production history | Eval-time typing and assertions across all modules; the whole router in one reviewable flake; NixOS VM tests that exercise HA end to end; integrations VyOS doesn't ship (Technitium with zone replication, Kea HA tied to the module system, mesh overlays) |
-| **Gaps** | Less composable with a general-purpose OS; LTS images are paid | Automatic revert only through `router-apply` (opt-in, not `nixos-rebuild`); fewer routing protocols; HA not yet proven on real hardware |
+| **Gaps** | Less composable with a general-purpose OS; LTS images are paid | Automatic revert only through `router-apply` (opt-in, not `nixos-rebuild`); no OSPF, IS-IS, BFD or PIM; IPsec is route-based PSK only; no conntrack-sync; HA not yet proven on real hardware |
 
 Neither side's rollback is instant. A NixOS rollback (`nixos-rebuild switch
 --rollback`, or picking an older generation at boot) needs a path to the
@@ -81,6 +80,9 @@ covers it), **gap** (not available).
 ---
 
 ## 3. Work Items
+
+*Status (revision 3):* all items below have shipped except the hardware
+rehearsal; each names the VM test that proves it.
 
 Ordered by the review (discussion 22). HA hardening comes first because the
 maintainer's first goal is a safe primary router on elitedesk; the
