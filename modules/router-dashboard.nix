@@ -998,7 +998,15 @@ in {
             if config.services.router-technitium.enable or false then technitiumTokenSnapshotFile else "";
           TECHNITIUM_API_KEY_FILE =
             let
-              tokenFile = config.services.router-technitium.resolvedApiKeyFile or null;
+              # WHY: without router-technitium, keep the historical
+              # technitium-api-key age secret as the fallback.
+              tokenFile =
+                if config.services ? router-technitium then
+                  config.services.router-technitium.resolvedApiKeyFile
+                else if (config.age.secrets or { }) ? technitium-api-key then
+                  config.age.secrets.technitium-api-key.path
+                else
+                  null;
             in
             if tokenFile != null then tokenFile else "";
         };

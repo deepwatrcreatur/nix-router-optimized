@@ -51,8 +51,9 @@ in
           }
           {
             assertion = config.systemd.services ? technitium-bootstrap-api-token
-              && config.systemd.services.technitium-dns-server.environment.DNS_SERVER_ADMIN_PASSWORD_FILE == adminPassword;
-            message = "router-technitium.bootstrapPasswordFile must enable the token bootstrap and set DNS_SERVER_ADMIN_PASSWORD_FILE.";
+              && config.systemd.services.technitium-dns-server.environment.DNS_SERVER_ADMIN_PASSWORD_FILE == "%d/admin-password"
+              && builtins.elem "admin-password:${adminPassword}" config.systemd.services.technitium-dns-server.serviceConfig.LoadCredential;
+            message = "router-technitium.bootstrapPasswordFile must enable the token bootstrap and reach Technitium through LoadCredential (it runs as a DynamicUser that cannot read root-only files).";
           }
           {
             assertion = dashEnv.TECHNITIUM_API_KEY_FILE == apiKey
@@ -65,5 +66,31 @@ in
           }
         ];
       })
+  ];
+
+  # Without router-technitium, router-dashboard must still find the historical
+  # technitium-api-key age secret.
+  router-dashboard-standalone-age-token-fallback-eval = eval.mkNixosEvalCheck "router-dashboard-standalone-age-token-fallback" [
+    self.nixosModules.router-dashboard
+    ({ lib, ... }: {
+      # Minimal stand-in for the agenix module's option.
+      options.age.secrets = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule { options.path = lib.mkOption { type = lib.types.str; }; });
+        default = { };
+      };
+      config = {
+        age.secrets.technitium-api-key.path = "/run/agenix/technitium-api-key";
+        services.router-dashboard.enable = true;
+      };
+    })
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = !(config.services ? router-technitium)
+            && config.systemd.services.router-dashboard.environment.TECHNITIUM_API_KEY_FILE == "/run/agenix/technitium-api-key";
+          message = "A standalone router-dashboard must fall back to age.secrets.technitium-api-key.";
+        }
+      ];
+    })
   ];
 }

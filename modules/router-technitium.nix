@@ -432,8 +432,8 @@ let
         printf '%s' "${runtimeApiTokenPath}"
         return 0
       fi
-      if [ -f "${configuredApiTokenPath}" ]; then
-        printf '%s' "${configuredApiTokenPath}"
+      if [ -f ${escapeShellArg configuredApiTokenPath} ]; then
+        printf '%s' ${escapeShellArg configuredApiTokenPath}
         return 0
       fi
       return 1
@@ -536,8 +536,9 @@ let
     set -euo pipefail
 
     TOKEN_FILE="${runtimeApiTokenPath}"
-    SEEDED_TOKEN_FILE="${configuredApiTokenPath}"
-    BOOTSTRAP_PASSWORD_FILE="${bootstrapPasswordPath}"
+    # SECURITY: user-supplied paths are quoted; this script runs as root.
+    SEEDED_TOKEN_FILE=${escapeShellArg configuredApiTokenPath}
+    BOOTSTRAP_PASSWORD_FILE=${escapeShellArg bootstrapPasswordPath}
     BOOTSTRAP_USERNAME="${cfg.bootstrapUsername}"
     TOKEN_NAME="nix-router-${config.networking.hostName}"
 
@@ -1502,7 +1503,9 @@ in
       description = ''
         Runtime path of a file holding a Technitium API token, exported as
         TECHNITIUM_API_KEY_FILE. Works with any secret backend and takes
-        precedence over `apiKeySecretName`.
+        precedence over `apiKeySecretName`. The router automation units read
+        it as root; router-dashboard reads it as the `router-dashboard` user,
+        so give that group read access if the dashboard should use it.
       '';
     };
 
@@ -1514,7 +1517,8 @@ in
         Runtime path of a file holding the Technitium admin password, used to
         mint and refresh a node-local automation token at
         `${runtimeApiTokenPath}`. Works with any secret backend and takes
-        precedence over `bootstrapPasswordSecretName`.
+        precedence over `bootstrapPasswordSecretName`. Root-only (0400) is
+        fine: Technitium receives it through systemd `LoadCredential`.
       '';
     };
 
@@ -1871,8 +1875,13 @@ in
 
     services.technitium-dns-server.enable = true;
 
-    systemd.services.technitium-dns-server.environment = mkIf hasBootstrapSecret {
-      DNS_SERVER_ADMIN_PASSWORD_FILE = bootstrapPasswordPath;
+    # SECURITY: Technitium runs as a DynamicUser that usually cannot read a
+    # root-only secret (sops-nix and agenix default to 0400 root). If the read
+    # fails on first start, Technitium keeps its built-in admin password. Have
+    # systemd read the file as root and hand it over as a credential instead.
+    systemd.services.technitium-dns-server = mkIf hasBootstrapSecret {
+      serviceConfig.LoadCredential = [ "admin-password:${bootstrapPasswordPath}" ];
+      environment.DNS_SERVER_ADMIN_PASSWORD_FILE = "%d/admin-password";
     };
 
     services.router.dnsBlockLists = mkIf cfg.enableBlockLists {
