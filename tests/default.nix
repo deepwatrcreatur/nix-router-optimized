@@ -97,6 +97,10 @@ let
     inherit self lib eval;
   };
 
+  dnsZoneSshChecks = import ./dns-zone-ssh.nix {
+    inherit self lib eval;
+  };
+
   routerClatObservabilityChecks = import ./router-clat-observability.nix {
     inherit self lib eval;
   };
@@ -391,6 +395,7 @@ in
 // routerZonesChecks
 // routerClatObservabilityChecks
 // routerObservabilityChecks
+// dnsZoneSshChecks
 // routerDhcpOption108BoundaryChecks
 // routerMwanChecks
 // routerHaBoundaryChecks

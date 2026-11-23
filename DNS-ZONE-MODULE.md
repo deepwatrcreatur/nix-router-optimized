@@ -78,7 +78,13 @@ services.router.dnsZone = {
    - Does NOT interfere with DHCP dynamic updates
 
 3. **For Users**
-   - SSH using hostnames: `ssh gateway` instead of `ssh 10.10.10.1`
+   - SSH using hostnames: `ssh gateway.<zone>` (or `ssh gateway` with the zone
+     as a search domain) instead of `ssh 10.10.10.1`. Set `ssh = true` on a
+     host to also add a `Host` entry to `/etc/ssh/ssh_config` so SSH host
+     pickers such as `sshs` list it. It is off by default, and the zone apex
+     `@` never gets one.
+     *Migration:* entries used to be written for every static host; set
+     `ssh = true` on the hosts you want listed.
    - DNS queries work for both static and dynamic hosts
    - Changes to static hosts tracked in git
 
