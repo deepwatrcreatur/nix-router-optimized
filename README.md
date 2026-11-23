@@ -6,6 +6,15 @@
 
 `nix-router-optimized` is a modular NixOS framework for high-throughput edge routing, stateful packet filtering, and deterministic multi-node failover on commodity x86_64 and aarch64 hardware.
 
+## Router dashboard
+
+The dashboard gives operators a live view across eight pages. The capture
+below shows the Overview page; the [full screenshot gallery](docs/screenshots/README.md)
+contains one image for each page. Network addresses, MAC addresses, and
+internal hostnames are blurred in the gallery.
+
+![Router dashboard overview](docs/screenshots/router-dashboard/overview.png)
+
 The framework is aimed at operators who value the architectural rigor, formal state separation, and auditability associated with systems like OpenBSD (`pf`, `carp`, `relayd`), but require modern Linux dataplane capabilities: Netfilter FastTrack flowtables, eBPF/XDP hooks, multi-queue SMP IRQ distribution, CAKE Smart Queue Management (SQM), and bit-reproducible deployments managed entirely through GitOps.
 
 ---
