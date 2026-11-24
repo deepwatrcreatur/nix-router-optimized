@@ -5,6 +5,17 @@
 port off Grafana's 3001, opens the needed ports in `router-firewall`, and
 prepares runtime files before the service starts.
 
+## Ports
+
+| Setting (`server.*`) | Pangolin default | This module | Why |
+| --- | --- | --- | --- |
+| `internal_port` | 3001 | 3005 | Grafana listens on 3001 |
+| `ai_gateway_port` (Pangolin 1.24+) | 3005 | 3006 | its default collides with `internal_port`; Pangolin exits with `EADDRINUSE` |
+
+Override either through `services.router-pangolin.settings.server.<name>`
+if the port is taken on your host. Releases before 1.24 ignore
+`ai_gateway_port`.
+
 ## Files it manages
 
 | Path | Owner, mode | Purpose |
