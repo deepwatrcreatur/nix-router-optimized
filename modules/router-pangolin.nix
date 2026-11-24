@@ -67,6 +67,10 @@ in
           server = {
             # Default internal_port 3001 conflicts with Grafana (http_port = 3001)
             internal_port = 3005;
+            # GOTCHA: Pangolin 1.24 added an AI gateway listener whose default
+            # port is 3005, so it collided with internal_port and Pangolin
+            # exited with EADDRINUSE. Older releases ignore the key.
+            ai_gateway_port = 3006;
           };
         } cfg.settings;
       }

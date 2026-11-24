@@ -36,6 +36,16 @@
           assertion = config.systemd.services.pangolin.serviceConfig.User == "pangolin";
           message = "router-pangolin's /etc/pangolin ownership assumes the service runs as pangolin.";
         }
+        {
+          # Pangolin 1.24's AI gateway defaulted onto internal_port (3005).
+          assertion =
+            let
+              server = config.services.pangolin.settings.server;
+              ports = map (key: server.${key}) [ "internal_port" "ai_gateway_port" ];
+            in
+            builtins.length ports == builtins.length (builtins.attrNames (builtins.listToAttrs (map (p: { name = toString p; value = null; }) ports)));
+          message = "router-pangolin's internal_port and ai_gateway_port must differ.";
+        }
       ];
     })
   ];
