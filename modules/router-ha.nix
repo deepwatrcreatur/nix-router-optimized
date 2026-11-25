@@ -134,8 +134,9 @@ let
     fifo="''${!#}"
     while :; do
       # Lines look like: INSTANCE "main" MASTER 100
-      while read -r kind _name state _priority; do
-        [ "$kind" = INSTANCE ] || continue
+      while read -r kind name state _priority; do
+        # GOTCHA: the FIFO carries every instance's events; act on ours only.
+        [ "$kind" = INSTANCE ] && [ "$name" = '"main"' ] || continue
         echo "router-ha: applying $state"
         # GOTCHA: stdin is the FIFO; a script reading it would eat later events.
         case "$state" in
@@ -841,6 +842,9 @@ in
           ${optionalString hasNotifyHooks ''
             vrrp_notify_fifo ${notifyFifo}
             vrrp_notify_fifo_script "${notifyFifoReader}"
+            # WHY: a reload replaces the reader and can drop a queued event;
+            # replaying the current state lets the new reader re-apply it.
+            fifo_write_vrrp_states_on_reload
           ''}
         '';
         vrrpInstances.main = {
