@@ -245,6 +245,15 @@ mkRouterTest {
         router1.succeed("""printf 'INSTANCE "main" MASTER 100\\n' > /run/router-ha/notify.fifo""")
         assert_steady(router1, [router2])
 
+    with subtest("keepalived reload mid-promotion: the new reader finishes it"):
+        # keepalived does not replay MASTER after a reload. Simulate a
+        # promotion killed between WAN down and WAN up.
+        router1.succeed("touch /run/router-ha/master-pending && ip link set dev eth1 down")
+        router1.succeed("systemctl reload keepalived")
+        retry(lambda _: wan_up(router1), 30)
+        router1.wait_until_fails("test -e /run/router-ha/master-pending", timeout=30)
+        assert_steady(router1, [router2])
+
     with subtest("MASTER crash: router2 takes over, router1 returns after preemptDelay"):
         # keepalived has Restart=always: ExecStopPost demotes router1, the
         # restarted daemon comes back as BACKUP and must wait preemptDelay.

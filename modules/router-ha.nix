@@ -5,6 +5,7 @@ with lib;
 let
   cfg = config.services.router-ha;
   runtimeDir = "/run/router-ha";
+  masterPendingFile = "${runtimeDir}/master-pending";
   roleStateFile = "${runtimeDir}/role";
   # Created by keepalived; read by notifyFifoReader.
   notifyFifo = "${runtimeDir}/notify.fifo";
@@ -78,6 +79,9 @@ let
 
   notifyMasterScript = pkgs.writeShellScript "keepalived-master" ''
     ${masterRoleScript}
+    # INVARIANT: present only while a promotion runs; the FIFO reader
+    # finishes an interrupted one (see notifyFifoReader).
+    ${pkgs.coreutils}/bin/touch ${escapeShellArg masterPendingFile}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
       ${optionalString (cfg.wan.clonedMac != null) ''
@@ -100,10 +104,12 @@ let
     ${optionalString (cfg.singleActiveUnits != [ ]) ''
       ${startSingleActiveUnits}
     ''}
+    ${pkgs.coreutils}/bin/rm -f ${escapeShellArg masterPendingFile}
   '';
 
   demoteActiveOwnership = role: roleScript: pkgs.writeShellScript "router-ha-demote-${role}" ''
     ${roleScript}
+    ${pkgs.coreutils}/bin/rm -f ${escapeShellArg masterPendingFile}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning away from MASTER: Bringing down WAN ${cfg.wan.interface}..."
       ${pkgs.systemd}/bin/networkctl down ${escapeShellArg cfg.wan.interface} \
@@ -133,6 +139,15 @@ let
   notifyFifoReader = pkgs.writeShellScript "router-ha-notify-fifo" ''
     fifo="''${!#}"
     while :; do
+      # GOTCHA: a reload kills the reader, possibly mid-promotion, and
+      # keepalived 2.3.4 replays only non-MASTER states. Finish the promotion
+      # if this node still holds the VIP; otherwise the replayed state demotes.
+      if [ -e ${escapeShellArg masterPendingFile} ] \
+        && ${pkgs.iproute2}/bin/ip -o addr show dev ${escapeShellArg cfg.vrrpInterface} \
+          | ${pkgs.gnugrep}/bin/grep -qF ${escapeShellArg " ${virtualIpAddress}/"}; then
+        echo "router-ha: finishing an interrupted MASTER promotion"
+        ${notifyMasterScript} </dev/null
+      fi
       # Lines look like: INSTANCE "main" MASTER 100
       while read -r kind name state _priority; do
         # GOTCHA: the FIFO carries every instance's events; act on ours only.
