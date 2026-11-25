@@ -1039,6 +1039,10 @@ let
     ${optionalString (action == "promote" && cfg.rfc2136.enable) ''
       ${pkgs.systemd}/bin/systemctl --no-block restart technitium-enable-rfc2136.service || rc=1
     ''}
+    ${optionalString (action == "promote" && config.systemd.services ? technitium-sync-static-hosts) ''
+      # WHY: the sync skips zones this node does not own; write them now.
+      ${pkgs.systemd}/bin/systemctl --no-block restart technitium-sync-static-hosts.service || rc=1
+    ''}
     exit "$rc"
   '';
 

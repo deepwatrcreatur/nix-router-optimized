@@ -266,5 +266,13 @@ Two consequences for operators:
 - **Removing a host from the config now removes its DNS record** on the next
   rebuild. Before this, retired hosts kept resolving indefinitely.
 
+On a node where a zone is a Secondary, the sync skips that zone (Technitium
+refuses writes to it); the zone primary's own sync writes the records and
+replication brings them over. Under `zoneReplication.ha` the sync also never
+creates a replicated zone, because that would leave a Primary on the backup at
+boot; the zone-HA units create it. Promotion reruns the sync, so the new owner
+writes any records the old one never wrote. Pruning for a skipped zone waits
+until this node owns it.
+
 Do not define the same name both as a host alias and in the zone `aliases`
 attrset. It works, but it is easy to forget one copy when removing it.
