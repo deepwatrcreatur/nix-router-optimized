@@ -164,12 +164,11 @@ mkRouterTest {
     with subtest("reapplying the MASTER's WAN config keeps its leases"):
         # A deploy that changes the WAN .network makes networkd reconfigure
         # the link while it is up and restart its DHCP clients.
-        v6 = releases6()
         router1.succeed("networkctl reconfigure eth1")
         wait_wan_lease(router1)
         wait_pd(router1)
         assert delegated(router1) == pd, f"reconfigure changed the prefix to {delegated(router1)}"
-        assert releases6() == v6, "reconfigure released the DHCPv6 lease"
+        assert releases6() == 0, "reconfigure released the DHCPv6 lease"
         assert releases() == 0, "reconfigure released the DHCPv4 lease"
 
     with subtest("no DHCP RELEASE reached the ISP during failover or fail-back"):
@@ -178,6 +177,7 @@ mkRouterTest {
         # before networkd's DHCP client could send one.
         isp.succeed("journalctl -u dnsmasq --no-pager | grep -q DHCPACK")
         assert releases() == 0, "a demoted router released the WAN lease"
+        assert releases6() == 0, "a router released its DHCPv6 lease or prefix"
 
     with subtest("LAN and management untouched, systemd-networkd never restarted"):
         check_monitors("failover and fail-back")
