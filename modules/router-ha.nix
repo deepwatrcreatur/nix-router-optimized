@@ -5,7 +5,10 @@ with lib;
 let
   cfg = config.services.router-ha;
   runtimeDir = "/run/router-ha";
+  masterPendingFile = "${runtimeDir}/master-pending";
   roleStateFile = "${runtimeDir}/role";
+  # Created by keepalived; read by notifyFifoReader.
+  notifyFifo = "${runtimeDir}/notify.fifo";
   hasRouterFirewall = hasAttrByPath [ "services" "router-firewall" "enable" ] options;
   hasRouterBgp = hasAttrByPath [ "services" "router-bgp" "enable" ] options;
   hasRouterNdpProxy = hasAttrByPath [ "services" "router-ndp-proxy" "enable" ] options;
@@ -76,6 +79,9 @@ let
 
   notifyMasterScript = pkgs.writeShellScript "keepalived-master" ''
     ${masterRoleScript}
+    # INVARIANT: present only while a promotion runs; the FIFO reader
+    # finishes an interrupted one (see notifyFifoReader).
+    ${pkgs.coreutils}/bin/touch ${escapeShellArg masterPendingFile}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
       ${optionalString (cfg.wan.clonedMac != null) ''
@@ -98,10 +104,12 @@ let
     ${optionalString (cfg.singleActiveUnits != [ ]) ''
       ${startSingleActiveUnits}
     ''}
+    ${pkgs.coreutils}/bin/rm -f ${escapeShellArg masterPendingFile}
   '';
 
   demoteActiveOwnership = role: roleScript: pkgs.writeShellScript "router-ha-demote-${role}" ''
     ${roleScript}
+    ${pkgs.coreutils}/bin/rm -f ${escapeShellArg masterPendingFile}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning away from MASTER: Bringing down WAN ${cfg.wan.interface}..."
       ${pkgs.systemd}/bin/networkctl down ${escapeShellArg cfg.wan.interface} \
@@ -121,6 +129,43 @@ let
   notifyBackupScript = demoteActiveOwnership "backup" backupRoleScript;
   notifyFaultScript = demoteActiveOwnership "fault" faultRoleScript;
   keepalivedStopScript = demoteActiveOwnership "stop" backupRoleScript;
+
+  hasNotifyHooks = cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ];
+
+  # INVARIANT: one reader applies transitions one at a time, in the order
+  # keepalived sent them. Separate notify_* scripts run concurrently, so a
+  # MASTER quickly followed by FAULT could raise the WAN after the FAULT
+  # script took it down (docs/router-ha-prior-art.md#adopted-from-this-review).
+  notifyFifoReader = pkgs.writeShellScript "router-ha-notify-fifo" ''
+    fifo="''${!#}"
+    while :; do
+      # GOTCHA: a reload kills the reader, possibly mid-promotion, and
+      # keepalived 2.3.4 replays only non-MASTER states. Finish the promotion
+      # if this node still holds the VIP; otherwise the replayed state demotes.
+      if [ -e ${escapeShellArg masterPendingFile} ] \
+        && ${pkgs.iproute2}/bin/ip -o addr show dev ${escapeShellArg cfg.vrrpInterface} \
+          | ${pkgs.gnugrep}/bin/grep -qF ${escapeShellArg " ${virtualIpAddress}/"}; then
+        echo "router-ha: finishing an interrupted MASTER promotion"
+        ${notifyMasterScript} </dev/null
+      fi
+      # Lines look like: INSTANCE "main" MASTER 100
+      while read -r kind name state _priority; do
+        # GOTCHA: the FIFO carries every instance's events; act on ours only.
+        [ "$kind" = INSTANCE ] && [ "$name" = '"main"' ] || continue
+        echo "router-ha: applying $state"
+        # GOTCHA: stdin is the FIFO; a script reading it would eat later events.
+        case "$state" in
+          MASTER) ${notifyMasterScript} </dev/null ;;
+          BACKUP) ${notifyBackupScript} </dev/null ;;
+          FAULT) ${notifyFaultScript} </dev/null ;;
+          STOP | DELETED) ${keepalivedStopScript} </dev/null ;;
+          *) ;;
+        esac
+      done <"$fifo"
+      # GOTCHA: EOF only means keepalived closed its end (reload); reopen.
+      ${pkgs.coreutils}/bin/sleep 0.1
+    done
+  '';
 
   hc = cfg.wan.healthCheck;
   wanHealthEnabled = cfg.wan.enable && hc.enable;
@@ -625,6 +670,13 @@ in
       };
     };
 
+    transitionScripts = mkOption {
+      type = types.attrsOf types.package;
+      internal = true;
+      readOnly = true;
+      description = "Scripts the notify FIFO reader runs per VRRP state (for checks).";
+    };
+
     keaSync = {
       enable = mkOption {
         type = types.bool;
@@ -788,12 +840,27 @@ in
         '';
       };
 
+      services.router-ha.transitionScripts = {
+        master = notifyMasterScript;
+        backup = notifyBackupScript;
+        fault = notifyFaultScript;
+        stop = keepalivedStopScript;
+        reader = notifyFifoReader;
+      };
+
       # Keepalived for VRRP
       services.keepalived = {
         enable = true;
         enableScriptSecurity = true;
         extraGlobalDefs = ''
           script_user root
+          ${optionalString hasNotifyHooks ''
+            vrrp_notify_fifo ${notifyFifo}
+            vrrp_notify_fifo_script "${notifyFifoReader}"
+            # WHY: a reload replaces the reader and can drop a queued event;
+            # replaying the current state lets the new reader re-apply it.
+            fifo_write_vrrp_states_on_reload
+          ''}
         '';
         vrrpInstances.main = {
           # INVARIANT: with preemptDelay every node starts BACKUP; keepalived
@@ -816,11 +883,6 @@ in
               auth_type PASS
               auth_pass "${if usePasswordFile then "$ROUTER_HA_VRRP_PASS" else cfg.vrrpPassword}"
             }
-            ${optionalString (cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ]) ''
-              notify_master "${notifyMasterScript}"
-              notify_backup "${notifyBackupScript}"
-              notify_fault "${notifyFaultScript}"
-            ''}
           '';
         };
       };

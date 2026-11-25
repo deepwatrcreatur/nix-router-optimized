@@ -6,13 +6,6 @@
 
 let
   assertModule = assertions: { inherit assertions; };
-  extractNotifyScript =
-    key: extraConfig:
-    let
-      line = builtins.head (builtins.filter (lib.hasPrefix "${key} \"") (lib.splitString "\n" extraConfig));
-      trimmed = lib.removePrefix "${key} \"" line;
-    in
-    lib.removeSuffix "\"" trimmed;
 in
 {
   router-ndppd-basic-eval = eval.mkNixosEvalCheck "router-ndppd-basic" [
@@ -139,10 +132,10 @@ in
     }
     ({ config, ... }:
       let
-        keepalivedConfig = config.services.keepalived.vrrpInstances.main.extraConfig;
-        masterScript = extractNotifyScript "notify_master" keepalivedConfig;
-        backupScript = extractNotifyScript "notify_backup" keepalivedConfig;
-        faultScript = extractNotifyScript "notify_fault" keepalivedConfig;
+        scripts = config.services.router-ha.transitionScripts;
+        masterScript = scripts.master;
+        backupScript = scripts.backup;
+        faultScript = scripts.fault;
         ndppdService = config.systemd.services.router-ndp-proxy;
       in
       assertModule [

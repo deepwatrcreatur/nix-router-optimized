@@ -92,6 +92,26 @@ router solicitation at once, but one that only sends slow periodic RAs
 delays IPv6 after a failover. `DHCPv6Config.WithoutRA = "solicit"` on the
 WAN network removes that dependency.
 
+## Transition Order
+
+keepalived would normally start a separate notify script for every state
+change without waiting for the previous one, so a MASTER immediately followed
+by FAULT could raise the WAN after the FAULT script had taken it down.
+router-ha instead uses keepalived's `vrrp_notify_fifo`: one long-running
+reader (`/run/router-ha/notify.fifo`) applies MASTER, BACKUP, FAULT and STOP
+one at a time, in the order keepalived sent them. Single-active units are
+started and stopped with `--no-block`, so a slow unit cannot hold up the next
+transition. `vm-router-ha-pair` feeds MASTER and FAULT back to back and checks
+that the node ends in FAULT with its WAN and owned units down.
+
+A keepalived reload (`systemctl reload keepalived`) replaces the reader.
+keepalived replays BACKUP and FAULT to the new reader
+(`fifo_write_vrrp_states_on_reload`) but not MASTER, and the reload can kill
+a MASTER transition half-way, with the WAN down. The MASTER script therefore
+marks `/run/router-ha/master-pending` while it runs; a new reader that finds
+the marker while the node holds the VIP runs the MASTER transition again. The
+transition scripts are idempotent, so repeating one is safe.
+
 ## What This Pattern Does Not Do Automatically
 
 - it does **not** make every LAN-facing service follow promotion by default

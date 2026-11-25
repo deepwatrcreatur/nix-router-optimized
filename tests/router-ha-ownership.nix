@@ -172,8 +172,17 @@ in
             message = "D2 ownership must leave kea-dhcp4-server alone.";
           }
           {
-            assertion = lib.hasInfix "notify_master" config.services.keepalived.vrrpInstances.main.extraConfig;
-            message = "owned units need the keepalived notify hooks.";
+            assertion =
+              let
+                scripts = config.services.router-ha.transitionScripts;
+                # GOTCHA: hasInfix builds a regex, which may not carry store-path context.
+                plain = builtins.unsafeDiscardStringContext;
+                reader = builtins.readFile scripts.reader;
+              in
+              lib.hasInfix (plain "vrrp_notify_fifo_script \"${scripts.reader}\"") (plain config.services.keepalived.extraGlobalDefs)
+              && lib.all (state: lib.hasInfix (plain "${state}) ${scripts.${lib.toLower state}} </dev/null") reader) [ "MASTER" "BACKUP" "FAULT" ]
+              && !(lib.hasInfix "notify_master" config.services.keepalived.vrrpInstances.main.extraConfig);
+            message = "owned units need the ordered notify FIFO reader, not concurrent notify_* scripts.";
           }
           {
             assertion = config.warnings == [ ] || lib.all (w: !(lib.hasInfix "singleActiveUnits" w)) config.warnings;

@@ -213,6 +213,47 @@ mkRouterTest {
     with subtest("election: router1 (priority 100) owns VIP, WAN and the unit"):
         assert_steady(router1, [router2])
 
+    with subtest("notify events apply in keepalived's order"):
+        # MASTER then FAULT back to back, as keepalived sends them when a
+        # fresh MASTER loses its LAN. Concurrent notify scripts could finish
+        # MASTER last and leave the WAN up on a FAULT node.
+        # Another instance's event first: the reader must ignore it.
+        router1.succeed("""printf 'INSTANCE "other" BACKUP 50\\n' > /run/router-ha/notify.fifo""")
+        time.sleep(2)
+        assert role(router1) == "master" and wan_up(router1) and owned_active(router1), "another instance's BACKUP demoted router1"
+        router1.succeed("""printf 'INSTANCE "main" MASTER 100\\nINSTANCE "main" FAULT 100\\n' > /run/router-ha/notify.fifo""")
+        # The role file is written first; wait for the whole demotion.
+        retry(lambda _: role(router1) == "fault" and not wan_up(router1) and owned_inactive(router1), 30)
+        end = time.monotonic() + 5
+        while time.monotonic() < end:
+            assert role(router1) == "fault", f"router1 is {role(router1)} after MASTER, FAULT"
+            assert not wan_up(router1), "the WAN came up after FAULT"
+            assert owned_inactive(router1), "owned units run after FAULT"
+            time.sleep(0.5)
+        # keepalived never left MASTER; replay it to restore the steady state.
+        router1.succeed("""printf 'INSTANCE "main" MASTER 100\\n' > /run/router-ha/notify.fifo""")
+        assert_steady(router1, [router2])
+
+    with subtest("keepalived reload: the new reader keeps the MASTER's ownership"):
+        # A reload replaces the FIFO reader; fifo_write_vrrp_states_on_reload
+        # replays MASTER to it. Then demote by FIFO to prove the new reader
+        # is listening, and restore.
+        router1.succeed("systemctl reload keepalived")
+        assert_steady(router1, [router2])
+        router1.succeed("""printf 'INSTANCE "main" BACKUP 100\\n' > /run/router-ha/notify.fifo""")
+        retry(lambda _: role(router1) == "backup" and not wan_up(router1), 30)
+        router1.succeed("""printf 'INSTANCE "main" MASTER 100\\n' > /run/router-ha/notify.fifo""")
+        assert_steady(router1, [router2])
+
+    with subtest("keepalived reload mid-promotion: the new reader finishes it"):
+        # keepalived does not replay MASTER after a reload. Simulate a
+        # promotion killed between WAN down and WAN up.
+        router1.succeed("touch /run/router-ha/master-pending && ip link set dev eth1 down")
+        router1.succeed("systemctl reload keepalived")
+        retry(lambda _: wan_up(router1), 30)
+        router1.wait_until_fails("test -e /run/router-ha/master-pending", timeout=30)
+        assert_steady(router1, [router2])
+
     with subtest("MASTER crash: router2 takes over, router1 returns after preemptDelay"):
         # keepalived has Restart=always: ExecStopPost demotes router1, the
         # restarted daemon comes back as BACKUP and must wait preemptDelay.
