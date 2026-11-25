@@ -8,7 +8,8 @@
 # segment (vlan 3). VRRP moves the LAN VIP and WAN ownership between them.
 # The test proves that promotion and demotion touch only the WAN link: no
 # carrier or static-address change on LAN or management, and no
-# systemd-networkd restart.
+# systemd-networkd restart, and that the demoted node sends the ISP no DHCP
+# RELEASE (its link goes down first), so the binding survives the handover.
 let
   mkRouterTest = import ./lib/mk-router-test.nix {
     inherit pkgs lib self;
@@ -53,6 +54,9 @@ mkRouterTest {
 
     def wan_up(r):
         return "UP" in r.succeed("ip -o link show dev eth1").split(">")[0]
+
+    def releases():
+        return int(isp.succeed("journalctl -u dnsmasq --no-pager | grep -c DHCPRELEASE || true").strip())
 
     def wait_role(r, role):
         r.wait_until_succeeds(f"grep -qx {role} /run/router-ha/role", timeout=60)
@@ -153,6 +157,13 @@ mkRouterTest {
         router2.wait_until_succeeds("! ip -4 addr show dev eth1 | grep -q inet")
         assert not wan_up(router2)
         client.wait_until_succeeds("ping -c1 -W1 10.0.10.1")
+
+    with subtest("no DHCP RELEASE reached the ISP during failover or fail-back"):
+        # WHY: some ISPs hold a released address for a cooldown
+        # (docs/router-ha-prior-art.md); networkctl down drops the link
+        # before networkd's DHCP client could send one.
+        isp.succeed("journalctl -u dnsmasq --no-pager | grep -q DHCPACK")
+        assert releases() == 0, "a demoted router released the WAN lease"
 
     with subtest("LAN and management untouched, systemd-networkd never restarted"):
         check_monitors("failover and fail-back")

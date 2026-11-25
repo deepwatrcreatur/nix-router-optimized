@@ -676,6 +676,51 @@ in
       })
   ];
 
+  # A consumer may keep the DUID-EN its ISP already knows (the homelab does),
+  # so a DHCP identity set on the WAN network must win over sharedDhcpIdentity.
+  router-ha-wan-own-dhcp-identity-wins-eval = eval.mkNixosEvalCheck "router-ha-wan-own-dhcp-identity-wins" [
+    self.nixosModules.router-ha
+    {
+      systemd.network.networks."10-wan" = {
+        matchConfig.Name = "eth1";
+        networkConfig.DHCP = "yes";
+        dhcpV4Config = {
+          DUIDType = "vendor";
+          DUIDRawData = "00:00:ab:11:05:d7:c4:8d:af:eb:0b:c9";
+          IAID = 227970921;
+        };
+      };
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "backup";
+        virtualIp = "10.10.10.1/24";
+        vrrpInterface = "eth2";
+        wan = {
+          enable = true;
+          interface = "eth1";
+          network = "10-wan";
+          clonedMac = "02:00:00:00:00:B0";
+        };
+      };
+    }
+    ({ config, ... }:
+      let
+        v4 = config.systemd.network.networks."10-wan".dhcpV4Config;
+      in
+      {
+        assertions = [
+          {
+            assertion =
+              v4.DUIDType == "vendor"
+              && v4.DUIDRawData == "00:00:ab:11:05:d7:c4:8d:af:eb:0b:c9"
+              && v4.IAID == 227970921;
+            message = "a DHCP identity set on the WAN network must win over sharedDhcpIdentity.";
+          }
+        ];
+      })
+  ];
+
   router-ha-wan-no-clone-keeps-dhcp-identity-eval = eval.mkNixosEvalCheck "router-ha-wan-no-clone-keeps-dhcp-identity" [
     self.nixosModules.router-ha
     {
