@@ -66,20 +66,22 @@ time avoids both the ISP question and switch MAC-table flapping.
 The changes this review led to. Each is a separate change with its own VM
 test; until it lands, its section here describes the plan.
 
-1. **Kea hot-standby mode** (bead `router-p6q`). `router-kea.dhcp4.ha` only offered
-   `load-balancing`. ISC prefers hot-standby, and it fits a preferred node plus
+1. **Kea hot-standby mode** (bead `router-p6q`, #185).
+   `router-kea.dhcp4.ha` only offered `load-balancing`. ISC prefers hot-standby, and it fits a preferred node plus
    a spare: the standby answers only when the primary stops responding.
-2. **Ordered notify handling** (bead `router-pve`). keepalived starts a notify script for each
-   transition without waiting for the previous one. If MASTER is followed
+2. **Ordered notify handling** (bead `router-pve`, #186). keepalived starts a
+   notify script for each transition without waiting for the previous one. If MASTER is followed
    quickly by FAULT, the FAULT script's `networkctl down` can run before the
    MASTER script's `networkctl up`, leaving the WAN up on a FAULT node.
    NethSecurity serialises its hooks with a lock; keepalived's `notify_fifo`
    gives the same guarantee and also keeps the order.
-3. **No DHCP release on demotion, as an option** (bead `router-u4n`). OPNsense users found that
-   releasing or changing a lease makes some ISPs hold the address for a
-   cooldown. With the same MAC and identity on both nodes, keeping the binding
-   lets the new master renew the same lease. Off by default, because whether a
-   given ISP prefers a release is not known in advance.
+3. **No DHCP release on demotion** (bead `router-u4n`). OPNsense users found
+   that releasing or changing a lease makes some ISPs hold the address for a
+   cooldown. Measured instead of adding an option: demotion runs
+   `networkctl down`, which takes the link down before systemd-networkd's
+   DHCP client stops, so no RELEASE is sent even with networkd's default
+   `SendRelease=yes`. `vm-router-ha-wan-failover` now asserts that the ISP sees
+   no RELEASE across failover and fail-back.
 4. **Drill with real failures.** Pull the WAN cable and cut power during
    rehearsals, not only `systemctl stop keepalived` (toreamun's advice).
 
