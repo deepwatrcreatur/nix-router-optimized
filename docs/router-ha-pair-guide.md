@@ -67,6 +67,13 @@ the DUID once, which can move the delegated prefix at the next renewal; set
 it to `false` to keep the old DUID. Values you set yourself in the WAN
 network's `dhcpV4Config`/`dhcpV6Config` win (`mkDefault`).
 
+Lease release: demotion runs `networkctl down`, which takes the WAN link down
+before systemd-networkd's DHCP client stops, so no DHCP RELEASE reaches the
+ISP and the new master renews the binding the old one held.
+`vm-router-ha-wan-failover` checks that the simulated ISP sees no RELEASE
+across failover and fail-back. This matters for ISPs that hold a released
+address for a cooldown (see [`router-ha-prior-art.md`](./router-ha-prior-art.md)).
+
 With `clonedMac`, router-ha also disables duplicate address detection on
 the WAN (`IPv6DuplicateAddressDetection = 0`). On a planned handover the old
 master still holds the shared link-local address for a moment; DAD on the
