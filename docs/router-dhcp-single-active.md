@@ -104,7 +104,7 @@ kind of verification.
 ## Dormant HA Config Policy
 
 `services.router-kea.dhcp4.ha` is tested in VMs by the
-`vm-router-kea-ha` check (see
+`vm-router-kea-ha` and `vm-router-kea-ha-hot-standby` checks (see
 [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md#simulated-evidence)).
 That proves the module, not the reference pair. For the reference pair, the
 HA options must still be treated as:

@@ -145,7 +145,8 @@ services.router-ha = {
 # Typed owners: router-ha starts these on the MASTER only.
 services.router-ddns.ha.singleActiveOwner = true;
 services.router-upnp.ha.singleActiveOwner = true;
-# DHCP: run Kea HA on both nodes (services.router-kea.dhcp4.ha) with
+# DHCP: run Kea HA on both nodes (services.router-kea.dhcp4.ha, mode
+# "hot-standby" for a preferred node plus a spare) with
 # services.router-kea.ddns.ha.mode = "follow-vip"; see router-ha-ownership.md.
 
 # Node B (Backup / Standby)

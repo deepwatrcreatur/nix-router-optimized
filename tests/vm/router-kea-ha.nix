@@ -2,14 +2,18 @@
   self,
   lib,
   pkgs,
+  # "load-balancing" or "hot-standby" (services.router-kea.dhcp4.ha.mode).
+  mode ? "load-balancing",
 }:
 
 # Two routers run Kea DHCPv4 with the HA hook on a shared LAN (vlan 1). A
 # client asks for leases from many MAC addresses with busybox udhcpc, so each
 # request looks like a fresh client. Covers the evidence the re-entry gate in
 # docs/router-kea-ha-reentry-gate.md asks for: HA state on both nodes, lease
-# sync, failover to the surviving peer, and clean fail-back.
+# sync, failover to the surviving peer, and clean fail-back. Runs once per
+# dhcp4.ha.mode: in hot-standby only the primary answers until it fails.
 let
+  hotStandby = mode == "hot-standby";
   mkRouterTest = import ./lib/mk-router-test.nix {
     inherit pkgs lib self;
   };
@@ -69,7 +73,7 @@ let
             enable = true;
             thisServerName = name;
             peerName = peer;
-            inherit role peerAddress;
+            inherit mode role peerAddress;
           }
           # router2 keeps the 0.0.0.0 default: this URL only sets where Kea
           # listens; the peer reaches it through its own peerAddress.
@@ -92,7 +96,7 @@ let
   '';
 in
 mkRouterTest {
-  name = "router-kea-ha";
+  name = if hotStandby then "router-kea-ha-hot-standby" else "router-kea-ha";
 
   nodes = {
     router1 = mkRouter {
@@ -127,6 +131,9 @@ mkRouterTest {
     import time
 
     routers = [router1, router2]
+    # Kea reports the mode as the steady HA state on both peers.
+    steady = "${mode}"
+    hot_standby = ${if hotStandby then "True" else "False"}
 
     def routerctl(r, command):
         return json.loads(r.succeed(f"routerctl {command} --json"))
@@ -180,9 +187,9 @@ mkRouterTest {
         r.wait_for_unit("kea-dhcp4-server.service")
     client.succeed("ip link set dev eth1 up")
 
-    with subtest("both nodes reach load-balancing"):
+    with subtest(f"both nodes reach {steady}"):
         for r in routers:
-            wait_state(r, "load-balancing")
+            wait_state(r, steady)
 
     with subtest("only the peer can reach the HA port"):
         router1.succeed("curl -s -m 5 -o /dev/null http://10.0.10.3:8000/")
@@ -207,7 +214,10 @@ mkRouterTest {
                     timeout=10,
                 )
         print(f"servers that answered: {servers}")
-        assert servers == {"10.0.10.2", "10.0.10.3"}, f"load balancing used only {servers}"
+        if hot_standby:
+            assert servers == {"10.0.10.2"}, f"the standby answered while the primary was up: {servers}"
+        else:
+            assert servers == {"10.0.10.2", "10.0.10.3"}, f"load balancing used only {servers}"
 
     with subtest("primary stops: secondary goes partner-down and serves everyone"):
         router1.succeed("systemctl stop kea-dhcp4-server")
@@ -245,10 +255,10 @@ mkRouterTest {
         assert not routes["frr"]["available"], routes
         router2.succeed("routerctl ha && routerctl leases && routerctl dns && routerctl routes")
 
-    with subtest("primary returns: syncs leases and both go back to load-balancing"):
+    with subtest(f"primary returns: syncs leases and both go back to {steady}"):
         router1.succeed("systemctl start kea-dhcp4-server")
         for r in routers:
-            wait_state(r, "load-balancing", timeout=180)
+            wait_state(r, steady, timeout=180)
         # Check router1's database before any new DHCP traffic, so only the
         # startup sync can have put these leases there.
         for mac in failover_macs:
@@ -260,5 +270,7 @@ mkRouterTest {
         for mac in failover_macs:
             got = lease(mac)
             assert got and got[0] == leases[mac], f"{mac} moved from {leases[mac]} to {got}"
+            if hot_standby:
+                assert got[1] == "10.0.10.2", f"the primary did not take clients back: {got}"
   '';
 }

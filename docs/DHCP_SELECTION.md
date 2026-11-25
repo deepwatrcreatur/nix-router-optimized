@@ -40,8 +40,13 @@ operator is willing to validate the exact transport and ownership model.
 - **Reference pair boundary:** the current project-maintained router pair is
   documented as **single-active DHCP with manual promotion**, not active Kea HA
   service. See [`router-dhcp-single-active.md`](./router-dhcp-single-active.md).
-- **Tested in VMs:** the `vm-router-kea-ha` check covers sync, failover and
-  fail-back; see [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md#simulated-evidence)
+- **Modes:** `dhcp4.ha.mode = "load-balancing"` (default) splits clients
+  between both servers; `"hot-standby"` has the primary answer everyone and
+  the other server take over only when the primary stops responding (ISC's
+  preferred mode; the fit for a preferred router plus a spare). Both nodes
+  must use the same mode.
+- **Tested in VMs:** the `vm-router-kea-ha` and `vm-router-kea-ha-hot-standby`
+  checks cover sync, failover and fail-back; see [`router-kea-ha-reentry-gate.md`](./router-kea-ha-reentry-gate.md#simulated-evidence)
   for the measured timings. With `router-firewall`, the HA port is open to the
   peer only.
 - **Usage:**
@@ -51,6 +56,7 @@ operator is willing to validate the exact transport and ownership model.
     enable = true;
     thisServerName = "router-a";
     peerName = "router-b";
+    mode = "hot-standby";        # or "load-balancing" (default)
     role = "primary";            # "secondary" on the peer
     localAddress = "10.10.10.2"; # this node's LAN address
     peerAddress = "10.10.10.3";

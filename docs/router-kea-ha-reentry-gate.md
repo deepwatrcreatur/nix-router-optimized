@@ -130,6 +130,16 @@ items A–E against two VMs with the module defaults (load-balancing,
 | Primary's Kea stopped | secondary reaches `partner-down` about 13 s after the primary stops (the 15 s timer starts at the last answered heartbeat), then serves every client |
 | Primary restarted | it pulls the leases it missed and both are back in `load-balancing` within about 10–20 s; no duplicate leases |
 
+`vm-router-kea-ha-hot-standby` runs the same script with
+`dhcp4.ha.mode = "hot-standby"`:
+
+| Step | Result in the VM |
+|---|---|
+| Both nodes reach `hot-standby` | about 15 s after boot |
+| Fresh clients from 8 MACs | only the primary answers; every lease appears on both nodes |
+| Primary's Kea stopped | the standby reaches `partner-down` about 12 s later and serves every client |
+| Primary restarted | it syncs the failover leases, both return to `hot-standby`, and renewing clients keep their addresses from the primary |
+
 What clients notice when one node fails: clients that already have a lease
 keep it and renew later, so they see nothing. A new or rebinding client whose
 MAC hashes to the failed node gets no answer until the survivor reaches

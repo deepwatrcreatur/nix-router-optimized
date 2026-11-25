@@ -30,7 +30,7 @@ keeps `bgpd` running on both nodes and shuts its neighbours down instead.
 | DDNS (inadyn) | `services.router-ddns.ha.singleActiveOwner` | required |
 | UPnP / NAT-PMP (miniupnpd) | `services.router-upnp.ha.singleActiveOwner` | required |
 | Kea DHCP-DDNS (D2) | `services.router-kea.ddns.ha.mode` | required when `ddns.enable` |
-| Kea DHCPv4 | `services.router-kea.dhcp4.ha` | Kea HA on both nodes; never single-active |
+| Kea DHCPv4 | `services.router-kea.dhcp4.ha` | Kea HA on both nodes (`mode` load-balancing or hot-standby); never single-active |
 | Technitium zones | `services.router-technitium.zoneReplication.ha` | zone primary follows the VIP |
 | BGP | `services.router-bgp.ha.singleActiveOwner` | required |
 | NDP proxy | `services.router-ndp-proxy.ha.singleActiveOwner` | required |

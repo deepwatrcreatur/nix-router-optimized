@@ -127,6 +127,57 @@ in
               assertion = lib.any (lib.hasInfix "keaSync is deprecated") config.warnings;
               message = "keaSync must warn that it is deprecated.";
             }
+            {
+              assertion =
+                (builtins.head haHook.parameters.high-availability).mode == "load-balancing"
+                && map (p: p.role) peers == [ "primary" "secondary" ];
+              message = "Kea HA must default to load-balancing with primary and secondary peers.";
+            }
+          ];
+        })
+    ]
+  );
+
+  router-kea-ha-hot-standby-eval = eval.mkNixosEvalCheck "router-kea-ha-hot-standby" (
+    keaHaPair { }
+    ++ [
+      { services.router-kea.dhcp4.ha.mode = "hot-standby"; }
+      ({ config, ... }:
+        let
+          haHook = lib.findFirst (h: h ? parameters) null config.services.kea.dhcp4.settings.hooks-libraries;
+          ha = builtins.head haHook.parameters.high-availability;
+        in
+        {
+          assertions = [
+            {
+              assertion = ha.mode == "hot-standby" && map (p: p.role) ha.peers == [ "primary" "standby" ];
+              message = "hot-standby mode must render Kea's primary and standby roles.";
+            }
+          ];
+        })
+    ]
+  );
+
+  router-kea-ha-hot-standby-backup-eval = eval.mkNixosEvalCheck "router-kea-ha-hot-standby-backup" (
+    keaHaPair { }
+    ++ [
+      {
+        services.router-kea.dhcp4.ha = {
+          mode = "hot-standby";
+          role = lib.mkForce "secondary";
+        };
+      }
+      ({ config, ... }:
+        let
+          haHook = lib.findFirst (h: h ? parameters) null config.services.kea.dhcp4.settings.hooks-libraries;
+          ha = builtins.head haHook.parameters.high-availability;
+        in
+        {
+          assertions = [
+            {
+              assertion = map (p: p.role) ha.peers == [ "standby" "primary" ];
+              message = "a hot-standby secondary must render itself as standby and its peer as primary.";
+            }
           ];
         })
     ]
