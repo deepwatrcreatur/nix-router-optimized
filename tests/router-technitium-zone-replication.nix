@@ -212,7 +212,8 @@ in
             vrrpPasswordFile = "/run/keys/vrrp-password";
           };
           services.router.dnsZones = {
-            "home.example".staticHosts.gw.ipAddress = "10.10.10.1";
+            # Mixed case on purpose: Technitium and replication ignore case.
+            "Home.Example".staticHosts.gw.ipAddress = "10.10.10.1";
             "other.example".staticHosts.gw.ipAddress = "10.10.10.1";
           };
           services.router-technitium.zoneReplication = {
@@ -243,7 +244,7 @@ in
           {
             assertions = [
               {
-                assertion = skipsMissing "home.example" && lib.hasInfix "Skipping home.example" (block "home.example");
+                assertion = skipsMissing "Home.Example" && lib.hasInfix "Skipping Home.Example" (block "Home.Example");
                 message = "the sync must skip a missing or Secondary HA zone.";
               }
               {
@@ -254,6 +255,11 @@ in
                 assertion = lib.hasInfix "restart technitium-sync-static-hosts.service" promote
                   && !(lib.hasInfix "technitium-sync-static-hosts" demote);
                 message = "promotion, not demotion, must rerun the static sync.";
+              }
+              {
+                assertion = lib.hasInfix "static_zones=(home.example other.example)"
+                  (unitScript config "technitium-zone-replication" "technitium-zone-replication");
+                message = "replication cleanup must know the static zones, lower-cased.";
               }
             ];
           })

@@ -185,7 +185,7 @@ let
       replication = rt.zoneReplication or { };
     in
     optionals ((rt.enable or false) && (replication.ha.enable or false)) (
-      map (zone: zone.name) (replication.secondary.zones or [ ])
+      map (zone: toLower zone.name) (replication.secondary.zones or [ ])
     );
   allZoneNames = attrNames allZones;
 
@@ -300,7 +300,7 @@ let
           # primary, whose own sync writes them. A zone under
           # zoneReplication.ha is created by the zone-HA units, never here:
           # creating it first would leave a Primary on the backup.
-          if [ "$type" = Secondary ]${optionalString (elem zoneName haZoneNames) " || [ -z \"$type\" ]"}; then
+          if [ "$type" = Secondary ]${optionalString (elem (toLower zoneName) haZoneNames) " || [ -z \"$type\" ]"}; then
             echo "Skipping ${zoneName}: ''${type:-not created yet} here; the zone primary holds its records"
             SKIPPED_ZONES="$SKIPPED_ZONES ${zoneName} "
           else
@@ -566,7 +566,7 @@ in
           local zones_json
           zones_json="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/list?token=$TOKEN")"
           printf '%s' "$zones_json" | ${pkgs.jq}/bin/jq -r --arg zone "$zone_name" '
-            first((.response.zones // [])[] | select(.name == $zone) | .type) // empty
+            first((.response.zones // [])[] | select((.name | ascii_downcase) == ($zone | ascii_downcase)) | .type) // empty
           '
         }
         SKIPPED_ZONES=" "
@@ -669,7 +669,17 @@ in
         # not be removed yet.
         jq_retained="$(mktemp)"
         ${pkgs.jq}/bin/jq -s '.' "$RETAINED_FILE" > "$jq_retained"
-        write_state ${managedRecordsFile} "$jq_retained"
+        # INVARIANT: a skipped zone keeps its previous entries; this run wrote
+        # none of its configured records, so it must not claim them.
+        current="$(mktemp)"
+        # shellcheck disable=SC2086
+        skipped_json="$(printf '%s\n' $SKIPPED_ZONES | ${pkgs.jq}/bin/jq -R . | ${pkgs.jq}/bin/jq -cs 'map(select(. != ""))')"
+        ${pkgs.jq}/bin/jq --argjson skipped "$skipped_json" --slurpfile prev "$PREV_FILE" '
+          def skipped: .zone as $z | $skipped | index($z) != null;
+          map(select(skipped | not)) + ($prev[0] | map(select(skipped)))
+        ' ${managedRecordsFile} > "$current"
+        write_state "$current" "$jq_retained"
+        rm -f "$current"
         rm -f "$jq_retained"
 
         echo "Static DNS records synchronized"

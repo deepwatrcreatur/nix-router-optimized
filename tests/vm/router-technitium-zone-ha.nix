@@ -177,6 +177,9 @@ mkRouterTest {
         router2.succeed("systemctl restart technitium-sync-static-hosts.service")
         router2.succeed("journalctl -b --no-pager -u technitium-sync-static-hosts | grep -q 'Skipping ${zone}'")
         assert zone_type(router2) == "Secondary"
+        # The skipped zone's records are not claimed as written.
+        router2.succeed("! grep -q gw /var/lib/technitium-sync-static-hosts/managed-records.json")
+        router1.succeed("grep -q gw /var/lib/technitium-sync-static-hosts/managed-records.json")
 
     with subtest("routerctl: VRRP role and zone state per node, no secrets"):
         token = router1.succeed(f"cat {TOKEN}").strip()
@@ -227,6 +230,7 @@ mkRouterTest {
             timeout=60,
         )
         router2.succeed("systemctl is-active technitium-sync-static-hosts.service")
+        router2.succeed("grep -q gw /var/lib/technitium-sync-static-hosts/managed-records.json")
         wait_resolves(router2, "one", "10.0.10.51")
         add_a(router2, "two", "10.0.10.52")
         wait_resolves(router1, "two", "10.0.10.52")

@@ -271,8 +271,11 @@ refuses writes to it); the zone primary's own sync writes the records and
 replication brings them over. Under `zoneReplication.ha` the sync also never
 creates a replicated zone, because that would leave a Primary on the backup at
 boot; the zone-HA units create it. Promotion reruns the sync, so the new owner
-writes any records the old one never wrote. Pruning for a skipped zone waits
-until this node owns it.
+writes any records the old one never wrote. A skipped zone keeps its previous
+state-file entries, so pruning for it waits until this node owns it and
+wrote them. A zone dropped from `zoneReplication` but still declared in
+`services.router.dnsZones` stays as a plain Primary; the replication cleanup
+does not delete it.
 
 Do not define the same name both as a host alias and in the zone `aliases`
 attrset. It works, but it is easy to forget one copy when removing it.
