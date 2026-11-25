@@ -1055,7 +1055,15 @@ in
       # INVARIANT: manual, not always-down: networkctl up/reconfigure are
       # refused for always-down links, and "up" would re-raise the WAN on
       # the standby whenever networkd restarts.
-      systemd.network.networks.${cfg.wan.network}.linkConfig.ActivationPolicy = "manual";
+      systemd.network.networks.${cfg.wan.network} = {
+        linkConfig.ActivationPolicy = "manual";
+        # WHY: networkd restarts the DHCP clients whenever it reconfigures an
+        # up link (a deploy changing this .network does). With SendRelease
+        # they release the lease first, and an ISP may then hand out a new
+        # address or /56 (docs/router-ha-prior-art.md#adopted-from-this-review).
+        dhcpV4Config.SendRelease = mkDefault false;
+        dhcpV6Config.SendRelease = mkDefault false;
+      };
     })
     (mkIf (cfg.wan.enable && cfg.wan.network != null && cfg.wan.clonedMac != null) {
       # WHY: on a planned handover the old master still holds the cloned
