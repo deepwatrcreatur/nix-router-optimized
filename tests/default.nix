@@ -193,6 +193,11 @@ let
     inherit self lib pkgs;
   };
 
+  vmKeaHaHotStandbyCheck = import ./vm/router-kea-ha.nix {
+    inherit self lib pkgs;
+    mode = "hot-standby";
+  };
+
   vmHaWanFailoverCheck = import ./vm/router-ha-wan-failover.nix {
     inherit self lib pkgs;
   };
@@ -236,6 +241,7 @@ in
 {
   vm-smoke = vmSmokeCheck;
   vm-router-kea-ha = vmKeaHaCheck;
+  vm-router-kea-ha-hot-standby = vmKeaHaHotStandbyCheck;
   vm-router-ha-wan-failover = vmHaWanFailoverCheck;
   vm-router-ha-pair = vmHaPairCheck;
   vm-router-apply = vmRouterApplyCheck;

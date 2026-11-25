@@ -24,6 +24,9 @@ let
     if routerHaEnabled then head (splitString "/" config.services.router-ha.virtualIp) else null;
   d2Unit = "kea-dhcp-ddns-server.service";
   d2HaMode = cfg.ddns.ha.mode;
+  # WHY: Kea calls the second server "standby" in hot-standby mode; the
+  # option keeps one role name so switching modes needs no other change.
+  keaHaRole = role: if role == "secondary" && cfg.dhcp4.ha.mode == "hot-standby" then "standby" else role;
   # systemctl treats a bare name as ".service".
   d2ManualHaUnit = hasRouterHa && (elem d2Unit config.services.router-ha.singleActiveUnits || elem (removeSuffix ".service" d2Unit) config.services.router-ha.singleActiveUnits);
   hasRouterTechnitium = hasAttrByPath [ "services" "router-technitium" "listenEndPoints" ] options;
@@ -467,15 +470,29 @@ in
       };
 
       ha = {
-        enable = mkEnableOption "Kea DHCPv4 High Availability (Load Balancing/Failover)";
+        enable = mkEnableOption "Kea DHCPv4 High Availability (load balancing or hot standby)";
         thisServerName = mkOption {
           type = types.str;
           example = "router-primary";
           description = "Name of this Kea server in the HA group.";
         };
+        mode = mkOption {
+          type = types.enum [ "load-balancing" "hot-standby" ];
+          default = "load-balancing";
+          description = ''
+            Kea HA mode. `"load-balancing"`: both servers answer a share of
+            clients. `"hot-standby"`: the primary answers every client and the
+            other server only takes over once the primary stops responding;
+            ISC's preferred mode, and the natural fit for a preferred router
+            plus a spare. Both nodes must use the same mode.
+          '';
+        };
         role = mkOption {
           type = types.enum [ "primary" "secondary" ];
-          description = "Role of this server in the HA group.";
+          description = ''
+            Role of this server in the HA group. In `"hot-standby"` mode
+            `"secondary"` is rendered as Kea's `standby` role.
+          '';
         };
         peerAddress = mkOption {
           type = types.str;
@@ -785,7 +802,7 @@ in
                 high-availability = [
                   {
                     this-server-name = cfg.dhcp4.ha.thisServerName;
-                    mode = "load-balancing";
+                    inherit (cfg.dhcp4.ha) mode;
                     heartbeat-delay = cfg.dhcp4.ha.heartbeatDelaySec * 1000;
                     max-response-delay = cfg.dhcp4.ha.maxResponseDelaySec * 1000;
                     max-ack-delay = 10000;
@@ -794,12 +811,12 @@ in
                       {
                         name = cfg.dhcp4.ha.thisServerName;
                         url = "http://${haHost cfg.dhcp4.ha.localAddress}:${toString haPort}/";
-                        role = cfg.dhcp4.ha.role;
+                        role = keaHaRole cfg.dhcp4.ha.role;
                       }
                       {
                         name = cfg.dhcp4.ha.peerName;
                         url = "http://${haHost cfg.dhcp4.ha.peerAddress}:${toString haPort}/";
-                        role = if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary";
+                        role = keaHaRole (if cfg.dhcp4.ha.role == "primary" then "secondary" else "primary");
                       }
                     ];
                   }
