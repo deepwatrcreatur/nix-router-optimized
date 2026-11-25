@@ -213,6 +213,22 @@ mkRouterTest {
     with subtest("election: router1 (priority 100) owns VIP, WAN and the unit"):
         assert_steady(router1, [router2])
 
+    with subtest("notify events apply in keepalived's order"):
+        # MASTER then FAULT back to back, as keepalived sends them when a
+        # fresh MASTER loses its LAN. Concurrent notify scripts could finish
+        # MASTER last and leave the WAN up on a FAULT node.
+        router1.succeed("""printf 'INSTANCE "main" MASTER 100\\nINSTANCE "main" FAULT 100\\n' > /run/router-ha/notify.fifo""")
+        wait_role(router1, "fault", timeout=30)
+        end = time.monotonic() + 5
+        while time.monotonic() < end:
+            assert role(router1) == "fault", f"router1 is {role(router1)} after MASTER, FAULT"
+            assert not wan_up(router1), "the WAN came up after FAULT"
+            assert owned_inactive(router1), "owned units run after FAULT"
+            time.sleep(0.5)
+        # keepalived never left MASTER; replay it to restore the steady state.
+        router1.succeed("""printf 'INSTANCE "main" MASTER 100\\n' > /run/router-ha/notify.fifo""")
+        assert_steady(router1, [router2])
+
     with subtest("MASTER crash: router2 takes over, router1 returns after preemptDelay"):
         # keepalived has Restart=always: ExecStopPost demotes router1, the
         # restarted daemon comes back as BACKUP and must wait preemptDelay.
