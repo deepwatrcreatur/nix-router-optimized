@@ -5,7 +5,7 @@
 **Homelab Consumers Analyzed**: `router` (Primary, Proxmox VM / igc 2.5G) and `elitedesk` (Standby, HP EliteDesk 8300 SFF / X520 10G SFP+)  
 **Infrastructure Context**: Migration from `unified-nix-configuration` to `nix-clan-homelab` (Clan-core, Den aspects, `clan vars`, `deploy-rs`)  
 **Date**: November 2026 (revision 1)  
-**Revised**: 2026-11-19 (revision 2: panel review, see §0); 2026-11-21 (revision 3: shipped work, see §0.2.1)  
+**Revised**: 2026-11-19 (revision 2: panel review, see §0); 2026-11-21 (revision 3: shipped work, see §0.2.1); 2026-11-25 (revision 4: HA prior art, see §0.1)  
 
 ---
 
@@ -24,6 +24,7 @@ input, with factual errors corrected in place (marked *[rev 2]*).
 | 1 | 2026-11 | external chatbot | Original research, survey and proposals |
 | 2 | 2026-11-19 | Claude (IC), after a five-voice panel (Codex, Gemini, Claude, Copilot, DeepSeek) | State of the project; priorities and verdicts from discussion 21; factual corrections |
 | 3 | 2026-11-21 | Claude (bead router-ytw) | §0.2.1 lists what shipped in #153–#174; stale items in §0.2–§0.3 and the feature matrix are marked *[rev 3]* |
+| 4 | 2026-11-25 | Claude | Single-WAN-address HA prior art (OPNsense, NethSecurity, VyOS, Kea) and the decisions it led to: [`router-ha-prior-art.md`](./router-ha-prior-art.md); pointer added in §3.5 |
 
 ### 0.2 State of the project as of 2026-11-19
 
@@ -326,6 +327,7 @@ To identify potential architectural improvements, we surveyed leading open-sourc
 - **The Critical Missing Link**:
   Without `conntrackd`, any VRRP failover between `router` and `elitedesk` causes **disruption of active TCP sessions, VoIP/SIP calls and SSH connections** *[rev 2: overstated; TCP loose pickup, UDP and WireGuard often recover; the WAN lease and prefix re-acquisition dominate the outage]*, because the new master possesses an empty conntrack table and drops packets as `ct state invalid`.
 - See the dedicated companion document: [`docs/FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md) for an exhaustive technical breakdown of Linux/NixOS vs FreeBSD/OPNsense.
+- *[rev 4]* How OPNsense, NethSecurity and VyOS pairs share one DHCP-assigned WAN address, and which of their ideas `router-ha` adopted: [`router-ha-prior-art.md`](./router-ha-prior-art.md).
 
 ---
 

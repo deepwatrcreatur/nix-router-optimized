@@ -67,6 +67,8 @@ from module names alone.
 
 - [`router-ha-ownership.md`](./router-ha-ownership.md) — active-owner and shared
   capability boundary
+- [`router-ha-prior-art.md`](./router-ha-prior-art.md) — how other HA routers
+  share one dynamic WAN address, and the design decisions taken from them
 - [`router-ha-lab-plan.md`](./router-ha-lab-plan.md) — staged plan for a safe
   isolated `systemd-nspawn` HA lab
 - [`router-dhcp-single-active.md`](./router-dhcp-single-active.md) — why the
