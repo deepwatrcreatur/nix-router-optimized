@@ -39,14 +39,15 @@ old lease expires.
 
 ## How `router-ha` compares
 
-`router-ha` uses the same mechanism as the OPNsense hook script, built so the
-known failure modes cannot happen:
+`router-ha` uses the same mechanism as the OPNsense hook script, built to
+avoid the failure modes reported there. One gap this review found, the order
+of rapid transitions, is listed under [Adopted](#adopted-from-this-review).
 
 | Concern from prior art | `router-ha` | Where |
 | --- | --- | --- |
-| WAN must be active on one node only | `ActivationPolicy=manual`; only `notify_master` raises the WAN; demotion and FAULT take it down. The WAN also stays down through boot and networkd restarts | [pair guide, WAN Ownership](./router-ha-pair-guide.md#wan-ownership), #155 |
+| WAN must be active on one node only | `ActivationPolicy=manual`; only the MASTER transition raises the WAN; demotion and FAULT take it down. The WAN also stays down through boot and networkd restarts. Ordering of back-to-back transitions: adopted item 2 | [pair guide, WAN Ownership](./router-ha-pair-guide.md#wan-ownership), #155 |
 | Toggling the WAN must not disturb the rest (VyOS commit bounce, OPNsense reconfigure) | `networkctl up`/`reconfigure` on the WAN only; networkd is never restarted | #155 |
-| The ISP binds the lease to the MAC and client identity | Cloned MAC set while the link is down; `sharedDhcpIdentity` gives both nodes the same DUID and IAID, so the same /56 comes back | #155, #162 |
+| The ISP binds the lease to the MAC and client identity | Cloned MAC set while the link is down; `sharedDhcpIdentity` gives both nodes the same DUID and IAID. An ISP that binds the lease and the prefix to that identity returns the same address and /56, as the VM test's ISP does; a real ISP can still renumber, for example after a lease expires | #155, #162 |
 | Duplicate address detection on the shared link-local address | DAD off on a cloned WAN | #162 |
 | A master with a dead WAN keeps the VIP | `wan.healthCheck` yields through FAULT and pins priority | #161 |
 | Flapping on recovery | `preemptDelay` | #144 |
