@@ -11,7 +11,9 @@ If you are not sure where to start:
 4. test failover on the backup node before touching the primary
 
 This guide is intentionally narrower than "full appliance HA." It shows the
-currently validated pattern, not every possible topology.
+currently validated pattern, not every possible topology. Where the design
+comes from, and how it compares with OPNsense, NethSecurity and VyOS pairs, is
+in [`router-ha-prior-art.md`](./router-ha-prior-art.md).
 
 ## What This Pattern Does
 
