@@ -81,7 +81,12 @@ test; until it lands, its section here describes the plan.
    `networkctl down`, which takes the link down before systemd-networkd's
    DHCP client stops, so no RELEASE is sent even with networkd's default
    `SendRelease=yes`. `vm-router-ha-wan-failover` now asserts that the ISP sees
-   no RELEASE across failover and fail-back.
+   no RELEASE across failover and fail-back. The first live step (2026-11-25)
+   then found the gap that measurement missed: a deploy that changed the WAN
+   `.network` made networkd reconfigure the up link, its DHCP clients sent
+   RELEASE, and the ISP handed out a new /56 (the IPv4 address came back).
+   router-ha now defaults `SendRelease=no` on the WAN, and the VM test covers
+   a reconfigure of the MASTER's WAN.
 4. **Drill with real failures.** Pull the WAN cable and cut power during
    rehearsals, not only `systemctl stop keepalived` (toreamun's advice).
 

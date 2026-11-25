@@ -58,6 +58,9 @@ mkRouterTest {
     def releases():
         return int(isp.succeed("journalctl -u dnsmasq --no-pager | grep -c DHCPRELEASE || true").strip())
 
+    def releases6():
+        return int(isp.succeed("journalctl -u kea-dhcp6-server --no-pager | grep -ci release || true").strip())
+
     def wait_role(r, role):
         r.wait_until_succeeds(f"grep -qx {role} /run/router-ha/role", timeout=60)
 
@@ -157,6 +160,17 @@ mkRouterTest {
         router2.wait_until_succeeds("! ip -4 addr show dev eth1 | grep -q inet")
         assert not wan_up(router2)
         client.wait_until_succeeds("ping -c1 -W1 10.0.10.1")
+
+    with subtest("reapplying the MASTER's WAN config keeps its leases"):
+        # A deploy that changes the WAN .network makes networkd reconfigure
+        # the link while it is up and restart its DHCP clients.
+        v6 = releases6()
+        router1.succeed("networkctl reconfigure eth1")
+        wait_wan_lease(router1)
+        wait_pd(router1)
+        assert delegated(router1) == pd, f"reconfigure changed the prefix to {delegated(router1)}"
+        assert releases6() == v6, "reconfigure released the DHCPv6 lease"
+        assert releases() == 0, "reconfigure released the DHCPv4 lease"
 
     with subtest("no DHCP RELEASE reached the ISP during failover or fail-back"):
         # WHY: some ISPs hold a released address for a cooldown

@@ -672,6 +672,10 @@ in
             assertion = net.networkConfig.IPv6DuplicateAddressDetection == 0;
             message = "router-ha with clonedMac must disable DAD on the WAN (the old master briefly holds the same link-local address).";
           }
+          {
+            assertion = net.dhcpV4Config.SendRelease == false && net.dhcpV6Config.SendRelease == false;
+            message = "router-ha must stop the WAN DHCP clients releasing their leases when networkd reconfigures the link.";
+          }
         ];
       })
   ];
@@ -689,6 +693,7 @@ in
           DUIDRawData = "00:00:ab:11:05:d7:c4:8d:af:eb:0b:c9";
           IAID = 227970921;
         };
+        dhcpV6Config.SendRelease = true;
       };
       services.router-ha = {
         vrrpPasswordFile = "/run/keys/vrrp-password";
@@ -707,6 +712,7 @@ in
     ({ config, ... }:
       let
         v4 = config.systemd.network.networks."10-wan".dhcpV4Config;
+        v6 = config.systemd.network.networks."10-wan".dhcpV6Config;
       in
       {
         assertions = [
@@ -716,6 +722,10 @@ in
               && v4.DUIDRawData == "00:00:ab:11:05:d7:c4:8d:af:eb:0b:c9"
               && v4.IAID == 227970921;
             message = "a DHCP identity set on the WAN network must win over sharedDhcpIdentity.";
+          }
+          {
+            assertion = v6.SendRelease == true && v4.SendRelease == false;
+            message = "an explicit SendRelease on the WAN network must win over router-ha's default.";
           }
         ];
       })

@@ -76,6 +76,13 @@ ISP and the new master renews the binding the old one held.
 across failover and fail-back. This matters for ISPs that hold a released
 address for a cooldown (see [`router-ha-prior-art.md`](./router-ha-prior-art.md)).
 
+A reconfigure is different: when networkd reapplies the WAN `.network` while
+the link is up (a deploy that changes it), it restarts the DHCP clients, and
+with networkd's default `SendRelease=yes` they release first. router-ha
+therefore defaults `SendRelease=no` for DHCPv4 and DHCPv6 on the WAN network.
+Set it on the network to override. The VM test reconfigures the MASTER's WAN
+and checks that the address and the delegated prefix stay, with no RELEASE.
+
 With `clonedMac`, router-ha also disables duplicate address detection on
 the WAN (`IPv6DuplicateAddressDetection = 0`). On a planned handover the old
 master still holds the shared link-local address for a moment; DAD on the
