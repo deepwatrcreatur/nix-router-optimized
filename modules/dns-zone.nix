@@ -176,6 +176,17 @@ let
   allZones = configuredZones // derivedReverseZones;
 
   hasZones = allZones != {};
+
+  # Zones whose type follows VRRP (router-technitium zoneReplication.ha).
+  # The zone-HA units create them; this sync only fills them on the owner.
+  haZoneNames =
+    let
+      rt = config.services.router-technitium or { };
+      replication = rt.zoneReplication or { };
+    in
+    optionals ((rt.enable or false) && (replication.ha.enable or false)) (
+      map (zone: toLower zone.name) (replication.secondary.zones or [ ])
+    );
   allZoneNames = attrNames allZones;
 
   zoneFileText =
@@ -284,15 +295,25 @@ let
         in
         ''
           echo "Ensuring DNS zone exists: ${zoneName}"
-          if ! zone_exists "${zoneName}"; then
-            technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/create?token=$TOKEN" \
-              -d "zone=${zoneName}" \
-              -d "type=Primary" \
-              >/dev/null
-          fi
+          type="$(zone_type ${escapeShellArg zoneName})"
+          # WHY: a Secondary is read-only; its records come from the zone
+          # primary, whose own sync writes them. A zone under
+          # zoneReplication.ha is created by the zone-HA units, never here:
+          # creating it first would leave a Primary on the backup.
+          if [ "$type" = Secondary ]${optionalString (elem (toLower zoneName) haZoneNames) " || [ -z \"$type\" ]"}; then
+            echo "Skipping ${zoneName}: ''${type:-not created yet} here; the zone primary holds its records"
+            SKIPPED_ZONES="$SKIPPED_ZONES ${toLower zoneName} "
+          else
+            if [ -z "$type" ]; then
+              technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/create?token=$TOKEN" \
+                -d "zone=${zoneName}" \
+                -d "type=Primary" \
+                >/dev/null
+            fi
 
-          ${hostCommands}
-          ${aliasCommands}
+            ${hostCommands}
+            ${aliasCommands}
+          fi
         ''
       ) allZones
     );
@@ -539,14 +560,16 @@ in
           printf '%s' "$response"
         }
 
-        zone_exists() {
+        # Prints the zone's type (Primary, Secondary, ...), or nothing if absent.
+        zone_type() {
           local zone_name="$1"
           local zones_json
           zones_json="$(technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/list?token=$TOKEN")"
-          printf '%s' "$zones_json" | ${pkgs.jq}/bin/jq -e --arg zone "$zone_name" '
-            (.response.zones // []) | any(.name == $zone)
-          ' >/dev/null
+          printf '%s' "$zones_json" | ${pkgs.jq}/bin/jq -r --arg zone "$zone_name" '
+            first((.response.zones // [])[] | select((.name | ascii_downcase) == ($zone | ascii_downcase)) | .type) // empty
+          '
         }
+        SKIPPED_ZONES=" "
 
         STATE_FILE="${managedRecordsStateDir}/managed-records.json"
         PREV_FILE="$(mktemp)"
@@ -599,6 +622,14 @@ in
             domain="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .domain)"
             type="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .type)"
             value="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .value)"
+            # GOTCHA: zone names compare case-insensitively everywhere.
+            case "$SKIPPED_ZONES" in
+              *" ''${zone,,} "*)
+                # Prune once this node owns the zone again.
+                printf '%s\n' "$record" >> "$RETAINED_FILE"
+                continue
+                ;;
+            esac
             # GOTCHA: look the record up first and only delete an exact match.
             # Technitium's delete endpoint ignores the target for CNAMEs, so
             # without this check an alias that was retargeted by hand would
@@ -639,7 +670,17 @@ in
         # not be removed yet.
         jq_retained="$(mktemp)"
         ${pkgs.jq}/bin/jq -s '.' "$RETAINED_FILE" > "$jq_retained"
-        write_state ${managedRecordsFile} "$jq_retained"
+        # INVARIANT: a skipped zone keeps its previous entries; this run wrote
+        # none of its configured records, so it must not claim them.
+        current="$(mktemp)"
+        # shellcheck disable=SC2086
+        skipped_json="$(printf '%s\n' $SKIPPED_ZONES | ${pkgs.jq}/bin/jq -R . | ${pkgs.jq}/bin/jq -cs 'map(select(. != ""))')"
+        ${pkgs.jq}/bin/jq --argjson skipped "$skipped_json" --slurpfile prev "$PREV_FILE" '
+          def skipped: (.zone | ascii_downcase) as $z | $skipped | index($z) != null;
+          map(select(skipped | not)) + ($prev[0] | map(select(skipped)))
+        ' ${managedRecordsFile} > "$current"
+        write_state "$current" "$jq_retained"
+        rm -f "$current"
         rm -f "$jq_retained"
 
         echo "Static DNS records synchronized"

@@ -662,6 +662,13 @@ let
   '';
 
   haEnabled = replication.ha.enable;
+  # Zones services.router.dnsZones (dns-zone.nix) keeps, replicated or not.
+  staticZoneNames =
+    let
+      router = config.services.router or { };
+      legacy = router.dnsZone or { };
+    in
+    attrNames (router.dnsZones or { }) ++ optional (legacy.enable or false) legacy.zoneName;
   # WHY: a Secondary accepts NOTIFY only from its primary addresses, and the
   # MASTER sends NOTIFY from its own address, not the VIP. Listing the peers
   # (after the VIP) lets changes replicate at once instead of at SOA refresh.
@@ -860,6 +867,7 @@ let
 
     owned_file=/var/lib/technitium-zone-replication/owned-secondaries
     declared=(${concatMapStringsSep " " (zone: escapeShellArg (toLower zone.name)) replication.secondary.zones})
+    static_zones=(${concatMapStringsSep " " (zone: escapeShellArg (toLower zone)) staticZoneNames})
     owned=()
     if [ -f "$owned_file" ]; then
       mapfile -t owned < "$owned_file"
@@ -948,6 +956,14 @@ let
           >/dev/null
       ${optionalString haEnabled ''
       elif [ "$(zone_type "$zone")" = "Primary" ]; then
+        case " ''${static_zones[*]} " in
+          *" $zone "*)
+            # WHY: still declared in services.router.dnsZones; it stays as a
+            # plain Primary with its records, no longer replicated.
+            echo "Zone $zone left replication but is still a static zone; keeping it"
+            continue
+            ;;
+        esac
         # WHY: under ha an owned zone is Primary on the MASTER; dropping its
         # declaration must remove it there too. Keep an export first.
         if export_zone "$zone" "${haStateDir}/$zone.removed.zone" \
@@ -1038,6 +1054,10 @@ let
       '') replication.secondary.zones}
     ${optionalString (action == "promote" && cfg.rfc2136.enable) ''
       ${pkgs.systemd}/bin/systemctl --no-block restart technitium-enable-rfc2136.service || rc=1
+    ''}
+    ${optionalString (action == "promote" && config.systemd.services ? technitium-sync-static-hosts) ''
+      # WHY: the sync skips zones this node does not own; write them now.
+      ${pkgs.systemd}/bin/systemctl --no-block restart technitium-sync-static-hosts.service || rc=1
     ''}
     exit "$rc"
   '';

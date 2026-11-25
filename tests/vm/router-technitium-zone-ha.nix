@@ -65,6 +65,13 @@ let
         };
       };
 
+      # Both nodes declare the same static records, as a pair built from one
+      # configuration does.
+      services.router.dnsZones.${zone} = {
+        nameserverIP = "10.0.10.1";
+        staticHosts.gw.ipAddress = "10.0.10.1";
+      };
+
       environment.systemPackages = [
         pkgs.dnsutils
         pkgs.curl
@@ -160,6 +167,20 @@ mkRouterTest {
     with subtest("election: router1 holds the zone as Primary, router2 as Secondary"):
         wait_owner(router1, router2)
 
+    def sync_runs(r):
+        return int(r.succeed(
+            "journalctl -b --no-pager -u technitium-sync-static-hosts | grep -c 'Static DNS records synchronized' || true"
+        ).strip())
+
+    with subtest("static records: the owner writes them, the backup skips its Secondary"):
+        wait_resolves(router2, "gw", "10.0.10.1")
+        router2.succeed("systemctl restart technitium-sync-static-hosts.service")
+        router2.succeed("journalctl -b --no-pager -u technitium-sync-static-hosts | grep -q 'Skipping ${zone}'")
+        assert zone_type(router2) == "Secondary"
+        # The skipped zone's records are not claimed as written.
+        router2.succeed("! grep -q gw /var/lib/technitium-sync-static-hosts/managed-records.json")
+        router1.succeed("grep -q gw /var/lib/technitium-sync-static-hosts/managed-records.json")
+
     with subtest("routerctl: VRRP role and zone state per node, no secrets"):
         token = router1.succeed(f"cat {TOKEN}").strip()
         for r, want_role, want_type in [(router1, "master", "Primary"), (router2, "backup", "Secondary")]:
@@ -198,10 +219,18 @@ mkRouterTest {
         wait_resolves(router2, "one", "10.0.10.51")
 
     with subtest("failover: router2 promotes, router1 demotes, data kept"):
+        runs = sync_runs(router2)
         router1.succeed("systemctl stop keepalived.service")
         t0 = time.monotonic()
         wait_owner(router2, router1)
         print(f"zone ownership moved in {time.monotonic() - t0:.1f} s")
+        # Promotion reruns the static sync, which now writes the zone.
+        router2.wait_until_succeeds(
+            f"[ $(journalctl -b --no-pager -u technitium-sync-static-hosts | grep -c 'Static DNS records synchronized') -gt {runs} ]",
+            timeout=60,
+        )
+        router2.succeed("systemctl is-active technitium-sync-static-hosts.service")
+        router2.succeed("grep -q gw /var/lib/technitium-sync-static-hosts/managed-records.json")
         wait_resolves(router2, "one", "10.0.10.51")
         add_a(router2, "two", "10.0.10.52")
         wait_resolves(router1, "two", "10.0.10.52")

@@ -196,6 +196,82 @@ in
         }
       ]);
 
+  # Under zoneReplication.ha the static sync must not create the replicated
+  # zone (a Primary on the backup), must skip it while Secondary, and
+  # promotion must rerun it. vm-router-technitium-zone-ha covers behaviour.
+  router-technitium-zone-replication-ha-static-hosts-eval =
+    eval.mkNixosEvalCheck "router-technitium-zone-replication-ha-static-hosts"
+      (base ++ [
+        self.nixosModules.router-ha
+        {
+          services.router-ha = {
+            enable = true;
+            role = "backup";
+            virtualIp = "10.10.10.1/16";
+            vrrpInterface = "lan0";
+            vrrpPasswordFile = "/run/keys/vrrp-password";
+          };
+          services.router.dnsZones = {
+            # Mixed case on purpose: Technitium and replication ignore case.
+            "Home.Example".staticHosts.gw.ipAddress = "10.10.10.1";
+            "other.example".staticHosts.gw.ipAddress = "10.10.10.1";
+          };
+          services.router-technitium.zoneReplication = {
+            tsigKeyFile = "/run/secrets/zone-transfer";
+            secondary = {
+              zones = [ { name = "home.example"; } ];
+              primaryAddresses = [ "10.10.10.1" ];
+            };
+            ha = {
+              enable = true;
+              peers = [ "10.10.10.2" ];
+            };
+          };
+        }
+        ({ config, ... }:
+          let
+            services = config.systemd.services;
+            sync = services.technitium-sync-static-hosts.script;
+            promote = builtins.readFile services.technitium-zone-ha-owner.serviceConfig.ExecStart;
+            demote = builtins.readFile services.technitium-zone-ha-owner.serviceConfig.ExecStop;
+            # The sync block of one zone, up to the next zone's block.
+            block = zone:
+              builtins.head (lib.splitString "Ensuring DNS zone exists:" (
+                lib.last (lib.splitString "Ensuring DNS zone exists: ${zone}" (builtins.unsafeDiscardStringContext sync))
+              ));
+            sync0 = builtins.unsafeDiscardStringContext sync;
+            skipsMissing = zone: lib.hasInfix "= Secondary ] || [ -z \"$type\" ]; then" (block zone);
+          in
+          {
+            assertions = [
+              {
+                assertion = skipsMissing "Home.Example" && lib.hasInfix "Skipping Home.Example" (block "Home.Example");
+                message = "the sync must skip a missing or Secondary HA zone.";
+              }
+              {
+                assertion = lib.hasInfix "SKIPPED_ZONES home.example " sync0
+                  && lib.hasInfix "*\" \${zone,,} \"*)" sync0
+                  && lib.hasInfix "(.zone | ascii_downcase) as $z" sync0;
+                message = "skipped zones must match state entries case-insensitively.";
+              }
+              {
+                assertion = !(skipsMissing "other.example") && lib.hasInfix "zones/create" (block "other.example");
+                message = "the sync may create a zone outside zoneReplication.ha.";
+              }
+              {
+                assertion = lib.hasInfix "restart technitium-sync-static-hosts.service" promote
+                  && !(lib.hasInfix "technitium-sync-static-hosts" demote);
+                message = "promotion, not demotion, must rerun the static sync.";
+              }
+              {
+                assertion = lib.hasInfix "static_zones=(home.example other.example)"
+                  (unitScript config "technitium-zone-replication" "technitium-zone-replication");
+                message = "replication cleanup must know the static zones, lower-cased.";
+              }
+            ];
+          })
+      ]);
+
   router-technitium-zone-replication-ha-eval =
     eval.mkNixosEvalCheck "router-technitium-zone-replication-ha"
       (base ++ [
