@@ -302,7 +302,7 @@ let
           # creating it first would leave a Primary on the backup.
           if [ "$type" = Secondary ]${optionalString (elem (toLower zoneName) haZoneNames) " || [ -z \"$type\" ]"}; then
             echo "Skipping ${zoneName}: ''${type:-not created yet} here; the zone primary holds its records"
-            SKIPPED_ZONES="$SKIPPED_ZONES ${zoneName} "
+            SKIPPED_ZONES="$SKIPPED_ZONES ${toLower zoneName} "
           else
             if [ -z "$type" ]; then
               technitium_request ${pkgs.curl}/bin/curl -fsS "http://localhost:5380/api/zones/create?token=$TOKEN" \
@@ -622,8 +622,9 @@ in
             domain="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .domain)"
             type="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .type)"
             value="$(printf '%s' "$record" | ${pkgs.jq}/bin/jq -r .value)"
+            # GOTCHA: zone names compare case-insensitively everywhere.
             case "$SKIPPED_ZONES" in
-              *" $zone "*)
+              *" ''${zone,,} "*)
                 # Prune once this node owns the zone again.
                 printf '%s\n' "$record" >> "$RETAINED_FILE"
                 continue
@@ -675,7 +676,7 @@ in
         # shellcheck disable=SC2086
         skipped_json="$(printf '%s\n' $SKIPPED_ZONES | ${pkgs.jq}/bin/jq -R . | ${pkgs.jq}/bin/jq -cs 'map(select(. != ""))')"
         ${pkgs.jq}/bin/jq --argjson skipped "$skipped_json" --slurpfile prev "$PREV_FILE" '
-          def skipped: .zone as $z | $skipped | index($z) != null;
+          def skipped: (.zone | ascii_downcase) as $z | $skipped | index($z) != null;
           map(select(skipped | not)) + ($prev[0] | map(select(skipped)))
         ' ${managedRecordsFile} > "$current"
         write_state "$current" "$jq_retained"

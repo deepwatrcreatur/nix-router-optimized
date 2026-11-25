@@ -239,6 +239,7 @@ in
               builtins.head (lib.splitString "Ensuring DNS zone exists:" (
                 lib.last (lib.splitString "Ensuring DNS zone exists: ${zone}" (builtins.unsafeDiscardStringContext sync))
               ));
+            sync0 = builtins.unsafeDiscardStringContext sync;
             skipsMissing = zone: lib.hasInfix "= Secondary ] || [ -z \"$type\" ]; then" (block zone);
           in
           {
@@ -246,6 +247,12 @@ in
               {
                 assertion = skipsMissing "Home.Example" && lib.hasInfix "Skipping Home.Example" (block "Home.Example");
                 message = "the sync must skip a missing or Secondary HA zone.";
+              }
+              {
+                assertion = lib.hasInfix "SKIPPED_ZONES home.example " sync0
+                  && lib.hasInfix "*\" \${zone,,} \"*)" sync0
+                  && lib.hasInfix "(.zone | ascii_downcase) as $z" sync0;
+                message = "skipped zones must match state entries case-insensitively.";
               }
               {
                 assertion = !(skipsMissing "other.example") && lib.hasInfix "zones/create" (block "other.example");
