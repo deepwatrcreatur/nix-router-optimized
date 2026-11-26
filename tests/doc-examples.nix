@@ -445,6 +445,14 @@ in
       message = "router-tailscale docs example should thread authKeyFile to services.tailscale.";
     }
     {
+      assertion =
+        let
+          unit = config.systemd.services.tailscaled-autoconnect;
+        in
+        unit.serviceConfig.Restart == "on-failure" && unit.unitConfig.StartLimitIntervalSec == 0;
+      message = "router-tailscale should retry tailscaled-autoconnect when it times out waiting for the network.";
+    }
+    {
       assertion = builtins.elem "--advertise-routes=10.10.0.0/16,192.168.100.0/24" config.services.tailscale.extraUpFlags;
       message = "router-tailscale docs example should render advertised routes.";
     }
