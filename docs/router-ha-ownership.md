@@ -58,10 +58,12 @@ router. A backup's WAN is down, so the clients that picked it lose IPv6.
   removes the drop-in.
   networkd restarts RA on the change, sending a final lifetime-0 RA from the
   old state and fresh RAs at once, so clients switch router within seconds.
-  A node that lost its LAN link cannot say goodbye; clients stop using it
-  through neighbour unreachability detection, and its first BACKUP RA after
-  the link returns clears the stale route. The `vm-router-ha-pair` check
-  measures this from a LAN client at every transition.
+  The MASTER advertises from a shared virtual link-local address
+  (`routerAdvertisements.virtualLinkLocal`, `fe80::1` by default), so
+  clients know one default router that moves with VRRP; see
+  [Virtual link-local](#virtual-link-local). The `vm-router-ha-pair` check
+  measures this from a LAN client at every transition, including a MASTER
+  that loses power.
 - `"both-nodes"`: keep RAs on both. Only correct when each node has its own
   working IPv6 uplink.
 
@@ -72,6 +74,41 @@ therefore sets `KeepConfiguration=static` on the VRRP interface's network
 (`services.router-ha.vrrpNetwork`, detected for router-networking routed
 interfaces), and `"vrrp-owner"` requires it. The VM check confirms the VIP
 survives each handover. Expect a brief IPv6 blip on the LAN at each handover.
+
+#### Virtual link-local
+
+Clients use the source address of an RA as the default router's address.
+With per-node sources, a client knows the MASTER by that node's own
+link-local address, and only a lifetime-0 RA from it removes the route. A
+MASTER that loses power, crashes or loses its LAN link cannot send one, so
+clients keep routing IPv6 to the dead node until its router lifetime (up to
+1800 s) expires; Linux keeps choosing that route while neighbour discovery
+sits in DELAY. A power-cut drill on a real pair measured 90 s of no IPv6 and then
+2.5 minutes of flapping on a LAN client after a power cut.
+
+RFC 5798 (VRRPv3) instead has the MASTER advertise from a virtual
+link-local address. router-ha does this when `virtualLinkLocal` is set:
+
+- On promotion, `router-ha-ra-owner.service` adds the address to each RA
+  network's interface (`nodad`, with `ndisc_notify` so the kernel sends an
+  unsolicited NA) before reloading networkd. The kernel picks the newest
+  link-local address as the source for the RAs, so the MASTER advertises
+  from the virtual one.
+- On demotion it removes the address before reloading, so the final
+  lifetime-0 RA comes from the node's own address and does not retract the
+  shared router.
+- A BACKUP advertises lifetime 0 from its own address, as before.
+
+Clients therefore keep one route, `via fe80::1`; a failover only changes
+the MAC behind it, which the unsolicited NA (or, failing that, neighbour
+unreachability detection) updates within seconds. The address must be
+unused on those links. Each RA network must name a single interface
+(router-networking's device, or a glob-free `matchConfig.Name`), and
+router-ha sets `KeepConfiguration=static` on them so a reload keeps the
+address. `virtualLinkLocal = null` restores per-node sources.
+
+After upgrading, clients still hold the old MASTER's own-address route
+until the first demotion retracts it or its lifetime expires.
 
 To take a node out of service, stop keepalived (`systemctl stop
 keepalived`) or lower its priority. Do not use `ip link set <lan> down`: the

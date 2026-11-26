@@ -6,10 +6,11 @@
 
 # VRRP lifecycle on two routers with preemptDelay and single-active units:
 # election, crash of the MASTER, delayed fail-back, FAULT on LAN loss, and a
-# reboot of the MASTER. At every steady state exactly one node holds the
-# VIP, the WAN link and the owned units (a stand-in, inadyn.timer, miniupnpd,
-# LAN RAs), and a LAN client routes IPv6 via that node only, sampled for a
-# few seconds.
+# reboot and a power loss of the MASTER. At every steady state exactly one
+# node holds the VIP, the WAN link and the owned units (a stand-in,
+# inadyn.timer, miniupnpd, LAN RAs), and a LAN client's only IPv6 default
+# router is the virtual link-local, resolved to that node's MAC, sampled
+# for a few seconds.
 let
   mkRouterTest = import ./lib/mk-router-test.nix {
     inherit pkgs lib self;
@@ -124,32 +125,35 @@ mkRouterTest {
     def owned_inactive(r):
         return all(r.execute(f"systemctl is-active --quiet {u}")[0] != 0 for u in OWNED)
 
-    LL = {}
+    VLL = "fe80::1"
+    MAC = {}
 
-    def lan_ll(r):
-        # Cached: the address is gone while eth2 is down (FAULT subtest).
-        if r.name not in LL:
-            r.wait_until_succeeds("ip -6 -o addr show dev eth2 scope link | grep -q fe80")
-            LL[r.name] = r.succeed("ip -6 -o addr show dev eth2 scope link | awk '{print $4}' | cut -d/ -f1").strip()
-        return LL[r.name]
-
-    def lan_down(r):
-        return "LOWER_UP" not in r.succeed("ip -o link show dev eth2").split(">")[0]
+    def lan_mac(r):
+        if r.name not in MAC:
+            MAC[r.name] = r.succeed("cat /sys/class/net/eth2/address").strip()
+        return MAC[r.name]
 
     def client_routers():
         # Default routes learned from RAs: one "via fe80::..." per router.
         out = client.succeed("ip -6 route show default dev eth1 proto ra")
         return sorted(l.split("via ")[1].split()[0] for l in out.splitlines() if "via " in l)
 
+    def client_router_mac():
+        out = client.succeed(f"ip -6 neigh show {VLL} dev eth1").split()
+        return out[out.index("lladdr") + 1] if "lladdr" in out else None
+
     def expected_routers(master, others):
-        # A node whose LAN link is down cannot send its final RA; the client
-        # keeps that stale route until the link returns (NUD skips it).
-        ok = {lan_ll(master)} | {lan_ll(r) for r in others if lan_down(r)}
-        return lambda routers: lan_ll(master) in routers and set(routers) <= ok
+        # The MASTER advertises only from the virtual link-local; each node's
+        # own address advertises lifetime 0, so a dead MASTER leaves nothing
+        # stale behind.
+        return lambda routers: routers == [VLL]
 
     def assert_ra_owner(master, others):
         ok = expected_routers(master, others)
         retry(lambda _: ok(client_routers()), 40)
+        # Unsolicited NA on promotion, else NUD, moves the router's MAC.
+        client.succeed(f"ping -6 -c1 -W1 {VLL}%eth1 >/dev/null || true")
+        retry(lambda _: client_router_mac() == lan_mac(master), 30)
 
     def keepalived_running(r):
         r.wait_until_succeeds("systemctl is-active keepalived.service", timeout=60)
@@ -208,7 +212,7 @@ mkRouterTest {
         keepalived_running(r)
     client.wait_for_unit("systemd-networkd.service")
     for r in routers:
-        lan_ll(r)
+        lan_mac(r)
 
     with subtest("election: router1 (priority 100) owns VIP, WAN and the unit"):
         assert_steady(router1, [router2])
@@ -281,6 +285,24 @@ mkRouterTest {
         router1.wait_for_unit("multi-user.target")
         # INVARIANT: ActivationPolicy=manual keeps the WAN down through boot.
         assert not wan_up(router1), "router1 raised its WAN while booting"
+        keepalived_running(router1)
+        assert_delayed_failback(router2, router1)
+
+    with subtest("MASTER power loss: no final RA, the client's IPv6 follows router2"):
+        # A crash sends no lifetime-0 RA. With per-node RA sources the client
+        # kept the dead MASTER's route for its whole lifetime.
+        client.wait_until_succeeds("ip -6 -o addr show dev eth1 scope global | grep -q 'inet6 2001:db8:'", timeout=60)
+        router1.crash()
+        t0 = time.monotonic()
+        wait_role(router2, "master", timeout=30)
+        router2.wait_until_succeeds("ip -6 -o addr show dev eth1 scope global | grep -q 2001:db8:1::", timeout=60)
+        target = router2.succeed("ip -6 -o addr show dev eth1 scope global | grep 2001:db8:1:: | awk '{print $4}' | cut -d/ -f1 | head -1").strip()
+        client.wait_until_succeeds(f"ping -6 -c1 -W1 {target}", timeout=20)
+        print(f"client reaches router2's WAN over IPv6 {time.monotonic() - t0:.1f} s after the power loss")
+        assert client_routers() == [VLL], f"client routers {client_routers()} after the power loss"
+        assert client_router_mac() == lan_mac(router2), "the virtual router still resolves to the dead MASTER"
+        router1.start()
+        router1.wait_for_unit("multi-user.target")
         keepalived_running(router1)
         assert_delayed_failback(router2, router1)
   '';

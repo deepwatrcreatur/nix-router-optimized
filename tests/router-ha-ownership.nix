@@ -145,6 +145,19 @@ in
             message = "vrrp-owner must keep RAs on with router lifetime 0 in the static LAN config.";
           }
           {
+            assertion =
+              let
+                start = svc.router-ha-ra-owner.serviceConfig.ExecStart.text;
+                stop = svc.router-ha-ra-owner.serviceConfig.ExecStop.text;
+                before = a: b: text: lib.hasInfix a text && lib.hasInfix b text
+                  && lib.stringLength (lib.head (lib.splitString a text)) < lib.stringLength (lib.head (lib.splitString b text));
+              in
+              before "ip -6 addr replace fe80::1/64 dev lan0 nodad" "networkctl reload" start
+              && before "ip -6 addr del fe80::1/64 dev lan0" "networkctl reload" stop
+              && lib.hasInfix "conf/lan0/ndisc_notify" start;
+            message = "the MASTER must hold the virtual link-local before advertising and drop it before its final RA.";
+          }
+          {
             assertion = lib.all (u: lib.elem u units) [
               "router-ddns-ha-owner.service"
               "router-ha-ra-owner.service"
@@ -229,6 +242,31 @@ in
       message = "masterRouterLifetimeSec must reach the MASTER drop-in.";
     }
   ]);
+
+  router-ha-ra-own-link-local-eval = check "router-ha-ra-own-link-local" (pair {
+    ha.routerAdvertisements = {
+      mode = "vrrp-owner";
+      virtualLinkLocal = null;
+    };
+  }) (config: [
+    {
+      assertion = !(lib.hasInfix "fe80::" config.systemd.services.router-ha-ra-owner.serviceConfig.ExecStart.text);
+      message = "virtualLinkLocal = null must advertise from the node's own link-local address.";
+    }
+  ]);
+
+  router-ha-ra-virtual-link-local-glob-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-ra-virtual-link-local-glob" (
+    pair { ha = raOwner; }
+    ++ [
+      {
+        systemd.network.networks."30-guest" = {
+          matchConfig.Name = "guest*";
+          networkConfig.IPv6SendRA = true;
+        };
+        services.router-ha.routerAdvertisements.networks = [ "20-router-lan" "30-guest" ];
+      }
+    ]
+  );
 
   router-ha-vrrp-keep-configuration-no-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-vrrp-keep-configuration-no" (
     pair { ha = raOwner; }

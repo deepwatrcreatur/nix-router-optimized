@@ -363,6 +363,44 @@ let
       lifetime' = ra.masterRouterLifetimeSec.${n} or lifetime;
     in
     if lifetime' == null then "" else toString lifetime';
+  vll = ra.virtualLinkLocal;
+  # The interface each RA network configures: router-networking's device,
+  # else a literal (glob-free) matchConfig.Name.
+  raDevice =
+    n:
+    let
+      routed = config.services.router-networking.routedInterfaces or { };
+      name = removePrefix "20-router-" n;
+      match = config.systemd.network.networks.${n}.matchConfig.Name or null;
+    in
+    if hasPrefix "20-router-" n && routed ? ${name} then
+      routed.${name}.device
+    else if isString match && builtins.match ".*[][*? ].*" match == null then
+      match
+    else
+      null;
+  unresolvedRaNetworks = filter (n: raDevice n == null) ra.networks;
+  raDevices = unique (filter (d: d != null) (map raDevice ra.networks));
+  # WHY: docs/router-ha-ownership.md#virtual-link-local. Clients learn one
+  # default router, the shared link-local, and keep it across failovers;
+  # a MASTER that dies cannot send the lifetime-0 RA that would retract its
+  # own address. Added before networkd advertises and removed before the
+  # final RA, so the MASTER advertises from it (the kernel picks the newest
+  # link-local) and the final RA retracts the node's own address, not it.
+  vllScript =
+    enable:
+    concatMapStringsSep "\n" (
+      dev:
+      if enable then
+        ''
+          # WHY: unsolicited NA when the address lands, so clients move the
+          # shared router to this MAC at once instead of after NUD fails.
+          ${pkgs.coreutils}/bin/echo 1 > /proc/sys/net/ipv6/conf/${dev}/ndisc_notify
+          ${pkgs.iproute2}/bin/ip -6 addr replace ${vll}/64 dev ${dev} nodad
+        ''
+      else
+        "${pkgs.iproute2}/bin/ip -6 addr del ${vll}/64 dev ${dev} 2>/dev/null || true"
+    ) raDevices;
   # WHY: the static config advertises router lifetime 0 ("not a default
   # router"); only the MASTER's runtime drop-in restores the real lifetime.
   # A node whose LAN link died could not send its final RA, so its BACKUP
@@ -374,6 +412,7 @@ let
     pkgs.writeShellScript "router-ha-ra-${if enable then "start" else "stop"}" ''
       # Stop is best effort: demotion must finish even if networkd is gone.
       set -u${optionalString enable "e"}
+      ${optionalString (vll != null && !enable) (vllScript false)}
       ${concatMapStringsSep "\n" (
         n:
         let
@@ -388,6 +427,7 @@ let
         else
           "${pkgs.coreutils}/bin/rm -f ${escapeShellArg file}"
       ) ra.networks}
+      ${optionalString (vll != null && enable) (vllScript true)}
       ${pkgs.systemd}/bin/networkctl reload ${optionalString (!enable) "|| true"}
     '';
 in
@@ -540,6 +580,22 @@ in
         '';
         example = [ "20-router-lan" ];
         description = "systemd-networkd network names whose RAs follow the VRRP MASTER in `\"vrrp-owner\"` mode.";
+      };
+
+      virtualLinkLocal = mkOption {
+        type = types.nullOr (types.strMatching "fe80:[0-9a-fA-F:]*");
+        default = "fe80::1";
+        example = "fe80::53";
+        description = ''
+          Link-local address the MASTER holds on every network in
+          `networks` and sends its RAs from (`"vrrp-owner"` only). Clients
+          then know a single IPv6 default router that moves with VRRP, so a
+          MASTER that dies without a final RA leaves no stale route behind;
+          an unsolicited NA moves it to the new MASTER's MAC. Pick an address
+          no other host on those links uses. `null` advertises from each
+          node's own link-local address: clients then keep a dead MASTER's
+          route until its router lifetime expires.
+        '';
       };
 
       masterRouterLifetimeSec = mkOption {
@@ -778,6 +834,10 @@ in
           message = "services.router-ha: ${toString cfg.vrrpNetwork} sets KeepConfiguration=${toString (vrrpNet.networkConfig.KeepConfiguration or "")}; the VRRP network needs \"static\" or \"yes\" so networkd keeps the VIP.";
         }
         {
+          assertion = !raOwner || vll == null || unresolvedRaNetworks == [ ];
+          message = "services.router-ha.routerAdvertisements.virtualLinkLocal needs each network's interface; ${concatStringsSep ", " unresolvedRaNetworks} match no single interface name (set matchConfig.Name to one interface, or virtualLinkLocal = null).";
+        }
+        {
           assertion = !raOwner || all (n: elem n ra.networks) (attrNames ra.masterRouterLifetimeSec);
           message = "services.router-ha.routerAdvertisements.masterRouterLifetimeSec names networks that are not in routerAdvertisements.networks.";
         }
@@ -922,6 +982,14 @@ in
         "+${keepalivedStopScript}"
       ];
     }
+
+    (mkIf (raOwner && vll != null) {
+      # WHY: the drop-in's reload must not delete the virtual link-local
+      # (a foreign address) on the MASTER.
+      systemd.network.networks = genAttrs ra.networks (_: {
+        networkConfig.KeepConfiguration = mkDefault "static";
+      });
+    })
 
     (mkIf (cfg.vrrpNetwork != null) {
       # WHY: keeps keepalived's VIP (a permanent foreign address) across
