@@ -9,9 +9,13 @@ Tightens kernel parameters to reduce attack surface:
 - ASLR (Address Space Layout Randomization)
 - Restricted `dmesg` access
 - Protection against symlink/hardlink attacks
-- Strict reverse path filtering (RPF)
+- Reverse path filtering (RPF): strict by default, `loose` or `off` via
+  `kernelHardening.rpFilter`
 - Disabling of dangerous protocols (Source Routing, Redirects)
-- Blacklisting of non-essential modules (Firewire, Thunderbolt, etc.)
+- BPF JIT hardening and no core dumps from setuid processes
+- Blocking of non-essential modules (legacy protocols such as TIPC, RDS and
+  AX.25; FireWire, Thunderbolt, Bluetooth, webcams). By default they are
+  refused even when loaded by name or as a dependency, not only blacklisted.
 
 ### Geo-IP Blocking
 Declarative blocking of entire countries using `nftables` sets and the IPDeny data source.
@@ -41,6 +45,7 @@ services.router-security-hardened = {
     enable = true;
     restrictDmesg = true;
     allowPing = true;
+    rpFilter = "strict"; # "loose" on VRRP members and multi-WAN routers
   };
 
   geoIpBlocking = {
@@ -68,6 +73,9 @@ services.router-security-hardened = {
 | `kernelHardening.enable` | bool | `false` | Enable kernel parameter tuning. |
 | `kernelHardening.restrictDmesg` | bool | `true` | Restrict dmesg to root. |
 | `kernelHardening.allowPing` | bool | `true` | Allow ICMP echo. |
+| `kernelHardening.rpFilter` | enum | `"strict"` | `rp_filter` for `all` and `default`: `"strict"` (1), `"loose"` (2) or `"off"` (0). |
+| `kernelHardening.blacklistedModules` | list of str | legacy protocols and desktop peripherals | Modules never loaded. Replace the list to keep one the hardware needs. |
+| `kernelHardening.denyExplicitLoad` | bool | `true` | Also refuse `blacklistedModules` by name or as a dependency (`install <module> false`). |
 | `geoIpBlocking.enable` | bool | `false` | Enable Geo-IP blocking. |
 | `geoIpBlocking.blockedCountries` | list of str | `[]` | ISO country codes to block. |
 | `egressBogonBlocking.enable` | bool | `false` | Enable WAN egress blocking to bogon/special-purpose IPv4 ranges. |
@@ -77,6 +85,18 @@ services.router-security-hardened = {
 | `macSecurity.whitelists` | attrs of list of str | `{}` | Per-interface MAC whitelists. |
 
 ## Integration Notes
+
+- **Reverse-path filtering and HA.** Strict `rp_filter` drops legitimate
+  traffic that arrives on a different interface from the one its source
+  routes back through: a VRRP backup whose default route points at the
+  master, multi-WAN with policy routing, asymmetric transit. Set
+  `kernelHardening.rpFilter = "loose"` there. The kernel uses the higher of
+  the `all` and per-interface values, so `router-multicast`'s per-interface
+  loose setting keeps working under `strict`.
+- **Blocked modules.** Since `denyExplicitLoad` (on by default),
+  `modprobe <module>` fails for every entry in `blacklistedModules`, and so
+  do modules that depend on one (for example `thunderbolt-net`). Remove the
+  entry or set `denyExplicitLoad = false` if a router needs it.
 
 - Requires `services.router-firewall.enable = true` for Geo-IP, WAN egress bogon blocking, and MAC security.
 - Geo-IP blocking depends on `https://www.ipdeny.com` for IP zone files.

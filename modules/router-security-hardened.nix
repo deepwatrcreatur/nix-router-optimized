@@ -47,6 +47,14 @@ let
     if fromFirewall != [ ] then fromFirewall else derivedWanInterfaces;
 
   nonEmptyWhitelists = filterAttrs (_iface: macs: macs != [ ]) cfg.macSecurity.whitelists;
+
+  rpFilterValue =
+    {
+      strict = 1;
+      loose = 2;
+      off = 0;
+    }
+    .${cfg.kernelHardening.rpFilter};
 in
 {
   options.services.router-security-hardened = {
@@ -63,6 +71,57 @@ in
         type = types.bool;
         default = true;
         description = "Allow incoming ICMP echo requests (Ping).";
+      };
+      rpFilter = mkOption {
+        type = types.enum [
+          "strict"
+          "loose"
+          "off"
+        ];
+        default = "strict";
+        description = ''
+          Reverse-path filtering for `net.ipv4.conf.{all,default}.rp_filter`.
+          `strict` (1) drops packets whose source is not routed back out the
+          interface they arrived on. Use `loose` (2) when legitimate traffic
+          arrives asymmetrically: VRRP pairs, multi-WAN with policy routing, or
+          a standby whose default route points at its peer. The kernel uses
+          the higher of the `all` and per-interface values, so `loose` here
+          also relaxes interfaces left at their default.
+        '';
+      };
+      blacklistedModules = mkOption {
+        type = types.listOf types.str;
+        default = [
+          "firewire-core"
+          "thunderbolt"
+          "uvcvideo"
+          "bluetooth"
+          "n-hdlc"
+          "ax25"
+          "netrom"
+          "rose"
+          "x25"
+          "dccp"
+          "rds"
+          "tipc"
+        ];
+        description = ''
+          Kernel modules the router never needs: legacy and rarely used network
+          protocols (a socket() call would otherwise load them on demand) and
+          desktop peripherals. Remove an entry if the hardware needs it, for
+          example a Thunderbolt network adapter. Entries a kernel no longer
+          ships (DCCP was removed in Linux 6.16) are harmless.
+        '';
+      };
+      denyExplicitLoad = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Also refuse to load `blacklistedModules` by name or as a dependency,
+          via `install <module> false` in modprobe.d. A blacklist alone only
+          stops loading through module aliases, so `modprobe <module>` and
+          dependent modules still load it.
+        '';
       };
     };
 
@@ -130,12 +189,14 @@ in
         "kernel.randomize_va_space" = mkForce 2; # ASLR
         "kernel.perf_event_paranoid" = mkForce 3; # Restrict perf events
         "kernel.unprivileged_bpf_disabled" = mkForce 1; # Restrict BPF
+        "net.core.bpf_jit_harden" = mkForce 2; # Constant blinding for all JIT users
+        "fs.suid_dumpable" = mkForce 0; # No core dumps from setuid processes
 
         # --- Network Hardening ---
         "net.ipv4.tcp_syncookies" = mkForce 1;
         "net.ipv4.tcp_rfc1337" = mkForce 1; # Protect against time-wait assassination
-        "net.ipv4.conf.all.rp_filter" = mkForce 1; # Strict reverse path filtering
-        "net.ipv4.conf.default.rp_filter" = mkForce 1;
+        "net.ipv4.conf.all.rp_filter" = mkForce rpFilterValue;
+        "net.ipv4.conf.default.rp_filter" = mkForce rpFilterValue;
         "net.ipv4.conf.all.accept_source_route" = mkForce 0;
         "net.ipv4.conf.default.accept_source_route" = mkForce 0;
         "net.ipv4.conf.all.accept_redirects" = mkForce 0;
@@ -155,17 +216,14 @@ in
         "net.ipv6.conf.default.accept_source_route" = mkForce 0;
       };
 
-      # Disable non-essential kernel modules
-      boot.blacklistedKernelModules = [
-        "firewire-core"
-        "thunderbolt"
-        "uvcvideo"
-        "bluetooth"
-        "n-hdlc"
-        "ax25"
-        "netrom"
-        "x25"
-      ];
+      boot.blacklistedKernelModules = cfg.kernelHardening.blacklistedModules;
+
+      # GOTCHA: NixOS has no /bin/false, so point modprobe at a store path.
+      boot.extraModprobeConfig = mkIf cfg.kernelHardening.denyExplicitLoad (
+        concatMapStrings (
+          module: "install ${module} ${getExe' pkgs.coreutils "false"}\n"
+        ) cfg.kernelHardening.blacklistedModules
+      );
     })
 
     (if hasRouterFirewall then

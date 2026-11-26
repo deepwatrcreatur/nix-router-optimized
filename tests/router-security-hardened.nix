@@ -31,6 +31,54 @@
           assertion = builtins.elem "bluetooth" config.boot.blacklistedKernelModules;
           message = "router-security-hardened should blacklist bluetooth.";
         }
+        {
+          assertion = config.boot.kernel.sysctl."net.ipv4.conf.all.rp_filter" == 1;
+          message = "router-security-hardened should default to strict rp_filter.";
+        }
+        {
+          assertion = config.boot.kernel.sysctl."net.core.bpf_jit_harden" == 2
+            && config.boot.kernel.sysctl."fs.suid_dumpable" == 0;
+          message = "router-security-hardened should harden the BPF JIT and setuid core dumps.";
+        }
+        {
+          assertion = lib.hasInfix "install tipc " config.boot.extraModprobeConfig
+            && lib.hasInfix "/bin/false" config.boot.extraModprobeConfig;
+          message = "router-security-hardened should refuse explicit loads of blacklisted modules.";
+        }
+      ];
+    })
+  ];
+
+  router-security-hardened-loose-rp-filter-eval = eval.mkNixosEvalCheck "router-security-hardened-loose-rp-filter" [
+    self.nixosModules.router-security-hardened
+    {
+      # A consumer's own value must not win over the option (the module forces it).
+      boot.kernel.sysctl."net.ipv4.conf.all.rp_filter" = 1;
+      services.router-security-hardened = {
+        enable = true;
+        kernelHardening = {
+          enable = true;
+          rpFilter = "loose";
+          denyExplicitLoad = false;
+          blacklistedModules = [ "dccp" ];
+        };
+      };
+    }
+    ({ config, ... }: {
+      assertions = [
+        {
+          assertion = config.boot.kernel.sysctl."net.ipv4.conf.all.rp_filter" == 2
+            && config.boot.kernel.sysctl."net.ipv4.conf.default.rp_filter" == 2;
+          message = "rpFilter = loose should set rp_filter to 2.";
+        }
+        {
+          assertion = config.boot.blacklistedKernelModules == [ "dccp" ];
+          message = "blacklistedModules should replace the default list.";
+        }
+        {
+          assertion = !(lib.hasInfix "install dccp" config.boot.extraModprobeConfig);
+          message = "denyExplicitLoad = false should only blacklist.";
+        }
       ];
     })
   ];
