@@ -380,6 +380,9 @@ let
     else
       null;
   unresolvedRaNetworks = filter (n: raDevice n == null) ra.networks;
+  badKeepRaNetworks = filter (
+    n: !elem (config.systemd.network.networks.${n}.networkConfig.KeepConfiguration or "static") [ "static" "yes" true ]
+  ) ra.networks;
   raDevices = unique (filter (d: d != null) (map raDevice ra.networks));
   # WHY: docs/router-ha-ownership.md#virtual-link-local. Clients learn one
   # default router, the shared link-local, and keep it across failovers;
@@ -387,19 +390,29 @@ let
   # own address. Added before networkd advertises and removed before the
   # final RA, so the MASTER advertises from it (the kernel picks the newest
   # link-local) and the final RA retracts the node's own address, not it.
+  # GOTCHA: best effort per interface. An absent secondary LAN must not
+  # stop promotion before the reload that turns on the MASTER's RAs; its
+  # drop-in's Address= adds the address when the link appears.
   vllScript =
     enable:
     concatMapStringsSep "\n" (
       dev:
       if enable then
         ''
-          # WHY: unsolicited NA when the address lands, so clients move the
-          # shared router to this MAC at once instead of after NUD fails.
-          ${pkgs.coreutils}/bin/echo 1 > /proc/sys/net/ipv6/conf/${dev}/ndisc_notify
-          ${pkgs.iproute2}/bin/ip -6 addr replace ${vll}/64 dev ${dev} nodad
+          # WHY: Name= may be an alternative name; procfs knows only the
+          # primary one.
+          if ifname=$(${pkgs.iproute2}/bin/ip -j link show dev ${escapeShellArg dev} 2>/dev/null | ${pkgs.jq}/bin/jq -er '.[0].ifname'); then
+            # WHY: unsolicited NA when the address lands, so clients move
+            # the shared router to this MAC at once instead of after NUD.
+            echo 1 > "/proc/sys/net/ipv6/conf/$ifname/ndisc_notify" || true
+            ${pkgs.iproute2}/bin/ip -6 addr replace ${vll}/64 dev "$ifname" nodad \
+              || echo "router-ha: cannot add ${vll} to $ifname" >&2
+          else
+            echo "router-ha: ${dev} is absent; networkd adds ${vll} when it appears" >&2
+          fi
         ''
       else
-        "${pkgs.iproute2}/bin/ip -6 addr del ${vll}/64 dev ${dev} 2>/dev/null || true"
+        "${pkgs.iproute2}/bin/ip -6 addr del ${vll}/64 dev ${escapeShellArg dev} 2>/dev/null || true"
     ) raDevices;
   # WHY: the static config advertises router lifetime 0 ("not a default
   # router"); only the MASTER's runtime drop-in restores the real lifetime.
@@ -423,6 +436,11 @@ let
           ''
             ${pkgs.coreutils}/bin/install -d -m 0755 ${escapeShellArg dir}
             ${pkgs.coreutils}/bin/printf '[IPv6SendRA]\nRouterLifetimeSec=%s\n' ${escapeShellArg (masterRouterLifetime n)} > ${escapeShellArg file}
+            ${optionalString (vll != null) ''
+              # WHY: the kernel drops link-local addresses with the carrier;
+              # networkd restores this one when a secondary LAN comes back.
+              ${pkgs.coreutils}/bin/printf '[Address]\nAddress=%s/64\nDuplicateAddressDetection=none\n' ${vll} >> ${escapeShellArg file}
+            ''}
           ''
         else
           "${pkgs.coreutils}/bin/rm -f ${escapeShellArg file}"
@@ -583,7 +601,7 @@ in
       };
 
       virtualLinkLocal = mkOption {
-        type = types.nullOr (types.strMatching "fe80:[0-9a-fA-F:]*");
+        type = types.nullOr (types.strMatching "fe80::[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){0,3}");
         default = "fe80::1";
         example = "fe80::53";
         description = ''
@@ -832,6 +850,11 @@ in
           # WHY: anything else lets networkd delete the VIP on reconfigure.
           assertion = cfg.vrrpNetwork == null || elem (vrrpNet.networkConfig.KeepConfiguration or "static") [ "static" "yes" true ];
           message = "services.router-ha: ${toString cfg.vrrpNetwork} sets KeepConfiguration=${toString (vrrpNet.networkConfig.KeepConfiguration or "")}; the VRRP network needs \"static\" or \"yes\" so networkd keeps the VIP.";
+        }
+        {
+          # WHY: anything else lets the MASTER's reload delete the address.
+          assertion = !raOwner || vll == null || badKeepRaNetworks == [ ];
+          message = "services.router-ha.routerAdvertisements.virtualLinkLocal: ${concatStringsSep ", " badKeepRaNetworks} set KeepConfiguration to something other than \"static\" or \"yes\"; networkd would delete the virtual link-local on reload.";
         }
         {
           assertion = !raOwner || vll == null || unresolvedRaNetworks == [ ];

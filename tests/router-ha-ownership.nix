@@ -152,9 +152,11 @@ in
                 before = a: b: text: lib.hasInfix a text && lib.hasInfix b text
                   && lib.stringLength (lib.head (lib.splitString a text)) < lib.stringLength (lib.head (lib.splitString b text));
               in
-              before "ip -6 addr replace fe80::1/64 dev lan0 nodad" "networkctl reload" start
+              before "link show dev lan0" "ip -6 addr replace fe80::1/64 dev \"$ifname\" nodad" start
+              && before "ip -6 addr replace fe80::1/64 dev \"$ifname\" nodad" "networkctl reload" start
               && before "ip -6 addr del fe80::1/64 dev lan0" "networkctl reload" stop
-              && lib.hasInfix "conf/lan0/ndisc_notify" start;
+              && lib.hasInfix "conf/$ifname/ndisc_notify" start
+              && lib.hasInfix "Address=%s/64\\nDuplicateAddressDetection=none" start;
             message = "the MASTER must hold the virtual link-local before advertising and drop it before its final RA.";
           }
           {
@@ -267,6 +269,29 @@ in
       }
     ]
   );
+
+  router-ha-ra-virtual-link-local-keep-no-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-ra-virtual-link-local-keep-no" (
+    pair { ha = raOwner; }
+    ++ [
+      {
+        systemd.network.networks."30-guest" = {
+          matchConfig.Name = "guest0";
+          networkConfig = {
+            IPv6SendRA = true;
+            KeepConfiguration = "no";
+          };
+        };
+        services.router-ha.routerAdvertisements.networks = [ "20-router-lan" "30-guest" ];
+      }
+    ]
+  );
+
+  router-ha-ra-virtual-link-local-malformed-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-ra-virtual-link-local-malformed" (pair {
+    ha.routerAdvertisements = {
+      mode = "vrrp-owner";
+      virtualLinkLocal = "fe80:::1";
+    };
+  });
 
   router-ha-vrrp-keep-configuration-no-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-vrrp-keep-configuration-no" (
     pair { ha = raOwner; }

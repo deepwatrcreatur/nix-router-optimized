@@ -93,7 +93,13 @@ link-local address. router-ha does this when `virtualLinkLocal` is set:
   network's interface (`nodad`, with `ndisc_notify` so the kernel sends an
   unsolicited NA) before reloading networkd. The kernel picks the newest
   link-local address as the source for the RAs, so the MASTER advertises
-  from the virtual one.
+  from the virtual one. The step is best effort per interface: an absent
+  secondary LAN does not stop promotion. The MASTER's drop-in also lists
+  the address (`Address=`, no DAD), so networkd restores it when such a
+  link appears or regains carrier (the kernel drops link-local addresses
+  with the carrier). On that path networkd may send its first RA before the
+  address lands, from the node's own address; that route lasts until the
+  node's next demotion or the router lifetime.
 - On demotion it removes the address before reloading, so the final
   lifetime-0 RA comes from the node's own address and does not retract the
   shared router.
@@ -104,8 +110,8 @@ the MAC behind it, which the unsolicited NA (or, failing that, neighbour
 unreachability detection) updates within seconds. The address must be
 unused on those links. Each RA network must name a single interface
 (router-networking's device, or a glob-free `matchConfig.Name`), and
-router-ha sets `KeepConfiguration=static` on them so a reload keeps the
-address. `virtualLinkLocal = null` restores per-node sources.
+router-ha sets `KeepConfiguration=static` on them (and rejects any other
+value except `yes`) so a reload keeps the address. `virtualLinkLocal = null` restores per-node sources.
 
 After upgrading, clients still hold the old MASTER's own-address route
 until the first demotion retracts it or its lifetime expires.
