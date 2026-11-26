@@ -210,6 +210,10 @@ let
     inherit self lib pkgs;
   };
 
+  vmSecurityHardenedCheck = import ./vm/router-security-hardened.nix {
+    inherit self lib pkgs;
+  };
+
   vmRouterApplyCheck = import ./vm/router-apply.nix {
     inherit self lib pkgs;
   };
@@ -246,6 +250,7 @@ in
   vm-router-ha-pair = vmHaPairCheck;
   vm-router-apply = vmRouterApplyCheck;
   vm-router-hw-sensors = vmHwSensorsCheck;
+  vm-router-security-hardened = vmSecurityHardenedCheck;
   vm-router-ha-wan-health = vmHaWanHealthCheck;
   vm-router-technitium-zone-ha = vmTechnitiumZoneHaCheck;
   vm-router-dhcp-relay = vmDhcpRelayCheck;

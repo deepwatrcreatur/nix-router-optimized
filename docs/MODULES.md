@@ -78,7 +78,7 @@ Declarative zone-based security abstractions:
 
 ### `router-security-hardened`
 Kernel-level security tuning and edge defenses:
-- OpenBSD-tier kernel hardening: restricted `dmesg`, ASLR enforcement, TCP SYN cookie protection, strict reverse-path filtering (`rp_filter`), and disabled ICMP redirects.
+- OpenBSD-tier kernel hardening: restricted `dmesg`, ASLR enforcement, TCP SYN cookie protection, reverse-path filtering (`rp_filter`, strict by default, `loose` for VRRP and multi-WAN), disabled ICMP redirects, and unused protocol modules refused even on explicit load.
 - Inbound Geo-IP filtering via nftables sets.
 - MAC address whitelisting per interface.
 
