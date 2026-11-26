@@ -31,6 +31,12 @@ source of truth. If another layer already enables `services.tailscale` or runs
 `tailscale up`, use either the upstream router module or the repo-local aspect,
 not both.
 
+With `authKeyFile` set, nixpkgs' `tailscaled-autoconnect` unit waits for
+Tailscale to reach `Running`. A router can boot without Internet for longer
+than that unit's 90 s start timeout: a cold start of the whole site, or an HA
+member that stays BACKUP until VRRP promotes it. The module therefore restarts
+the unit every 15 s until it succeeds, instead of leaving it failed.
+
 The router-firewall integration is opportunistic: if `router-firewall` is also
 imported, the module wires the Tailscale interface and WAN UDP port into that
 policy. If not, it falls back to the native `services.tailscale` behavior.

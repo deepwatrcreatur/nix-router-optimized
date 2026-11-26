@@ -133,5 +133,19 @@ in
         wanUdpPorts = mkIf cfg.openFirewall [ cfg.port ];
       };
     };
+
+    # WHY: nixpkgs' tailscaled-autoconnect waits for BackendState=Running
+    # with the default 90 s start timeout and is never retried. A router can
+    # boot with no Internet for longer: a cold start of the whole site, or an
+    # HA member that is BACKUP while the peer is down until VRRP promotes it.
+    # tailscaled then logs in by itself, but the unit stays failed, and if
+    # the node needed the auth key it never runs `tailscale up` again.
+    systemd.services.tailscaled-autoconnect = mkIf (config.services.tailscale.authKeyFile != null) {
+      unitConfig.StartLimitIntervalSec = mkDefault 0;
+      serviceConfig = {
+        Restart = mkDefault "on-failure";
+        RestartSec = mkDefault "15s";
+      };
+    };
   };
 }
