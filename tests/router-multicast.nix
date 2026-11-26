@@ -113,6 +113,23 @@ in
     }
   ]);
 
+  # router-security-hardened zeroes per-interface rp_filter so `all` decides;
+  # it must skip the upstream that igmpproxy deliberately sets to loose.
+  router-multicast-with-hardened-rp-filter-eval = check "router-multicast-with-hardened-rp-filter" (base { } ++ [
+    self.nixosModules.router-security-hardened
+    {
+      services.router-security-hardened = {
+        enable = true;
+        kernelHardening.enable = true;
+      };
+    }
+  ]) (config: [
+    {
+      assertion = lib.hasInfix "| wan0.40)" config.systemd.services.router-rp-filter-reset.script;
+      message = "router-rp-filter-reset must keep the multicast upstream's loose rp_filter.";
+    }
+  ]);
+
   router-multicast-upstream-downstream-fails-eval = eval.mkNixosEvalFailureCheck "router-multicast-upstream-downstream" (base {
     services.router-multicast.downstreams = [ "lan0" "wan0.40" ];
   });

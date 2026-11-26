@@ -93,6 +93,12 @@ services.router-security-hardened = {
   `kernelHardening.rpFilter = "loose"` there. The kernel uses the higher of
   the `all` and per-interface values, so `router-multicast`'s per-interface
   loose setting keeps working under `strict`.
+- **Changing `rpFilter` on a running router.** Once an interface has an
+  address, Linux no longer copies `default` into it, and filtering uses the
+  higher of `all` and the interface value. The `router-rp-filter-reset` unit
+  therefore sets every existing interface's own value to 0 at boot and
+  whenever `rpFilter` changes, so `all` decides without a reboot. It skips
+  `router-multicast`'s upstream when that module sets it to loose.
 - **Blocked modules.** Since `denyExplicitLoad` (on by default),
   `modprobe <module>` fails for every entry in `blacklistedModules`, and so
   do modules that depend on one (for example `thunderbolt-net`). Remove the

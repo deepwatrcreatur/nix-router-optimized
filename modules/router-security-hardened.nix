@@ -48,6 +48,14 @@ let
 
   nonEmptyWhitelists = filterAttrs (_iface: macs: macs != [ ]) cfg.macSecurity.whitelists;
 
+  # WHY: router-multicast deliberately sets its upstream to loose; keep it.
+  rpFilterKeepInterfaces =
+    optional (
+      hasAttrByPath [ "services" "router-multicast" "enable" ] options
+      && config.services.router-multicast.enable
+      && config.services.router-multicast.looseReversePathFilter
+    ) config.services.router-multicast.upstream.interface;
+
   rpFilterValue =
     {
       strict = 1;
@@ -214,6 +222,34 @@ in
         "net.ipv6.conf.default.accept_redirects" = mkForce 0;
         "net.ipv6.conf.all.accept_source_route" = mkForce 0;
         "net.ipv6.conf.default.accept_source_route" = mkForce 0;
+      };
+
+      # GOTCHA: once an interface has an address, Linux stops copying
+      # `default` into it, and filtering uses the higher of `all` and the
+      # interface value. A live switch (loose -> strict, or strict -> off)
+      # would leave existing interfaces on the old mode until reboot. Zero
+      # the per-interface values so `all` decides; the script embeds the
+      # value, so the unit reruns whenever rpFilter changes.
+      systemd.services.router-rp-filter-reset = {
+        description = "Make net.ipv4.conf.all.rp_filter authoritative on existing interfaces";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "systemd-sysctl.service" ];
+        before = [ "router-multicast.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          # rp_filter target for all: ${toString rpFilterValue}
+          for f in /proc/sys/net/ipv4/conf/*/rp_filter; do
+            iface=''${f#/proc/sys/net/ipv4/conf/}
+            iface=''${iface%/rp_filter}
+            case "$iface" in
+              all | default${concatMapStrings (i: " | ${escapeShellArg i}") rpFilterKeepInterfaces}) continue ;;
+            esac
+            echo 0 > "$f"
+          done
+        '';
       };
 
       boot.blacklistedKernelModules = cfg.kernelHardening.blacklistedModules;
