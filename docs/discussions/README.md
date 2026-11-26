@@ -26,6 +26,7 @@ This directory contains deliberative transcripts on complex architectural or pro
 | [20](./20-critique-synthesis-and-framework-roadmap.md) | External Architectural Critique Synthesis, Positioning, and Maturation Roadmap | 2026-09-16 | Closed |
 | [21](./21-ecosystem-plan-review.md) | Review of the Ecosystem Research and Improvement Plan | 2026-11-19 | Closed |
 | [22](./22-vyos-parity-plan-review.md) | Review of the VyOS Feature Parity Plan | 2026-11-20 | Closed |
+| [23](./23-clan-inventory-integration.md) | Clan Integration Through Clan's Inventory, and What Would Attract Users | 2026-11-25 | Closed |
 
 
 ## Methodology
