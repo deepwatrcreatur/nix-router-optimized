@@ -77,11 +77,77 @@ let
     exit "$rc"
   '';
 
+  cts = cfg.conntrackSync;
+  # GOTCHA: a bulk resync copies the MASTER's kernel table, so cached flows
+  # that were in the nftables flowtable carry IPS_OFFLOAD. conntrack-tools
+  # 1.4.8 commits them unchanged; current kernels ignore status bits userspace
+  # may not set, so the commit succeeds (vm-router-ha-conntrack-sync proves it).
+  conntrackdSocket = "/run/conntrackd/conntrackd.ctl";
+  conntrackdConf = pkgs.writeText "conntrackd.conf" ''
+    Sync {
+      Mode FTFW {
+        DisableExternalCache Off
+        CommitTimeout 1800
+        PurgeTimeout 5
+      }
+      UDP {
+        IPv4_address ${cts.localAddress}
+        IPv4_Destination_Address ${cts.peerAddress}
+        Port ${toString cts.port}
+        Interface ${cts.interface}
+        SndSocketBuffer 1249280
+        RcvSocketBuffer 1249280
+        Checksum on
+      }
+    }
+    General {
+      HashSize 32768
+      HashLimit 131072
+      LogFile off
+      Syslog on
+      LockFile /run/conntrackd/conntrackd.lock
+      UNIX {
+        Path ${conntrackdSocket}
+      }
+      NetlinkBufferSize 2097152
+      NetlinkBufferSizeMaxGrowth 8388608
+      Filter From Userspace {
+        Protocol Accept {
+          TCP
+          UDP
+          ICMP
+          IPv6-ICMP
+        }
+        Address Ignore {
+          ${concatMapStringsSep "\n      " (a: (if hasInfix ":" a then "IPv6_address " else "IPv4_address ") + a) ([
+            "127.0.0.1"
+            "::1"
+            cts.localAddress
+            cts.peerAddress
+          ] ++ cts.ignoreAddresses)}
+        }
+      }
+    }
+  '';
+  # Never fails or blocks a transition: conntrackd may be down, and a slow
+  # commit must not hold the WAN back for long.
+  conntrackdCtl =
+    args:
+    "${pkgs.coreutils}/bin/timeout 20 ${cts.package}/bin/conntrackd -C ${conntrackdConf} ${args} || echo \"router-ha: conntrackd ${args} failed\" >&2";
+
   notifyMasterScript = pkgs.writeShellScript "keepalived-master" ''
     ${masterRoleScript}
     # INVARIANT: present only while a promotion runs; the FIFO reader
     # finishes an interrupted one (see notifyFifoReader).
     ${pkgs.coreutils}/bin/touch ${escapeShellArg masterPendingFile}
+    ${optionalString cts.enable ''
+      # INVARIANT: commit the peer's flows into the kernel before the WAN
+      # comes up, so the first returning packets find their NAT entries.
+      ${conntrackdCtl "-c"}
+      ${conntrackdCtl "-f"}
+      ${conntrackdCtl "-R"}
+      ${conntrackdCtl "-B"}
+    ''}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
       ${optionalString (cfg.wan.clonedMac != null) ''
@@ -110,6 +176,12 @@ let
   demoteActiveOwnership = role: roleScript: pkgs.writeShellScript "router-ha-demote-${role}" ''
     ${roleScript}
     ${pkgs.coreutils}/bin/rm -f ${escapeShellArg masterPendingFile}
+    ${optionalString (cts.enable && role != "stop") ''
+      # Shorten the kernel timers of flows this node forwarded as MASTER, so
+      # they expire; a BACKUP also asks the new MASTER for a full resync.
+      ${conntrackdCtl "-t"}
+      ${optionalString (role == "backup") (conntrackdCtl "-n")}
+    ''}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning away from MASTER: Bringing down WAN ${cfg.wan.interface}..."
       ${pkgs.systemd}/bin/networkctl down ${escapeShellArg cfg.wan.interface} \
@@ -130,7 +202,7 @@ let
   notifyFaultScript = demoteActiveOwnership "fault" faultRoleScript;
   keepalivedStopScript = demoteActiveOwnership "stop" backupRoleScript;
 
-  hasNotifyHooks = cfg.wan.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ];
+  hasNotifyHooks = cfg.wan.enable || cts.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ];
 
   # INVARIANT: one reader applies transitions one at a time, in the order
   # keepalived sent them. Separate notify_* scripts run concurrently, so a
@@ -620,6 +692,56 @@ in
       '';
     };
 
+    conntrackSync = {
+      enable = mkEnableOption ''
+        conntrackd state sync (FTFW) with the peer, so established flows,
+        NAT included, survive a failover. Commits the peer's flows on MASTER
+        before the WAN comes up (docs/router-ha-pair-guide.md#connection-state-sync)
+      '';
+
+      interface = mkOption {
+        type = types.str;
+        example = "eno1";
+        description = "Interface of the sync link, ideally a dedicated or management segment.";
+      };
+
+      localAddress = mkOption {
+        type = types.str;
+        example = "192.168.100.2";
+        description = "This node's IPv4 address on `interface`.";
+      };
+
+      peerAddress = mkOption {
+        type = types.str;
+        example = "192.168.100.3";
+        description = "The peer's IPv4 address on `interface`; sync uses unicast UDP to it.";
+      };
+
+      port = mkOption {
+        type = types.port;
+        default = 3780;
+        description = "UDP port of the sync link.";
+      };
+
+      ignoreAddresses = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [ "10.10.10.2" ];
+        description = ''
+          Addresses whose flows are not synced, typically this node's own LAN
+          and WAN addresses (flows that end on the router itself). Loopback and
+          the sync addresses are always ignored.
+        '';
+      };
+
+      package = mkOption {
+        type = types.package;
+        default = pkgs.conntrack-tools;
+        defaultText = literalExpression "pkgs.conntrack-tools";
+        description = "conntrack-tools providing conntrackd.";
+      };
+    };
+
     garp =
       let
         garpOption =
@@ -888,6 +1010,17 @@ in
           # node's global or ULA address never arrive and both become MASTER.
           assertion = !(virtualIpIsIpv6 && cfg.unicastPeers != [ ] && cfg.unicastSrcIp == null);
           message = "services.router-ha.unicastPeers with an IPv6 VIP needs unicastSrcIp: this node's address on vrrpInterface that the peer lists in its unicastPeers.";
+        }
+        {
+          assertion =
+            !cts.enable
+            || (
+              let
+                v4 = a: builtins.match "(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})" a != null;
+              in
+              v4 cts.localAddress && v4 cts.peerAddress && cts.localAddress != cts.peerAddress
+            );
+          message = "services.router-ha.conntrackSync needs distinct IPv4 localAddress and peerAddress (no prefix length) on the sync interface.";
         }
         {
           # WHY: no default password. A rolling upgrade where one node has auth
@@ -1164,6 +1297,28 @@ in
       };
     })
 
+    (mkIf cts.enable {
+      environment.systemPackages = [ cts.package ];
+      # conntrackd's default path, so `conntrackd -s`, `-i` and `-e` work by hand.
+      environment.etc."conntrackd/conntrackd.conf".source = conntrackdConf;
+
+      systemd.services.conntrackd = {
+        description = "conntrackd connection-state sync with the VRRP peer";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "network.target" ];
+        before = [ "keepalived.service" ];
+        serviceConfig = {
+          ExecStart = "${cts.package}/bin/conntrackd -C ${conntrackdConf}";
+          RuntimeDirectory = "conntrackd";
+          Restart = "on-failure";
+          RestartSec = 2;
+        };
+      };
+      # WHY: keepalived's MASTER transition commits through conntrackd's socket.
+      systemd.services.keepalived.wants = [ "conntrackd.service" ];
+      systemd.services.keepalived.after = [ "conntrackd.service" ];
+    })
+
     (mkIf usePasswordFile {
       # SECURITY: the upstream module envsubsts secretFile into
       # /run/keepalived/keepalived.conf (umask 077). systemd reads
@@ -1305,6 +1460,8 @@ in
         # VRRP is IP protocol 112 (multicast, or unicast with unicastPeers)
         extraInputRules = ''
           meta l4proto vrrp accept comment "Allow VRRP traffic"
+        '' + optionalString cts.enable ''
+          iifname "${cts.interface}" ip saddr ${cts.peerAddress} udp dport ${toString cts.port} accept comment "Allow conntrackd sync from the VRRP peer"
         '';
       };
     } else { })

@@ -93,8 +93,9 @@ test; until it lands, its section here describes the plan.
 ## Deferred
 
 - **conntrackd.** Every source pairs VRRP or CARP with state sync, but it only
-  helps once plain failover is proven on the hardware. See
-  [ecosystem plan §0.4](./ECOSYSTEM-RESEARCH-AND-IMPROVEMENT-PLAN.md#04-verdicts-on-the-4-proposals).
+  helps once plain failover is proven on the hardware. *Adopted 2026-11-27,
+  after the live drills: `router-ha.conntrackSync`
+  ([pair guide](./router-ha-pair-guide.md#connection-state-sync)).*
 - **Lease release and cooldown behaviour of a specific ISP.** Measure it
   during the live drill; the VM test's ISP cannot model it.
 
