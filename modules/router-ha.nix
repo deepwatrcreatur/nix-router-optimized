@@ -571,6 +571,34 @@ in
       '';
     };
 
+    unicastPeers = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "10.10.10.3" ];
+      description = ''
+        The peer's address on `vrrpInterface`, in the VIP's family and
+        without a prefix length. When set, keepalived sends adverts to
+        these addresses instead of the VRRP multicast group (224.0.0.18,
+        ff02::12). Use it when the LAN does not deliver VRRP multicast
+        between the two routers: some switches (IGMP snooping, multicast
+        filtering) drop it on one port while UDP multicast and unicast
+        still pass. A node that cannot hear its peer becomes MASTER three
+        advert intervals after start, which bypasses `preemptDelay` and
+        `peerWaitSec`. Set it on both nodes, each listing the other.
+      '';
+    };
+
+    unicastSrcIp = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "10.10.10.2";
+      description = ''
+        Source address for unicast adverts (keepalived `unicast_src_ip`).
+        `null` uses the primary address of `vrrpInterface`. Only used with
+        `unicastPeers`.
+      '';
+    };
+
     garp =
       let
         garpOption =
@@ -822,6 +850,14 @@ in
     {
       assertions = [
         {
+          assertion = all (p: !(hasInfix "/" p) && (hasInfix ":" p) == virtualIpIsIpv6 && p != virtualIpAddress) cfg.unicastPeers;
+          message = "services.router-ha.unicastPeers: list the peer's own address on vrrpInterface, without a prefix length, in the same family as virtualIp (${cfg.virtualIp}), and not the VIP.";
+        }
+        {
+          assertion = cfg.unicastSrcIp == null || (cfg.unicastPeers != [ ] && !(hasInfix "/" cfg.unicastSrcIp) && (hasInfix ":" cfg.unicastSrcIp) == virtualIpIsIpv6);
+          message = "services.router-ha.unicastSrcIp needs unicastPeers and an address (no prefix length) in the same family as virtualIp.";
+        }
+        {
           # WHY: no default password. A rolling upgrade where one node has auth
           # and the other has none makes both nodes MASTER, so make the choice
           # explicit instead of silently changing the wire format.
@@ -999,6 +1035,8 @@ in
           interface = cfg.vrrpInterface;
           virtualRouterId = cfg.vrrpId;
           priority = cfg.priority;
+          # WHY: docs/router-ha-pair-guide.md#unicast-peers (LANs that drop VRRP multicast).
+          inherit (cfg) unicastPeers unicastSrcIp;
           virtualIps = [
             { addr = cfg.virtualIp; }
           ];
@@ -1232,9 +1270,9 @@ in
     # Firewall integration
     (if hasRouterFirewall then {
       services.router-firewall = mkIf (config.services.router-firewall.enable or false) {
-        # VRRP uses multicast/protocol 112
+        # VRRP is IP protocol 112 (multicast, or unicast with unicastPeers)
         extraInputRules = ''
-          ip protocol vrrp accept comment "Allow VRRP traffic"
+          meta l4proto vrrp accept comment "Allow VRRP traffic"
         '';
       };
     } else { })
