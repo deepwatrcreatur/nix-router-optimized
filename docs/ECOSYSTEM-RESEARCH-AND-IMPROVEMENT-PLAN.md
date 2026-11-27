@@ -138,7 +138,7 @@ throughput benchmarks have been run, so none are claimed.
 | Services that must run on one node | Typed single-active ownership (DDNS, UPnP, RAs, Kea D2, DNS zones, any unit) | per-service, mostly manual | transition scripts | none |
 | Config sync between nodes | not needed: both nodes build from the same expression | XMLRPC sync from the primary | config-sync (manual or scripted) | n/a |
 | Web UI | read-mostly dashboard plus `routerctl`; no configuration through the browser | full configuration GUI | none by default | mostly none |
-| Breadth | about 60 modules (VPNs, IPsec, BGP, multi-WAN, SQM, DNS, IDS hooks, tunnels) | large plugin catalogue | broad routing feature set | narrow |
+| Breadth | 56 modules (VPNs, IPsec, BGP, multi-WAN, SQM, DNS, IDS hooks, tunnels) | large plugin catalogue | broad routing feature set | narrow |
 | Automated tests | 14 NixOS VM tests (most multi-node) and 368 eval checks in CI | project CI | smoketests | few |
 | Who it suits | someone who already runs NixOS and wants the router in the same repository | anyone who wants an appliance with a GUI | network engineers who want a router OS with a CLI | their authors |
 
