@@ -280,7 +280,7 @@ master is idle.
 | LAN VIP | promotion-aware | clients need one stable gateway IP |
 | DDNS updater | `router-ddns.ha.singleActiveOwner` | public identity should follow the active node |
 | UPnP / NAT-PMP | `router-upnp.ha.singleActiveOwner` | mappings belong to the node holding the WAN |
-| IPv6 RAs on the LAN | `router-ha.routerAdvertisements.mode = "vrrp-owner"` | clients must not route IPv6 to a backup |
+| IPv6 RAs on the LAN | `router-ha.routerAdvertisements.mode = "vrrp-owner"` | clients must not route IPv6 to a backup; the MASTER advertises from `virtualLinkLocal` so a dead MASTER leaves no stale route |
 | Kea D2 | `router-kea.ddns.ha.mode` | updates must reach the zone primary |
 | Chrony / `router-ntp` | shared on both nodes | standby time sync is operationally useful |
 | Suricata / observability | often shared | passive visibility can stay useful on standby |
