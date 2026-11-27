@@ -962,7 +962,9 @@ in {
       ];
       description = ''
         External hosts pinged by the gateway-health widget. The default
-        gateway is always pinged first and is not part of this list.
+        gateway is always pinged first as "Gateway" and is not part of this
+        list. Names must be unique and must not be "Gateway". An empty list
+        pings only the gateway.
       '';
     };
 
@@ -1309,6 +1311,13 @@ in {
 
     {
       assertions = [
+        {
+          # INVARIANT: the gateway widget keys latency history by name; "Gateway" is the built-in probe.
+          assertion =
+            let names = map (t: t.name) cfg.gatewayHealth.targets;
+            in !(builtins.elem "Gateway" names) && lib.unique names == names;
+          message = "router-dashboard gatewayHealth.targets names must be unique and must not be \"Gateway\".";
+        }
         {
           assertion = cfg.serviceControl.services == [ ] || dashboardMutationAuthTokenFile != null;
           message = "router-dashboard service control requires services.router-dashboard.mutationAuth.tokenFile.";

@@ -72,12 +72,16 @@ def load_gateway_health_targets(raw):
     if not isinstance(parsed, list):
         return DEFAULT_GATEWAY_HEALTH_TARGETS
     targets = []
+    # INVARIANT: the widget keys latency history by name, so names stay unique and 'Gateway' is reserved.
+    seen = {'Gateway'}
     for item in parsed:
         if not isinstance(item, dict):
             continue
         name, host = item.get('name'), item.get('host')
         # SECURITY: host is passed to ping as an argument; a leading '-' would be read as an option.
-        if isinstance(name, str) and isinstance(host, str) and host and not host.startswith('-'):
+        if (isinstance(name, str) and name not in seen
+                and isinstance(host, str) and host and not host.startswith('-')):
+            seen.add(name)
             targets.append({'name': name, 'host': host})
     return targets
 

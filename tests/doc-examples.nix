@@ -1172,6 +1172,16 @@ in
     }
   ];
 
+  docs-router-dashboard-gateway-health-reject-duplicate-name-eval = eval.mkNixosEvalFailureCheck "docs-router-dashboard-gateway-health-reject-duplicate-name" [
+    self.nixosModules.router-dashboard
+    {
+      services.router-dashboard = {
+        enable = true;
+        gatewayHealth.targets = [ { name = "Gateway"; host = "192.0.2.1"; } ];
+      };
+    }
+  ];
+
   docs-router-dashboard-technitium-token-resolution-eval = mkDocExampleCheck "docs-router-dashboard-technitium-token-resolution" [
     self.nixosModules.router-dashboard
     self.nixosModules.router-technitium
