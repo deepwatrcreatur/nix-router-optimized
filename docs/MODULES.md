@@ -214,7 +214,7 @@ Alert delivery for the router's Prometheus ([guide](router-alerting.md)):
 ### `router-dashboard`
 Lightweight web dashboard on port 8888:
 - Real-time interface bandwidth (RX/TX speeds and totals).
-- WAN IP, gateway health, active connections, and uptime.
+- WAN IP, gateway health, active connections, and uptime. Gateway health pings the default gateway plus `gatewayHealth.targets` (default 1.1.1.1 and 8.8.8.8).
 - Service status, VPN status, and declarative tunnel overview.
 
 ### `router-homelab`

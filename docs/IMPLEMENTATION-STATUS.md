@@ -144,7 +144,7 @@ modules/
 ### Widgets Added
 
 1. **Gateway Health Widget**
-   - Pings upstream gateway, Cloudflare (1.1.1.1), Google (8.8.8.8)
+   - Pings the default gateway plus `gatewayHealth.targets` (default Cloudflare 1.1.1.1 and Google 8.8.8.8)
    - Shows latency in ms and packet loss %
    - Latency history graph
    - Status indicators (UP/DOWN/DEGRADED)
@@ -323,6 +323,12 @@ modules/
         broadcastAddress = "10.10.10.255";
         port = 9;
       }
+    ];
+
+    # The default gateway is always pinged; these are the external targets.
+    gatewayHealth.targets = [
+      { name = "Quad9"; host = "9.9.9.9"; }
+      { name = "Cloudflare"; host = "1.1.1.1"; }
     ];
   };
 }

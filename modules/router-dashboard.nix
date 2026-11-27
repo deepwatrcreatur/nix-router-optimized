@@ -938,6 +938,34 @@ in {
       description = "Devices exposed in the dashboard Wake-on-LAN widget.";
     };
 
+    gatewayHealth.targets = mkOption {
+      type = types.listOf (types.submodule {
+        options = {
+          name = mkOption {
+            type = types.str;
+            description = "Label shown in the gateway-health widget.";
+          };
+          host = mkOption {
+            # SECURITY: passed to ping as an argument; the pattern rules out a leading '-' and whitespace.
+            type = types.strMatching "[A-Za-z0-9:][A-Za-z0-9.:_-]*";
+            description = "IP address or hostname to ping.";
+          };
+        };
+      });
+      default = [
+        { name = "Cloudflare"; host = "1.1.1.1"; }
+        { name = "Google"; host = "8.8.8.8"; }
+      ];
+      example = [
+        { name = "ISP DNS"; host = "203.0.113.53"; }
+        { name = "Quad9"; host = "9.9.9.9"; }
+      ];
+      description = ''
+        External hosts pinged by the gateway-health widget. The default
+        gateway is always pinged first and is not part of this list.
+      '';
+    };
+
     cloudflareTokenFile = mkOption {
       type = types.nullOr types.str;
       default =
@@ -985,6 +1013,7 @@ in {
           DASHBOARD_TUNNELS = builtins.toJSON effectiveTunnels;
           DASHBOARD_REMOTE_ADMIN = builtins.toJSON effectiveRemoteAdmin;
           DASHBOARD_WOL_DEVICES = builtins.toJSON cfg.wakeOnLan.devices;
+          DASHBOARD_GATEWAY_HEALTH_TARGETS = builtins.toJSON cfg.gatewayHealth.targets;
           DASHBOARD_INVENTORY_FILE = "${inventoryArtifact}";
           DASHBOARD_INVENTORY_ENABLED = "1";
           DASHBOARD_NAT64_PREFIX = if config.services.router-nat64.enable or false then config.services.router-nat64.ipv6Prefix else "";
