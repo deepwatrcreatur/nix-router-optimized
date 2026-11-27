@@ -111,6 +111,11 @@ The flake now has 382 checks, 14 of them NixOS VM tests.
   started as BACKUP and took the gateway back after the full 300 s, with
   1.3 s of IPv4 and 0.3 s of IPv6 loss. Clients kept `fe80::1` as their IPv6
   router throughout.
+- Operations around the pair (nix-clan-homelab): `fleet-deploy` with a
+  post-deploy health check and deploy-rs magic rollback, `fleet-status` for
+  hosts that lag `main`, one inventory as the source for host and router
+  metadata (#85), and fleet alerting through the routers' clustered
+  Alertmanagers (#96, decision 0005).
 - What the drills found that the VM tests had not: a deploy's networkd
   reconfigure sent DHCP RELEASE and renumbered the /56 (#189); a dead
   MASTER's RA route lingered on clients (#193); a switch between the nodes
@@ -137,6 +142,7 @@ throughput benchmarks have been run, so none are claimed.
 | DHCP server HA | Kea HA, hot-standby or load-balancing | Kea HA available; forum reports of instability after upgrades | DHCPv6 server not supported with HA (1.4, forum) | none |
 | Services that must run on one node | Typed single-active ownership (DDNS, UPnP, RAs, Kea D2, DNS zones, any unit) | per-service, mostly manual | transition scripts | none |
 | Config sync between nodes | not needed: both nodes build from the same expression | XMLRPC sync from the primary | config-sync (manual or scripted) | n/a |
+| Monitoring and alerting | Prometheus, Grafana, Netdata, Vector/ulogd; Alertmanager with ntfy, email and webhooks plus a healthchecks watchdog (`router-alerting`). In the homelab (nix-clan-homelab #96) both routers also scrape every other host, alert on failed units, disks (SMART) and certificate expiry, and cluster their Alertmanagers across the VRRP pair | RRD graphs and Monit, built in | Prometheus exporters and Telegraf as services | Vector/ulogd (joshpearce) |
 | Web UI | read-mostly dashboard plus `routerctl`; no configuration through the browser | full configuration GUI | none by default | mostly none |
 | Breadth | 56 modules (VPNs, IPsec, BGP, multi-WAN, SQM, DNS, IDS hooks, tunnels) | large plugin catalogue | broad routing feature set | narrow |
 | Automated tests | 14 NixOS VM tests (most multi-node) and 368 eval checks in CI | project CI | smoketests | few |
@@ -145,7 +151,9 @@ throughput benchmarks have been run, so none are claimed.
 **Where it leads:** reproducible whole-system builds and rollback; HA for the
 common residential case of one dynamic WAN address, which OPNsense and VyOS
 leave to community scripts; IPv6 RA failover; typed single-active services;
-and HA behaviour checked by multi-node VM tests and live drills.
+HA behaviour checked by multi-node VM tests and live drills; and, in a fleet
+built with Nix, the router pair doubling as the redundant alerting hub for
+every other host, configured from the same inventory.
 
 **Where it trails:**
 
