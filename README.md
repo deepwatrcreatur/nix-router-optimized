@@ -3,8 +3,50 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![NixOS](https://img.shields.io/badge/NixOS-unstable-blue?logo=nixos&logoColor=white)](https://nixos.org)
 [![Documentation](https://img.shields.io/badge/Docs-Portal-slate)](https://nix-router.deepwatercreature.com/)
+[![CI: NixCI](https://img.shields.io/badge/CI-NixCI-5277C3?logo=nixos&logoColor=white)](https://nix-ci.com/gh:deepwatrcreatur:nix-router-optimized)
+[![Release](https://img.shields.io/github/v/release/deepwatrcreatur/nix-router-optimized?sort=semver)](https://github.com/deepwatrcreatur/nix-router-optimized/releases)
 
 `nix-router-optimized` is a modular NixOS framework for high-throughput edge routing, stateful packet filtering, and deterministic multi-node failover on commodity x86_64 and aarch64 hardware.
+
+You describe the router once, as a typed topology: interfaces, subnets, roles and the HA pair. The modules derive nftables, DHCP (systemd-networkd or Kea), DNS, CAKE and keepalived from it. A conflicting address or a half-configured failover pair fails `nix build` instead of failing on the wire.
+
+## Quickstart
+
+Add the flake and import `nixosModules.default`. It imports the core modules (networking, DHCP, DNS, firewall, HA, VPNs, CAKE and more), each off until you enable it. Import the others yourself when you use them: `router-dashboard`, `router-technitium`, `router-alerting`, `monitoring`, `dns`, `dns-zone`, `dns-blocklists`, `router-ndp-proxy` and `router-ntopng`, each as `router-optimized.nixosModules.<name>`.
+
+```nix
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    router-optimized = {
+      url = "github:deepwatrcreatur/nix-router-optimized";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { nixpkgs, router-optimized, ... }: {
+    nixosConfigurations.router = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        router-optimized.nixosModules.default
+        ./hardware-configuration.nix
+        ./router.nix # start from examples/router-single-basic.nix
+        { system.stateVersion = "25.11"; } # the release you first installed
+      ];
+    };
+  };
+}
+```
+
+Starting points:
+
+| Example | What it builds | Checked by |
+| :--- | :--- | :--- |
+| [`examples/router-single-basic.nix`](examples/router-single-basic.nix) | One router: DHCP WAN, routed LAN, DHCP, Unbound, firewall, CAKE | `docs-router-single-basic-example-eval`, `docs-readme-quickstart-default-module-eval`. The VM test `vm-smoke` boots a router of the same shape and routes a client through it. |
+| [`examples/router-ha-pair-example.nix`](examples/router-ha-pair-example.nix) | A VRRP pair sharing the LAN gateway and the WAN, with the password read from a file | `docs-router-ha-pair-master-example-eval`, `docs-router-ha-pair-backup-example-eval`. The VM tests `vm-router-ha-pair`, `vm-router-ha-wan-failover` and `vm-router-ha-wan-health` run a pair through failover. |
+
+Run any check with `nix build .#checks.x86_64-linux.<name>`. The flake has 14 VM tests (`vm-*`) and more than 350 evaluation checks. [`CHANGELOG.md`](CHANGELOG.md) lists the releases, and [`docs/STABILITY.md`](docs/STABILITY.md) says which option changes you can expect between them.
 
 ## Router dashboard
 

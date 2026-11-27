@@ -320,6 +320,17 @@ in
     }
   ]);
 
+  # INVARIANT: README.md#quickstart tells consumers to import nixosModules.default plus this example.
+  docs-readme-quickstart-default-module-eval = mkDocExampleCheck "docs-readme-quickstart-default-module" [
+    self.nixosModules.default
+    routerSingleBasicExample
+  ] (config: [
+    {
+      assertion = config.services.router-networking.enable && config.services.router-firewall.enable;
+      message = "The README quickstart (default module + router-single-basic) should enable networking and the firewall.";
+    }
+  ]);
+
   docs-router-ha-pair-master-example-eval = mkDocExampleCheck "docs-router-ha-pair-master-example" [
     self.nixosModules.router-ha
     self.nixosModules.router-ntp
