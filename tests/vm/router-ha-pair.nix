@@ -50,6 +50,18 @@ let
         ha.singleActiveOwner = true;
       };
 
+      # Stands in for a LAN switch that drops VRRP multicast on one port
+      # (IGMP snooping): every advert must travel as unicast to the peer.
+      networking.nftables.tables.no-vrrp-multicast = {
+        family = "inet";
+        content = ''
+          chain out {
+            type filter hook output priority 0;
+            ip daddr 224.0.0.0/4 meta l4proto vrrp drop
+          }
+        '';
+      };
+
       services.router-ha = {
         inherit preemptDelay peerWaitSec;
         singleActiveUnits = [ "ha-owned.service" ];
@@ -72,14 +84,20 @@ mkRouterTest {
       role = "master";
       lanAddress = "10.0.10.2/24";
       mgmtAddress = "192.168.100.2/24";
-      extraModule = pairModule;
+      extraModule = {
+        imports = [ pairModule ];
+        services.router-ha.unicastPeers = [ "10.0.10.3" ];
+      };
     };
 
     router2 = mkRouter {
       role = "backup";
       lanAddress = "10.0.10.3/24";
       mgmtAddress = "192.168.100.3/24";
-      extraModule = pairModule;
+      extraModule = {
+        imports = [ pairModule ];
+        services.router-ha.unicastPeers = [ "10.0.10.2" ];
+      };
     };
 
     # Learns its IPv6 default router from RAs; only the MASTER may send them.
@@ -218,6 +236,10 @@ mkRouterTest {
 
     with subtest("election: router1 (priority 100) owns VIP, WAN and the unit"):
         assert_steady(router1, [router2])
+
+    with subtest("unicast peers: adverts reach the peer's address, never the group"):
+        router2.succeed("timeout 10 ${pkgs.tcpdump}/bin/tcpdump -i eth2 -c 3 -n 'ip proto 112 and src 10.0.10.2 and dst 10.0.10.3'")
+        router2.fail("timeout 4 ${pkgs.tcpdump}/bin/tcpdump -i eth2 -c 1 -n 'ip proto 112 and dst 224.0.0.18'")
 
     with subtest("notify events apply in keepalived's order"):
         # MASTER then FAULT back to back, as keepalived sends them when a

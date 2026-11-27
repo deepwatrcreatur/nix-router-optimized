@@ -187,6 +187,52 @@ a cold start of both nodes or a lone node costs `peerWaitSec` extra. Set
 `peerWaitSec = 0` on a node without a peer. Making router ports edge ports
 on the switch is still worth doing: it shortens every boot.
 
+### Unicast peers
+
+VRRP adverts go to a multicast group (224.0.0.18, ff02::12) by default.
+Some LANs do not deliver it between the two routers: a managed switch with
+IGMP snooping or multicast filtering can drop VRRP multicast on one port
+while UDP multicast, broadcast and unicast still pass, and the drop can be
+one-way. The deaf node then decides the MASTER is dead three advert
+intervals after every start and takes over, so neither `preemptDelay` nor
+the peer wait holds; the pair only looks healthy because the other node
+hears the higher priority and steps aside. A real pair hit this on a 10G
+managed switch.
+
+To test a LAN, stop keepalived on one node and capture on its
+`vrrpInterface` while the other node is MASTER:
+
+```sh
+tcpdump -i <vrrpInterface> -c 3 -n 'ip proto 112'   # IPv6 VIP: 'ip6[6] = 112'
+```
+
+No packets means the node is deaf. List each node's peer instead:
+
+```nix
+# node A (10.10.10.2)                 # node B (10.10.10.3)
+services.router-ha.unicastPeers = [ "10.10.10.3" ];
+services.router-ha.unicastPeers = [ "10.10.10.2" ];
+```
+
+Each node lists the other's own address on `vrrpInterface` (not the VIP),
+in the VIP's family. keepalived then sends adverts only to those addresses.
+`unicastSrcIp` overrides the source address, which otherwise is the
+interface's primary address. With an IPv6 VIP it is required: set it to the
+address the peer lists, because keepalived otherwise binds its receive
+socket to a link-local address and never sees the peer's adverts.
+Evaluation rejects a peer that is not a valid address of the VIP's family,
+has a prefix length, or is the VIP in any spelling, because keepalived
+skips such an entry and falls back to multicast.
+
+Switching an existing pair: keepalived drops adverts of the other kind
+("Expected unicast packet but received multicast packet"), so a pair with
+one node on each becomes two MASTERs, both holding the VIP and the WAN.
+Stop keepalived on the BACKUP and keep it stopped (`systemctl mask
+--runtime keepalived`) while you deploy it, deploy the MASTER, then unmask
+and start the BACKUP. The gateway is down from the MASTER's keepalived
+restart until it starts again, which with `peerWaitSec` includes the full
+wait, because the stopped peer sends nothing.
+
 ## WAN Health Tracking (`wan.healthCheck`)
 
 VRRP adverts travel on the LAN, so by default a master whose WAN is dead
@@ -300,6 +346,7 @@ master is idle.
 | LAN VIP | promotion-aware | clients need one stable gateway IP |
 | DDNS updater | `router-ddns.ha.singleActiveOwner` | public identity should follow the active node |
 | UPnP / NAT-PMP | `router-upnp.ha.singleActiveOwner` | mappings belong to the node holding the WAN |
+| VRRP transport | multicast; `router-ha.unicastPeers` when the LAN drops VRRP multicast | a node that cannot hear its peer takes over after every start |
 | IPv6 RAs on the LAN | `router-ha.routerAdvertisements.mode = "vrrp-owner"` | clients must not route IPv6 to a backup; the MASTER advertises from `virtualLinkLocal` so a dead MASTER leaves no stale route |
 | Kea D2 | `router-kea.ddns.ha.mode` | updates must reach the zone primary |
 | Chrony / `router-ntp` | shared on both nodes | standby time sync is operationally useful |
