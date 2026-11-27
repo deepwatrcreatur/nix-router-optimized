@@ -3,6 +3,7 @@
   lib,
   pkgs,
   options,
+  utils,
   ...
 }:
 
@@ -11,6 +12,33 @@ with lib;
 let
   cfg = config.services.router-pangolin;
   hasRouterOption = path: hasAttrByPath path options;
+  # WHY: gerbil < 1.5.2 closes its relay packet channel twice on shutdown
+  # (fosrl/gerbil#51), so every stop panics with exit 2 and the unit is
+  # marked failed; on a VRRP pair that is every demotion. Prefer nixpkgs'
+  # package once it carries the fix.
+  # UPSTREAM: drop the local build when the pinned nixpkgs has >= 1.5.2.
+  defaultGerbil =
+    if versionAtLeast pkgs.fosrl-gerbil.version "1.5.2" then
+      pkgs.fosrl-gerbil
+    else
+      # WHY: 1.5.2 (not 1.6.0) because 1.6.0 needs Go 1.26.9; 1.5.2 builds
+      # with any Go 1.26.
+      pkgs.buildGo126Module (finalAttrs: {
+        pname = "gerbil";
+        version = "1.5.2";
+        src = pkgs.fetchFromGitHub {
+          owner = "fosrl";
+          repo = "gerbil";
+          tag = finalAttrs.version;
+          hash = "sha256-vxmmu5Atad5nQwZQ1xySKPrTzO0z12PBxKtfRhkygFI=";
+        };
+        vendorHash = "sha256-aEP2aYBZB0XKfJoFBxLtUUCdPqmGLNz7SE+89tnaIms=";
+        postPatch = ''
+          substituteInPlace main.go \
+            --replace-fail '/usr/sbin/iptables' '${getExe pkgs.iptables}'
+        '';
+        meta = pkgs.fosrl-gerbil.meta // { mainProgram = "gerbil"; };
+      });
   firewallEnabled =
     if hasRouterOption [ "services" "router-firewall" "enable" ] then
       (config.services.router-firewall.enable or false)
@@ -51,6 +79,28 @@ in
       description = "Automatically open required ports in router-firewall / system firewall.";
     };
 
+    gerbilPackage = mkOption {
+      type = types.package;
+      default = defaultGerbil;
+      defaultText = literalExpression "pkgs.fosrl-gerbil if >= 1.5.2, else gerbil 1.5.2";
+      description = ''
+        Gerbil package for the `gerbil` unit. The nixpkgs Pangolin module
+        hard-codes `pkgs.fosrl-gerbil`; releases before 1.5.2 panic on every
+        stop ("close of closed channel"), which marks the unit failed.
+      '';
+    };
+
+    gerbilFirewall = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Let gerbil (1.5 and later) install its own iptables INPUT rules on its
+        WireGuard interface. Off by default: router-firewall owns the input
+        policy, gerbil 1.4 installed no such rules, and gerbil's final drop
+        would override router-firewall's accepts for `overlayInterfaces`.
+      '';
+    };
+
     settings = mkOption {
       type = types.attrsOf types.anything;
       default = { };
@@ -78,6 +128,21 @@ in
       // optionalAttrs (cfg.dashboardDomain != null) { dashboardDomain = cfg.dashboardDomain; }
       // optionalAttrs (cfg.letsEncryptEmail != null) { letsEncryptEmail = cfg.letsEncryptEmail; }
       // optionalAttrs (cfg.environmentFile != null) { environmentFile = cfg.environmentFile; };
+
+      # INVARIANT: same arguments as the nixpkgs module's ExecStart, which
+      # names pkgs.fosrl-gerbil directly and has no package option.
+      # WHY: gerbil >= 1.5 adds an iptables INPUT drop on its interface that
+      # router-firewall's nftables accepts cannot override (docs/router-pangolin.md).
+      systemd.services.gerbil.environment.DISABLE_FIREWALL = if cfg.gerbilFirewall then "false" else "true";
+
+      systemd.services.gerbil.serviceConfig.ExecStart = mkForce (
+        utils.escapeSystemdExecArgs [
+          (getExe cfg.gerbilPackage)
+          "--reachableAt=http://localhost:${toString config.services.gerbil.port}"
+          "--generateAndSaveKeyTo=${toString config.services.pangolin.dataDir}/config/key"
+          "--remoteConfig=http://localhost:${toString config.services.pangolin.settings.server.internal_port}/api/v1/gerbil/get-config"
+        ]
+      );
 
       # GOTCHA: upstream runs pangolin as `pangolin` with ProtectSystem=full,
       # so /etc is read-only to it and preStart cannot create /etc/pangolin on
