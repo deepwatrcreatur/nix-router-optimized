@@ -169,6 +169,24 @@ The delay also applies after a crash: keepalived's unit restarts it
 It applies after the master's LAN link returns from FAULT and after a
 reboot too; through boot the WAN stays down (`ActivationPolicy=manual`).
 
+### Peer wait
+
+keepalived applies `preempt_delay` only while it hears a MASTER. A node that
+hears no advert for three advert intervals (about 3 s) decides the MASTER is
+dead and takes over at once. After a reboot, a switch port can carry link
+but not forward frames for several seconds or more (spanning-tree listening
+and learning on a port that is not edge/portfast). A real pair hit this: the
+rebooted preferred node's keepalived started 8 s after its LAN carrier, heard
+nothing, and was MASTER 3 s later, without the 300 s hold.
+
+With `preemptDelay` set, router-ha therefore holds keepalived's start until
+it captures a VRRP advert for its `vrrpId` on `vrrpInterface`, or
+`peerWaitSec` (default 60) passes. A node with a live peer starts as soon as
+the port forwards; a node whose peer is down starts after the full wait, so
+a cold start of both nodes or a lone node costs `peerWaitSec` extra. Set
+`peerWaitSec = 0` on a node without a peer. Making router ports edge ports
+on the switch is still worth doing: it shortens every boot.
+
 ## WAN Health Tracking (`wan.healthCheck`)
 
 VRRP adverts travel on the LAN, so by default a master whose WAN is dead
@@ -243,6 +261,8 @@ transition that exactly one node holds the VIP, the WAN and the unit
 | LAN link down | node goes to FAULT, peer takes over |
 | reboot | peer takes over; the node boots as BACKUP with its WAN down |
 | recovery from any of the above | node waits `preemptDelay` as BACKUP, then takes everything back |
+| reboot while the LAN hides the peer's adverts (stand-in for a port still learning) | node does not take over; once it hears the peer it starts as BACKUP and waits `preemptDelay` |
+| power loss (no final RA) | LAN client's IPv6 follows the new MASTER through the virtual link-local within seconds |
 | upstream dark, carrier up (`wan.healthCheck`, test `vm-router-ha-wan-health`) | peer is MASTER after about 4 s, despite `preemptDelay` |
 
 DNS zone ownership under `zoneReplication.ha` has its own VM test,

@@ -333,6 +333,35 @@ let
   vrrpNet = if cfg.vrrpNetwork == null then { } else config.systemd.network.networks.${cfg.vrrpNetwork} or { };
 
   ra = cfg.routerAdvertisements;
+  # WHY: docs/router-ha-pair-guide.md#peer-wait. Holds keepalived until the peer is
+  # audible, so the master-down timer cannot bypass preempt_delay while the
+  # LAN port is not forwarding yet. Never fails: a silent peer may be dead.
+  peerWaitScript = pkgs.writeShellScript "router-ha-peer-wait" ''
+    set -u
+    deadline=$(( $(${pkgs.coreutils}/bin/date +%s) + ${toString cfg.peerWaitSec} ))
+    # VRRP's VRID is the second byte after the IP header. keepalived sends
+    # in the VIP's family; IPv6 VRRP (v3) carries no extension headers.
+    filter='${
+      if virtualIpIsIpv6 then
+        "ip6 and ip6[6] = 112 and ip6[41] = ${toString cfg.vrrpId}"
+      else
+        "ip proto 112 and ip[((ip[0] & 0xf) << 2) + 1] = ${toString cfg.vrrpId}"
+    }'
+    while :; do
+      left=$(( deadline - $(${pkgs.coreutils}/bin/date +%s) ))
+      if [ "$left" -le 0 ]; then
+        echo "router-ha: no VRRP advert for VRID ${toString cfg.vrrpId} on ${cfg.vrrpInterface} in ${toString cfg.peerWaitSec} s; starting keepalived"
+        exit 0
+      fi
+      # GOTCHA: promiscuous (no -p): the NIC drops the VRRP group until
+      # something joins the group, and keepalived has not started yet.
+      if ${pkgs.coreutils}/bin/timeout "$left" ${pkgs.tcpdump}/bin/tcpdump -i ${escapeShellArg cfg.vrrpInterface} -c 1 -n "$filter" >/dev/null 2>&1; then
+        echo "router-ha: heard a VRRP advert on ${cfg.vrrpInterface}; starting keepalived"
+        exit 0
+      fi
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+  '';
   raOwner = ra.mode == "vrrp-owner";
   raOwnerUnit = "router-ha-ra-owner.service";
   # INVARIANT: mirrors router-networking's "20-router-<name>" naming.
@@ -521,6 +550,24 @@ in
         every node start as BACKUP so priority alone decides; keepalived
         ignores `preempt_delay` on an instance that starts as MASTER. `null`
         keeps the role-based initial state and immediate preemption.
+      '';
+    };
+
+    peerWaitSec = mkOption {
+      type = types.ints.between 0 600;
+      default = if cfg.preemptDelay != null then 60 else 0;
+      defaultText = literalExpression "if preemptDelay != null then 60 else 0";
+      example = 0;
+      description = ''
+        Seconds keepalived's start waits for a VRRP advert (this `vrrpId`)
+        on `vrrpInterface` before it starts anyway. keepalived only applies
+        `preemptDelay` while it hears a MASTER; one that hears nothing for
+        three advert intervals becomes MASTER at once. A switch port that
+        is still in spanning-tree listening/learning after boot hides the
+        peer for longer than that, and a rebooted higher-priority node then
+        takes the gateway without the hold. The wait ends at the first
+        advert, so a node with a live peer starts at once; a node whose
+        peer is down waits the full time. Set 0 on a node without a peer.
       '';
     };
 
@@ -1005,6 +1052,13 @@ in
         "+${keepalivedStopScript}"
       ];
     }
+
+    (mkIf (cfg.peerWaitSec > 0) {
+      systemd.services.keepalived.serviceConfig = {
+        ExecStartPre = mkAfter [ "+${peerWaitScript}" ];
+        TimeoutStartSec = mkDefault (max 90 (cfg.peerWaitSec + 30));
+      };
+    })
 
     (mkIf (raOwner && vll != null) {
       # WHY: the drop-in's reload must not delete the virtual link-local

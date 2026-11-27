@@ -23,6 +23,8 @@ let
   healthModule = {
     services.router-ha = {
       inherit preemptDelay;
+      # The pair cold-starts together; the peer-wait gate is covered in router-ha-pair.
+      peerWaitSec = 0;
       wan.healthCheck = {
         enable = true;
         inherit retryAfterSec startupGraceSec;
