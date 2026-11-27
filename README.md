@@ -12,7 +12,7 @@ You describe the router once, as a typed topology: interfaces, subnets, roles an
 
 ## Quickstart
 
-Add the flake and import `nixosModules.default`. It imports every module, and each module stays off until you enable it.
+Add the flake and import `nixosModules.default`. It imports the core modules (networking, DHCP, DNS, firewall, HA, VPNs, CAKE and more), each off until you enable it. Import the others yourself when you use them: `router-dashboard`, `router-technitium`, `router-alerting`, `monitoring`, `dns`, `dns-zone`, `dns-blocklists`, `router-ndp-proxy` and `router-ntopng`, each as `router-optimized.nixosModules.<name>`.
 
 ```nix
 # flake.nix
@@ -32,6 +32,7 @@ Add the flake and import `nixosModules.default`. It imports every module, and ea
         router-optimized.nixosModules.default
         ./hardware-configuration.nix
         ./router.nix # start from examples/router-single-basic.nix
+        { system.stateVersion = "25.11"; } # the release you first installed
       ];
     };
   };
