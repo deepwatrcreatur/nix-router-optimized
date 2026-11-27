@@ -90,6 +90,17 @@ in
       '';
     };
 
+    gerbilFirewall = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Let gerbil (1.5 and later) install its own iptables INPUT rules on its
+        WireGuard interface. Off by default: router-firewall owns the input
+        policy, gerbil 1.4 installed no such rules, and gerbil's final drop
+        would override router-firewall's accepts for `overlayInterfaces`.
+      '';
+    };
+
     settings = mkOption {
       type = types.attrsOf types.anything;
       default = { };
@@ -120,6 +131,10 @@ in
 
       # INVARIANT: same arguments as the nixpkgs module's ExecStart, which
       # names pkgs.fosrl-gerbil directly and has no package option.
+      # WHY: gerbil >= 1.5 adds an iptables INPUT drop on its interface that
+      # router-firewall's nftables accepts cannot override (docs/router-pangolin.md).
+      systemd.services.gerbil.environment.DISABLE_FIREWALL = if cfg.gerbilFirewall then "false" else "true";
+
       systemd.services.gerbil.serviceConfig.ExecStart = mkForce (
         utils.escapeSystemdExecArgs [
           (getExe cfg.gerbilPackage)

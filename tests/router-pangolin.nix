@@ -49,6 +49,10 @@
           message = "router-pangolin must run gerbil >= 1.5.2 with the nixpkgs module's arguments.";
         }
         {
+          assertion = config.systemd.services.gerbil.environment.DISABLE_FIREWALL == "true";
+          message = "router-pangolin must keep router-firewall authoritative: gerbil's own INPUT rules off by default.";
+        }
+        {
           assertion = config.systemd.services.pangolin.serviceConfig.User == "pangolin";
           message = "router-pangolin's /etc/pangolin ownership assumes the service runs as pangolin.";
         }

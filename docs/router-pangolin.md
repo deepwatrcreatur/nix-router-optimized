@@ -59,3 +59,17 @@ is 1.5.2 or newer and otherwise to a local build of 1.5.2 (1.6.0 needs Go
 1.26.9). The module replaces the unit's `ExecStart` with the same arguments
 and that package; `checks.router-pangolin-etc-dir-eval` asserts both. Drop
 the local build once the pinned nixpkgs carries 1.5.2 or later.
+
+Gerbil 1.5 also changed two things the module accounts for:
+
+- It installs its own iptables INPUT rules on its WireGuard interface, ending
+  in a drop. router-firewall's nftables accepts (for example for an interface
+  in `overlayInterfaces`) cannot override that drop, and gerbil 1.4 had no
+  such rules. The module sets `DISABLE_FIREWALL=true` so router-firewall stays
+  authoritative; `gerbilFirewall = true` restores gerbil's rules.
+- Its HTTP listener gained a `/router/` endpoint that forwards requests to a
+  destination named in a header, without authenticating the caller. The
+  nixpkgs module binds that listener to `localhost:3004`, where 1.4's
+  unauthenticated `/peer` endpoint (which adds WireGuard peers) already lived,
+  so only processes on the router can reach either. Keep the listener on
+  localhost.
