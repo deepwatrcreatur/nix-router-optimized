@@ -55,6 +55,38 @@ try:
     WOL_DEVICES = json.loads(os.environ.get('DASHBOARD_WOL_DEVICES', '[]'))
 except json.JSONDecodeError:
     WOL_DEVICES = []
+DEFAULT_GATEWAY_HEALTH_TARGETS = [
+    {'name': 'Cloudflare', 'host': '1.1.1.1'},
+    {'name': 'Google', 'host': '8.8.8.8'},
+]
+
+
+def load_gateway_health_targets(raw):
+    """Parse DASHBOARD_GATEWAY_HEALTH_TARGETS; fall back to the defaults when unset."""
+    if raw is None:
+        return DEFAULT_GATEWAY_HEALTH_TARGETS
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return DEFAULT_GATEWAY_HEALTH_TARGETS
+    if not isinstance(parsed, list):
+        return DEFAULT_GATEWAY_HEALTH_TARGETS
+    targets = []
+    # INVARIANT: the widget keys latency history by name, so names stay unique and 'Gateway' is reserved.
+    seen = {'Gateway'}
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        name, host = item.get('name'), item.get('host')
+        # SECURITY: host is passed to ping as an argument; a leading '-' would be read as an option.
+        if (isinstance(name, str) and name not in seen
+                and isinstance(host, str) and host and not host.startswith('-')):
+            seen.add(name)
+            targets.append({'name': name, 'host': host})
+    return targets
+
+
+GATEWAY_HEALTH_TARGETS = load_gateway_health_targets(os.environ.get('DASHBOARD_GATEWAY_HEALTH_TARGETS'))
 MUTATION_AUTH_TOKEN_FILE = os.environ.get('DASHBOARD_MUTATION_AUTH_TOKEN_FILE', '')
 try:
     DASHBOARD_SERVICE_CONTROL = json.loads(os.environ.get('DASHBOARD_SERVICE_CONTROL_SERVICES', '[]'))
@@ -1393,11 +1425,7 @@ class RouterAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def handle_gateway_health(self):
         """Ping upstream gateways and DNS servers"""
-        targets = [
-            {'name': 'Gateway', 'host': self.get_default_gateway()},
-            {'name': 'Cloudflare', 'host': '1.1.1.1'},
-            {'name': 'Google', 'host': '8.8.8.8'},
-        ]
+        targets = [{'name': 'Gateway', 'host': self.get_default_gateway()}] + GATEWAY_HEALTH_TARGETS
 
         # Find ping binary - prefer setuid wrapper on NixOS
         ping_cmd = 'ping'

@@ -10,7 +10,8 @@ class GatewayWidget extends BaseWidget {
     this.refreshInterval = config.refreshInterval || 10000; // 10 seconds
     this.latencyChart = null;
     this.historyLength = 30; // 5 minutes at 10s intervals
-    this.history = {};
+    // WHY: a Map, not {}: operator-chosen names such as __proto__ or constructor must not hit Object.prototype.
+    this.history = new Map();
   }
 
   getMarkup() {
@@ -88,11 +89,16 @@ class GatewayWidget extends BaseWidget {
       }
 
       // Update overall status
-      const allUp = data.targets?.every(t => t.status === 'up');
-      const someUp = data.targets?.some(t => t.status === 'up');
+      const targets = data.targets || [];
+      // GOTCHA: every() is true for an empty list; no probes must not read as ALL OK.
+      const allUp = targets.length > 0 && targets.every(t => t.status === 'up');
+      const someUp = targets.some(t => t.status === 'up');
       const statusEl = this.container?.querySelector(`#${this.id}-status`);
       if (statusEl) {
-        if (allUp) {
+        if (targets.length === 0) {
+          statusEl.className = 'status-badge status-warning';
+          statusEl.textContent = 'NO TARGETS';
+        } else if (allUp) {
           statusEl.className = 'status-badge status-up';
           statusEl.textContent = 'ALL OK';
         } else if (someUp) {
@@ -121,8 +127,8 @@ class GatewayWidget extends BaseWidget {
     return `
       <div class="gateway-target">
         <div class="gateway-target-info">
-          <span class="gateway-target-name">${target.name}</span>
-          <span class="gateway-target-host">${target.host}</span>
+          <span class="gateway-target-name">${this.escapeHtml(target.name)}</span>
+          <span class="gateway-target-host">${this.escapeHtml(target.host)}</span>
         </div>
         <div class="gateway-target-stats">
           <span class="gateway-latency" style="color: ${latencyColor}">
@@ -145,12 +151,13 @@ class GatewayWidget extends BaseWidget {
 
     // Initialize history for new targets
     targets.forEach((t, i) => {
-      if (!this.history[t.name]) {
-        this.history[t.name] = [];
+      if (!this.history.has(t.name)) {
+        this.history.set(t.name, []);
       }
-      this.history[t.name].push(t.latency || 0);
-      if (this.history[t.name].length > this.historyLength) {
-        this.history[t.name].shift();
+      const series = this.history.get(t.name);
+      series.push(t.latency || 0);
+      if (series.length > this.historyLength) {
+        series.shift();
       }
     });
 
@@ -158,7 +165,7 @@ class GatewayWidget extends BaseWidget {
     this.latencyChart.data.labels = Array(this.historyLength).fill('').map((_, i) => '');
     this.latencyChart.data.datasets = targets.map((t, i) => ({
       label: t.name,
-      data: this.history[t.name] || [],
+      data: this.history.get(t.name) || [],
       borderColor: colors[i % colors.length],
       backgroundColor: 'transparent',
       tension: 0.4,
@@ -175,6 +182,15 @@ class GatewayWidget extends BaseWidget {
       this.latencyChart.destroy();
       this.latencyChart = null;
     }
+  }
+
+  escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 }
 

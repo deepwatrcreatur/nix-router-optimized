@@ -1124,6 +1124,64 @@ in
     }
   ]);
 
+  docs-router-dashboard-gateway-health-targets-eval = mkDocExampleCheck "docs-router-dashboard-gateway-health-targets" [
+    self.nixosModules.router-dashboard
+    {
+      services.router-dashboard = {
+        enable = true;
+        gatewayHealth.targets = [
+          { name = "Quad9"; host = "9.9.9.9"; }
+          { name = "ISP"; host = "dns.example.net"; }
+        ];
+      };
+    }
+  ] (config: [
+    {
+      assertion =
+        builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_GATEWAY_HEALTH_TARGETS
+        == [
+          { name = "Quad9"; host = "9.9.9.9"; }
+          { name = "ISP"; host = "dns.example.net"; }
+        ];
+      message = "Dashboard should pass gatewayHealth.targets to the API in order.";
+    }
+  ]);
+
+  docs-router-dashboard-gateway-health-default-targets-eval = mkDocExampleCheck "docs-router-dashboard-gateway-health-default-targets" [
+    self.nixosModules.router-dashboard
+    { services.router-dashboard.enable = true; }
+  ] (config: [
+    {
+      assertion =
+        builtins.fromJSON config.systemd.services.router-dashboard.environment.DASHBOARD_GATEWAY_HEALTH_TARGETS
+        == [
+          { name = "Cloudflare"; host = "1.1.1.1"; }
+          { name = "Google"; host = "8.8.8.8"; }
+        ];
+      message = "Dashboard gateway-health targets should default to Cloudflare and Google.";
+    }
+  ]);
+
+  docs-router-dashboard-gateway-health-reject-option-host-eval = eval.mkNixosEvalFailureCheck "docs-router-dashboard-gateway-health-reject-option-host" [
+    self.nixosModules.router-dashboard
+    {
+      services.router-dashboard = {
+        enable = true;
+        gatewayHealth.targets = [ { name = "bad"; host = "-f"; } ];
+      };
+    }
+  ];
+
+  docs-router-dashboard-gateway-health-reject-duplicate-name-eval = eval.mkNixosEvalFailureCheck "docs-router-dashboard-gateway-health-reject-duplicate-name" [
+    self.nixosModules.router-dashboard
+    {
+      services.router-dashboard = {
+        enable = true;
+        gatewayHealth.targets = [ { name = "Gateway"; host = "192.0.2.1"; } ];
+      };
+    }
+  ];
+
   docs-router-dashboard-technitium-token-resolution-eval = mkDocExampleCheck "docs-router-dashboard-technitium-token-resolution" [
     self.nixosModules.router-dashboard
     self.nixosModules.router-technitium
