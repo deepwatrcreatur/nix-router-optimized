@@ -581,6 +581,20 @@ in
     }
   ];
 
+  router-ha-conntrack-sync-octet-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-conntrack-sync-octet" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        conntrackSync = { enable = true; interface = "eno1"; localAddress = "999.168.100.2"; peerAddress = "192.168.100.3"; };
+      };
+    }
+  ];
+
   router-ha-garp-eval = eval.mkNixosEvalCheck "router-ha-garp" [
     self.nixosModules.router-ha
     {

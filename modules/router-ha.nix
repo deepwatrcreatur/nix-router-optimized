@@ -89,6 +89,9 @@ let
         DisableExternalCache Off
         CommitTimeout 1800
         PurgeTimeout 5
+        # A restarted conntrackd fetches the peer's whole table; without it
+        # the external cache stays empty until the next transition.
+        StartupResync on
       }
       UDP {
         IPv4_address ${cts.localAddress}
@@ -133,7 +136,7 @@ let
   # commit must not hold the WAN back for long.
   conntrackdCtl =
     args:
-    "${pkgs.coreutils}/bin/timeout 20 ${cts.package}/bin/conntrackd -C ${conntrackdConf} ${args} || echo \"router-ha: conntrackd ${args} failed\" >&2";
+    "${pkgs.coreutils}/bin/timeout 10 ${cts.package}/bin/conntrackd -C ${conntrackdConf} ${args} || echo \"router-ha: conntrackd ${args} failed\" >&2";
 
   notifyMasterScript = pkgs.writeShellScript "keepalived-master" ''
     ${masterRoleScript}
@@ -143,10 +146,8 @@ let
     ${optionalString cts.enable ''
       # INVARIANT: commit the peer's flows into the kernel before the WAN
       # comes up, so the first returning packets find their NAT entries.
+      # Only the commit runs first; the rest waits until the WAN is up.
       ${conntrackdCtl "-c"}
-      ${conntrackdCtl "-f"}
-      ${conntrackdCtl "-R"}
-      ${conntrackdCtl "-B"}
     ''}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning to MASTER: Bringing up WAN ${cfg.wan.interface}..."
@@ -160,6 +161,11 @@ let
       # Fresh DHCPv4/DHCPv6/PD with the (possibly cloned) MAC.
       ${pkgs.systemd}/bin/networkctl reconfigure ${escapeShellArg cfg.wan.interface}
       ${optionalString wanHealthEnabled "${pkgs.coreutils}/bin/touch ${escapeShellArg wanUpSinceFile}"}
+    ''}
+    ${optionalString cts.enable ''
+      ${conntrackdCtl "-f"}
+      ${conntrackdCtl "-R"}
+      ${conntrackdCtl "-B"}
     ''}
     ${optionalString bgpSingleActiveOwner ''
       ${bgpPromoteScript}
@@ -176,16 +182,40 @@ let
   demoteActiveOwnership = role: roleScript: pkgs.writeShellScript "router-ha-demote-${role}" ''
     ${roleScript}
     ${pkgs.coreutils}/bin/rm -f ${escapeShellArg masterPendingFile}
-    ${optionalString (cts.enable && role != "stop") ''
-      # Shorten the kernel timers of flows this node forwarded as MASTER, so
-      # they expire; a BACKUP also asks the new MASTER for a full resync.
-      ${conntrackdCtl "-t"}
-      ${optionalString (role == "backup") (conntrackdCtl "-n")}
+    ${optionalString (cts.enable && cfg.wan.enable) ''
+      # GOTCHA: taking the WAN down makes the kernel delete its masquerade
+      # entries, and a running conntrackd would send those deletes to the
+      # peer that is taking over and needs them. Stop it until the WAN is down.
+      # `systemctl stop` would deadlock inside keepalived's own stop (conntrackd
+      # is ordered before keepalived, so its stop job waits for keepalived's);
+      # signal the process instead and wait for it to exit.
+      ${pkgs.systemd}/bin/systemctl kill --signal=SIGTERM conntrackd.service 2>/dev/null || true
+      for _ in $(${pkgs.coreutils}/bin/seq 50); do
+        ${pkgs.systemd}/bin/systemctl is-active --quiet conntrackd.service || break
+        ${pkgs.coreutils}/bin/sleep 0.1
+      done
     ''}
     ${optionalString cfg.wan.enable ''
       echo "Transitioning away from MASTER: Bringing down WAN ${cfg.wan.interface}..."
       ${pkgs.systemd}/bin/networkctl down ${escapeShellArg cfg.wan.interface} \
         || ${pkgs.iproute2}/bin/ip link set dev ${escapeShellArg cfg.wan.interface} down
+    ''}
+    ${optionalString cts.enable ''
+      ${optionalString cfg.wan.enable ''
+        # Restarted, conntrackd fetches the new MASTER's table (StartupResync).
+        # GOTCHA: --no-block inside keepalived's stop, or the start job would
+        # wait for keepalived's stop job (the same ordering as above).
+        ${pkgs.coreutils}/bin/timeout 10 ${pkgs.systemd}/bin/systemctl ${optionalString (role == "stop") "--no-block "}start conntrackd.service || true
+        for _ in $(${pkgs.coreutils}/bin/seq 50); do
+          [ -S ${conntrackdSocket} ] && break
+          ${pkgs.coreutils}/bin/sleep 0.1
+        done
+      ''}
+      ${optionalString (role != "stop") ''
+        # Expire the flows this node forwarded as MASTER.
+        ${conntrackdCtl "-t"}
+      ''}
+      ${optionalString (role == "backup" && !cfg.wan.enable) (conntrackdCtl "-n")}
     ''}
     ${optionalString bgpSingleActiveOwner ''
       ${bgpDemoteScript}
@@ -702,13 +732,16 @@ in
       interface = mkOption {
         type = types.str;
         example = "eno1";
-        description = "Interface of the sync link, ideally a dedicated or management segment.";
+        description = ''
+          Interface of the sync link. SECURITY: conntrackd does not
+          authenticate the peer; use a segment only the two routers share.
+        '';
       };
 
       localAddress = mkOption {
         type = types.str;
         example = "192.168.100.2";
-        description = "This node's IPv4 address on `interface`.";
+        description = "This node's IPv4 address on `interface`; it must be the interface's primary address (conntrackd sends from the route's preferred source).";
       };
 
       peerAddress = mkOption {
@@ -1016,7 +1049,12 @@ in
             !cts.enable
             || (
               let
-                v4 = a: builtins.match "(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})" a != null;
+                v4 =
+                  a:
+                  let
+                    o = builtins.match "(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})" a;
+                  in
+                  o != null && all (x: toInt x <= 255) o;
               in
               v4 cts.localAddress && v4 cts.peerAddress && cts.localAddress != cts.peerAddress
             );

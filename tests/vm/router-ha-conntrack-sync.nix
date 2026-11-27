@@ -12,7 +12,10 @@
 # resync from a restarted conntrackd) before its WAN comes up, so the ISP's
 # next packet finds its NAT entry and the stream continues. The ISP sends
 # first after the failover, so without sync the new MASTER has no entry for
-# it and the stream dies.
+# it and the stream dies. router1 then reboots, resyncs at startup and
+# preempts; router2's demotion takes its WAN down (which deletes its
+# masquerade entries) without syncing those deletes, and the stream
+# survives the fail-back too.
 let
   mkRouterTest = import ./lib/mk-router-test.nix {
     inherit pkgs lib self;
@@ -33,6 +36,8 @@ let
     services.router-ha = {
       # The pair cold-starts together.
       peerWaitSec = 0;
+      # A rebooted router1 stays BACKUP long enough to resync first.
+      preemptDelay = 15;
       conntrackSync = {
         enable = true;
         interface = "eth3";
@@ -171,8 +176,8 @@ mkRouterTest {
     with subtest("a restarted BACKUP gets the offloaded flow by bulk resync"):
         # GOTCHA: a bulk resync copies router1's kernel table, offload bits
         # included (docs/router-ha-pair-guide.md#connection-state-sync).
+        # StartupResync fetches router1's table; nobody asks by hand.
         router2.succeed("systemctl restart conntrackd.service")
-        router2.wait_until_succeeds("conntrackd -n", timeout=30)
         router2.wait_until_succeeds("conntrackd -e 2>/dev/null | grep 'dport=${toString streamPort}' | grep -q OFFLOAD", timeout=30)
 
     with subtest("MASTER power loss: the stream continues through router2"):
@@ -189,5 +194,42 @@ mkRouterTest {
         # The committed flow carries on in router2's table (re-offloaded or not).
         router2.succeed("conntrack -L -p tcp --dport ${toString streamPort} 2>/dev/null | grep -q 'dport=${toString streamPort}'")
         router2.succeed("journalctl -u conntrackd --no-pager | grep -qE 'Committed [1-9][0-9]* new entries'")
+
+    with subtest("router1 reboots, resyncs as BACKUP, preempts: the stream survives the fail-back"):
+        router1.start()
+        wait_role(router1, "backup", timeout=120)
+        router1.wait_until_succeeds("conntrackd -e 2>/dev/null | grep -q 'dport=${toString streamPort}'", timeout=30)
+        wait_role(router1, "master", timeout=60)
+        wait_role(router2, "backup", timeout=30)
+        router1.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
+        before = count()
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and count() < before + 50:
+            assert stream_alive(), "stream broke on fail-back: " + client.succeed("cat /tmp/stream-error")
+            time.sleep(1)
+        assert stream_alive(), "stream broke on fail-back: " + client.succeed("cat /tmp/stream-error")
+        assert count() >= before + 50, f"stream stalled at {count()} lines after fail-back (was {before})"
+
+    with subtest("keepalived stopped on the MASTER (a deploy): its WAN goes down, router2 still has the flow"):
+        # GOTCHA: stopping keepalived sends a priority-0 advert and takes the
+        # WAN down at once; the kernel deletes the WAN's masquerade entries.
+        # Those deletes must not reach router2 before it commits.
+        before = count()
+        stop_start = time.monotonic()
+        router1.succeed("systemctl stop keepalived.service")
+        took = time.monotonic() - stop_start
+        assert took < 20, f"stopping keepalived took {took:.0f} s (a transition blocked)"
+        router1.succeed("! ip -4 addr show dev eth1 | grep -q inet")
+        wait_role(router2, "master", timeout=30)
+        router2.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
+        t0 = time.monotonic()
+        deadline = t0 + 60
+        while time.monotonic() < deadline and count() < before + 50:
+            print(f"keepalived-stop: +{time.monotonic() - t0:.1f}s lines {count() - before}")
+            if not stream_alive():
+                print(router2.succeed("conntrack -L -p tcp --dport ${toString streamPort} 2>&1; conntrackd -e 2>&1 | grep ${toString streamPort}; journalctl -u conntrackd --no-pager | tail -20"))
+            assert stream_alive(), "stream broke on keepalived stop: " + client.succeed("cat /tmp/stream-error")
+            time.sleep(1)
+        assert count() >= before + 50, f"stream stalled at {count()} lines after keepalived stop (was {before})"
   '';
 }
