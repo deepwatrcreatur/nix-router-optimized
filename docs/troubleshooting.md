@@ -107,8 +107,16 @@ Checks:
 ```sh
 systemctl status technitium-bootstrap-api-token technitium-sync-static-hosts technitium-sync-blocklists --no-pager
 journalctl -u technitium-sync-blocklists -b --no-pager
-TOKEN=$(sudo cat /var/lib/private/technitium-dns-server/nix-router-api-token)
-curl -fsS "http://127.0.0.1:5380/api/settings/get?token=$TOKEN" | jq '{status, blockListUrls: .response.blockListUrls}'
+set -o pipefail
+API_TOKEN_FILE=/var/lib/private/technitium-dns-server/nix-router-api-token
+technitium_api() {
+  {
+    printf 'Authorization: Bearer '
+    sudo cat "$API_TOKEN_FILE" | tr -d '\r\n'
+    printf '\n'
+  } | curl -fsS -H @- "$1"
+}
+technitium_api "http://127.0.0.1:5380/api/settings/get" | jq '{status, blockListUrls: .response.blockListUrls}'
 ```
 
 Common causes:

@@ -106,24 +106,36 @@ The units are `oneshot` with `RemainAfterExit`, so "active (exited)" only means
 the script exited 0. Check the result in Technitium itself:
 
 ```sh
-TOKEN=$(sudo cat /var/lib/private/technitium-dns-server/nix-router-api-token)
+set -o pipefail
+API_TOKEN_FILE=/var/lib/private/technitium-dns-server/nix-router-api-token
+technitium_api() {
+  {
+    printf 'Authorization: Bearer '
+    sudo cat "$API_TOKEN_FILE" | tr -d '\r\n'
+    printf '\n'
+  } | curl -fsS -H @- "$1"
+}
 
 # Token accepted?
-curl -fsS "http://127.0.0.1:5380/api/settings/get?token=$TOKEN" | jq -r .status   # expect "ok"
+technitium_api "http://127.0.0.1:5380/api/settings/get" | jq -r .status   # expect "ok"
 
 # Block lists configured and loaded?
-curl -fsS "http://127.0.0.1:5380/api/settings/get?token=$TOKEN" | jq '.response.blockListUrls'
-curl -fsS "http://127.0.0.1:5380/api/dashboard/stats/get?token=$TOKEN&type=LastHour" \
+technitium_api "http://127.0.0.1:5380/api/settings/get" | jq '.response.blockListUrls'
+technitium_api "http://127.0.0.1:5380/api/dashboard/stats/get?type=LastHour" \
   | jq '.response.stats | {blockListZones, totalBlocked}'
 
 # A static host present?
-curl -fsS "http://127.0.0.1:5380/api/zones/records/get?token=$TOKEN" \
-  --data-urlencode zone=example.com --data-urlencode domain=host.example.com | jq '.response.records'
+technitium_api "http://127.0.0.1:5380/api/zones/records/get?zone=example.com&domain=host.example.com" \
+  | jq '.response.records'
 
 # RFC2136 settings
-curl -fsS "http://127.0.0.1:5380/api/zones/options/get?token=$TOKEN&zone=example.com" \
+technitium_api "http://127.0.0.1:5380/api/zones/options/get?zone=example.com" \
   | jq '.response | {update, updateNetworkACL}'
 ```
+
+This uses Technitium v15's bearer-token header support. The helper streams the
+header to curl on stdin (`-H @-`), so the token is neither printed nor placed
+in a process argument. See the [Technitium API authentication docs](https://github.com/TechnitiumSoftware/DnsServer/blob/master/APIDOCS.md#api-authentication).
 
 `blockListZones` is the number of blocked domains loaded. It stays at 0 for a
 few minutes after the first sync while Technitium downloads the lists.
@@ -229,10 +241,10 @@ first attempt found no primary recovers on its own, records written on
 either owner survive both moves, and exactly one node holds the zone as
 Primary at every steady state.
 
-Verify on the standby:
+In the same shell where you defined `technitium_api` above, verify on the standby:
 
 ```sh
-curl -s "http://127.0.0.1:5380/api/zones/list?token=$TOKEN" | jq '.response.zones[] | {name,type,lastRefreshed,syncFailed}'
+technitium_api "http://127.0.0.1:5380/api/zones/list" | jq '.response.zones[] | {name,type,lastRefreshed,syncFailed}'
 dig @127.0.0.1 router.home.example +short
 ```
 
