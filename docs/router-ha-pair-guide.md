@@ -217,7 +217,12 @@ services.router-ha.unicastPeers = [ "10.10.10.2" ];
 Each node lists the other's own address on `vrrpInterface` (not the VIP),
 in the VIP's family. keepalived then sends adverts only to those addresses.
 `unicastSrcIp` overrides the source address, which otherwise is the
-interface's primary address.
+interface's primary address. With an IPv6 VIP it is required: set it to the
+address the peer lists, because keepalived otherwise binds its receive
+socket to a link-local address and never sees the peer's adverts.
+Evaluation rejects a peer that is not a valid address of the VIP's family,
+has a prefix length, or is the VIP in any spelling, because keepalived
+skips such an entry and falls back to multicast.
 
 Switching an existing pair: keepalived drops adverts of the other kind
 ("Expected unicast packet but received multicast packet"), so a pair with

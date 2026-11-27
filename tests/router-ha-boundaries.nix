@@ -419,6 +419,78 @@ in
     }
   ];
 
+  router-ha-unicast-malformed-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-unicast-malformed" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        unicastPeers = [ "10.10.10.300" ];
+      };
+    }
+  ];
+
+  router-ha-unicast-leading-zero-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-unicast-leading-zero" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        unicastPeers = [ "10.10.10.03" ];
+      };
+    }
+  ];
+
+  router-ha-unicast-ipv6-vip-spelling-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-unicast-ipv6-vip-spelling" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "fd00::1/64";
+        vrrpInterface = "ens18";
+        unicastPeers = [ "FD00:0:0:0:0:0:0:1" ];
+        unicastSrcIp = "fd00::2";
+      };
+    }
+  ];
+
+  router-ha-unicast-ipv6-no-src-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-unicast-ipv6-no-src" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "fd00::1/64";
+        vrrpInterface = "ens18";
+        unicastPeers = [ "fd00::3" ];
+      };
+    }
+  ];
+
+  router-ha-unicast-ipv6-eval = eval.mkNixosEvalCheck "router-ha-unicast-ipv6" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "fd00::1/64";
+        vrrpInterface = "ens18";
+        unicastPeers = [ "fd00::3" ];
+        unicastSrcIp = "fd00::2";
+      };
+    }
+  ];
+
   router-ha-garp-eval = eval.mkNixosEvalCheck "router-ha-garp" [
     self.nixosModules.router-ha
     {

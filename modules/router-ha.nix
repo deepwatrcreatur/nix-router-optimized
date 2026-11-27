@@ -320,6 +320,25 @@ let
 
   virtualIpAddress = builtins.head (lib.splitString "/" cfg.virtualIp);
   virtualIpIsIpv6 = hasInfix ":" virtualIpAddress;
+  # Canonical text of a bare address in the VIP's family, or null if it is
+  # not one (prefix length, other family, malformed).
+  canonicalVrrpAddress =
+    addr:
+    if hasInfix "/" addr then
+      null
+    else if virtualIpIsIpv6 then
+      let
+        parsed = builtins.tryEval (toLower (lib.network.ipv6.fromString addr).address);
+      in
+      if hasInfix ":" addr && parsed.success then parsed.value else null
+    else
+      let
+        octets = builtins.match "(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})" addr;
+      in
+      if octets != null && all (o: toInt o <= 255) octets then
+        concatMapStringsSep "." (o: toString (toInt o)) octets
+      else
+        null;
 
   # INVARIANT: mirrors router-networking's "20-router-<name>" naming.
   autoVrrpNetwork =
@@ -595,7 +614,9 @@ in
       description = ''
         Source address for unicast adverts (keepalived `unicast_src_ip`).
         `null` uses the primary address of `vrrpInterface`. Only used with
-        `unicastPeers`.
+        `unicastPeers`. Required with an IPv6 VIP: keepalived otherwise
+        binds to a link-local address and never receives adverts sent to
+        the address the peer lists.
       '';
     };
 
@@ -850,12 +871,23 @@ in
     {
       assertions = [
         {
-          assertion = all (p: !(hasInfix "/" p) && (hasInfix ":" p) == virtualIpIsIpv6 && p != virtualIpAddress) cfg.unicastPeers;
-          message = "services.router-ha.unicastPeers: list the peer's own address on vrrpInterface, without a prefix length, in the same family as virtualIp (${cfg.virtualIp}), and not the VIP.";
+          # WHY: keepalived skips an address it cannot parse and falls back
+          # to multicast when no peer is left, on a LAN where multicast is
+          # what fails. Compare canonical forms so another spelling of the
+          # VIP cannot pass.
+          assertion = all (p: canonicalVrrpAddress p != null && canonicalVrrpAddress p != canonicalVrrpAddress virtualIpAddress) cfg.unicastPeers;
+          message = "services.router-ha.unicastPeers: list the peer's own address on vrrpInterface as a valid ${if virtualIpIsIpv6 then "IPv6" else "IPv4"} address (the VIP's family, ${cfg.virtualIp}), without a prefix length, and not the VIP.";
         }
         {
-          assertion = cfg.unicastSrcIp == null || (cfg.unicastPeers != [ ] && !(hasInfix "/" cfg.unicastSrcIp) && (hasInfix ":" cfg.unicastSrcIp) == virtualIpIsIpv6);
-          message = "services.router-ha.unicastSrcIp needs unicastPeers and an address (no prefix length) in the same family as virtualIp.";
+          assertion = cfg.unicastSrcIp == null || (cfg.unicastPeers != [ ] && canonicalVrrpAddress cfg.unicastSrcIp != null && canonicalVrrpAddress cfg.unicastSrcIp != canonicalVrrpAddress virtualIpAddress);
+          message = "services.router-ha.unicastSrcIp needs unicastPeers and this node's own address on vrrpInterface (valid, the VIP's family, no prefix length, not the VIP).";
+        }
+        {
+          # WHY: with an IPv6 VIP keepalived binds its receive socket to a
+          # link-local source by default, so adverts the peer sends to this
+          # node's global or ULA address never arrive and both become MASTER.
+          assertion = !(virtualIpIsIpv6 && cfg.unicastPeers != [ ] && cfg.unicastSrcIp == null);
+          message = "services.router-ha.unicastPeers with an IPv6 VIP needs unicastSrcIp: this node's address on vrrpInterface that the peer lists in its unicastPeers.";
         }
         {
           # WHY: no default password. A rolling upgrade where one node has auth
