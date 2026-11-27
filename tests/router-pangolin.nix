@@ -33,6 +33,22 @@
           message = "router-pangolin must make /etc/pangolin writable to the sandboxed service.";
         }
         {
+          # fosrl/gerbil#51: < 1.5.2 panics on every stop and the unit fails.
+          assertion =
+            let
+              exec = config.systemd.services.gerbil.serviceConfig.ExecStart;
+              pkg = config.services.router-pangolin.gerbilPackage;
+            in
+            builtins.compareVersions pkg.version "1.5.2" >= 0
+            && exec == builtins.concatStringsSep " " (map (a: "\"${a}\"") [
+              "${pkg}/bin/gerbil"
+              "--reachableAt=http://localhost:3004"
+              "--generateAndSaveKeyTo=/var/lib/pangolin/config/key"
+              "--remoteConfig=http://localhost:3005/api/v1/gerbil/get-config"
+            ]);
+          message = "router-pangolin must run gerbil >= 1.5.2 with the nixpkgs module's arguments.";
+        }
+        {
           assertion = config.systemd.services.pangolin.serviceConfig.User == "pangolin";
           message = "router-pangolin's /etc/pangolin ownership assumes the service runs as pangolin.";
         }
