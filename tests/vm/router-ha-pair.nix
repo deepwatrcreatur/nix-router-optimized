@@ -19,6 +19,7 @@ let
   inherit (import ./lib/ha-pair.nix { inherit self; }) isp mkRouter;
 
   preemptDelay = 10;
+  peerWaitSec = 15;
 
   pairModule =
     { pkgs, ... }:
@@ -50,7 +51,7 @@ let
       };
 
       services.router-ha = {
-        inherit preemptDelay;
+        inherit preemptDelay peerWaitSec;
         singleActiveUnits = [ "ha-owned.service" ];
       };
       # Stands in for a service only the active router may run (inadyn, a
@@ -102,6 +103,7 @@ mkRouterTest {
 
     routers = [router1, router2]
     PREEMPT_DELAY = ${toString preemptDelay}
+    PEER_WAIT = ${toString peerWaitSec}
 
     def role(r):
         return r.succeed("cat /run/router-ha/role 2>/dev/null || echo none").strip()
@@ -285,6 +287,29 @@ mkRouterTest {
         router1.wait_for_unit("multi-user.target")
         # INVARIANT: ActivationPolicy=manual keeps the WAN down through boot.
         assert not wan_up(router1), "router1 raised its WAN while booting"
+        keepalived_running(router1)
+        assert_delayed_failback(router2, router1)
+
+    with subtest("late LAN forwarding: the rebooted node waits for the peer, then preemptDelay"):
+        # Stands in for a switch port still in spanning-tree learning: carrier
+        # is up but router1 hears no adverts. Without the gate, keepalived's
+        # master-down timer made router1 MASTER ~3 s after it started,
+        # skipping preemptDelay.
+        router1.shutdown()
+        wait_role(router2, "master", timeout=30)
+        router2.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
+        router2.succeed("nft add table inet hidevrrp && nft add chain inet hidevrrp out '{ type filter hook output priority 0; }' && nft add rule inet hidevrrp out ip protocol vrrp drop")
+        router1.start()
+        router1.wait_for_unit("multi-user.target")
+        router1.wait_until_succeeds("journalctl -b -u keepalived | grep -q 'Starting Keepalive'", timeout=60)
+        # Well past the boot timer plus keepalived's master-down interval.
+        end = time.monotonic() + PEER_WAIT - 5
+        while time.monotonic() < end:
+            assert role(router1) != "master", "router1 became MASTER while it could not hear router2"
+            assert not has_vip(router1), "router1 took the VIP while it could not hear router2"
+            time.sleep(0.5)
+        router2.succeed("nft delete table inet hidevrrp")
+        router1.wait_until_succeeds("journalctl -b -u keepalived | grep -q 'heard a VRRP advert'", timeout=30)
         keepalived_running(router1)
         assert_delayed_failback(router2, router1)
 

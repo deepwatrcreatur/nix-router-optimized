@@ -278,6 +278,17 @@ in
             assertion = lib.strings.hasInfix "preempt_delay 300" instance.extraConfig;
             message = "router-ha should render preempt_delay from preemptDelay.";
           }
+          {
+            assertion =
+              let
+                svc = config.systemd.services.keepalived.serviceConfig;
+              in
+              config.services.router-ha.peerWaitSec == 60
+              && lib.hasInfix "router-ha-peer-wait" (lib.last svc.ExecStartPre)
+              && lib.hasPrefix "+" (lib.last svc.ExecStartPre)
+              && svc.TimeoutStartSec == 90;
+            message = "preemptDelay must gate keepalived's start on hearing the peer (peerWaitSec 60, privileged, last ExecStartPre).";
+          }
         ];
       })
   ];
@@ -305,6 +316,11 @@ in
               && !(lib.strings.hasInfix "preempt_delay" instance.extraConfig)
               && !(lib.strings.hasInfix "garp_" instance.extraConfig);
             message = "router-ha without preemptDelay or garp must keep the role-based MASTER start and render neither (backwards compatible).";
+          }
+          {
+            assertion = config.services.router-ha.peerWaitSec == 0
+              && !(lib.any (lib.hasInfix "router-ha-peer-wait") (config.systemd.services.keepalived.serviceConfig.ExecStartPre or [ ]));
+            message = "router-ha without preemptDelay must not wait for a peer (backwards compatible).";
           }
         ];
       })
