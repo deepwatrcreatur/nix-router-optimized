@@ -10,7 +10,8 @@ class GatewayWidget extends BaseWidget {
     this.refreshInterval = config.refreshInterval || 10000; // 10 seconds
     this.latencyChart = null;
     this.historyLength = 30; // 5 minutes at 10s intervals
-    this.history = {};
+    // WHY: a Map, not {}: operator-chosen names such as __proto__ or constructor must not hit Object.prototype.
+    this.history = new Map();
   }
 
   getMarkup() {
@@ -150,12 +151,13 @@ class GatewayWidget extends BaseWidget {
 
     // Initialize history for new targets
     targets.forEach((t, i) => {
-      if (!this.history[t.name]) {
-        this.history[t.name] = [];
+      if (!this.history.has(t.name)) {
+        this.history.set(t.name, []);
       }
-      this.history[t.name].push(t.latency || 0);
-      if (this.history[t.name].length > this.historyLength) {
-        this.history[t.name].shift();
+      const series = this.history.get(t.name);
+      series.push(t.latency || 0);
+      if (series.length > this.historyLength) {
+        series.shift();
       }
     });
 
@@ -163,7 +165,7 @@ class GatewayWidget extends BaseWidget {
     this.latencyChart.data.labels = Array(this.historyLength).fill('').map((_, i) => '');
     this.latencyChart.data.datasets = targets.map((t, i) => ({
       label: t.name,
-      data: this.history[t.name] || [],
+      data: this.history.get(t.name) || [],
       borderColor: colors[i % colors.length],
       backgroundColor: 'transparent',
       tension: 0.4,
