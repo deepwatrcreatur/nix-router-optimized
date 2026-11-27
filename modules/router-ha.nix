@@ -339,15 +339,21 @@ let
   peerWaitScript = pkgs.writeShellScript "router-ha-peer-wait" ''
     set -u
     deadline=$(( $(${pkgs.coreutils}/bin/date +%s) + ${toString cfg.peerWaitSec} ))
-    # VRRP's VRID is the second byte after the IPv4 header.
-    filter='ip proto 112 and ip[((ip[0] & 0xf) << 2) + 1] = ${toString cfg.vrrpId}'
+    # VRRP's VRID is the second byte after the IP header. keepalived sends
+    # in the VIP's family; IPv6 VRRP (v3) carries no extension headers.
+    filter='${
+      if virtualIpIsIpv6 then
+        "ip6 and ip6[6] = 112 and ip6[41] = ${toString cfg.vrrpId}"
+      else
+        "ip proto 112 and ip[((ip[0] & 0xf) << 2) + 1] = ${toString cfg.vrrpId}"
+    }'
     while :; do
       left=$(( deadline - $(${pkgs.coreutils}/bin/date +%s) ))
       if [ "$left" -le 0 ]; then
         echo "router-ha: no VRRP advert for VRID ${toString cfg.vrrpId} on ${cfg.vrrpInterface} in ${toString cfg.peerWaitSec} s; starting keepalived"
         exit 0
       fi
-      # GOTCHA: promiscuous (no -p): the NIC drops 224.0.0.18 until
+      # GOTCHA: promiscuous (no -p): the NIC drops the VRRP group until
       # something joins the group, and keepalived has not started yet.
       if ${pkgs.coreutils}/bin/timeout "$left" ${pkgs.tcpdump}/bin/tcpdump -i ${escapeShellArg cfg.vrrpInterface} -c 1 -n "$filter" >/dev/null 2>&1; then
         echo "router-ha: heard a VRRP advert on ${cfg.vrrpInterface}; starting keepalived"
