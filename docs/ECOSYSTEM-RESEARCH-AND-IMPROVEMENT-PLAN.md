@@ -5,7 +5,7 @@
 **Homelab Consumers Analyzed**: `router` (Primary, Proxmox VM / igc 2.5G) and `elitedesk` (Standby, HP EliteDesk 8300 SFF / X520 10G SFP+)  
 **Infrastructure Context**: Migration from `unified-nix-configuration` to `nix-clan-homelab` (Clan-core, Den aspects, `clan vars`, `deploy-rs`)  
 **Date**: November 2026 (revision 1)  
-**Revised**: 2026-11-19 (revision 2: panel review, see §0); 2026-11-21 (revision 3: shipped work, see §0.2.1); 2026-11-25 (revision 4: HA prior art, see §0.1); 2026-11-27 (revision 5: VRRP live on hardware, how the project compares, see §0.2.2–§0.2.3)  
+**Revised**: 2026-11-19 (revision 2: panel review, see §0); 2026-11-21 (revision 3: shipped work, see §0.2.1); 2026-11-25 (revision 4: HA prior art, see §0.1); 2026-11-27 (revision 5: VRRP live on hardware, how the project compares, see §0.2.2–§0.2.3); 2026-11-28 (revision 6: connection-state sync live, comparison chart with status marks, see §0.2.3)  
 
 ---
 
@@ -26,6 +26,7 @@ input, with factual errors corrected in place (marked *[rev 2]*).
 | 3 | 2026-11-21 | Claude (bead router-ytw) | §0.2.1 lists what shipped in #153–#174; stale items in §0.2–§0.3 and the feature matrix are marked *[rev 3]* |
 | 4 | 2026-11-25 | Claude | Single-WAN-address HA prior art (OPNsense, NethSecurity, VyOS, Kea) and the decisions it led to: [`router-ha-prior-art.md`](./router-ha-prior-art.md); pointer added in §3.5 |
 | 5 | 2026-11-27 | Claude | §0.2.2 lists #177–#198 and the live VRRP pair with measured drills; §0.2.3 compares the project with OPNsense, VyOS and the Nix router projects as of today; stale statements in §0.2 and the §3 matrix are marked *[rev 5]* |
+| 6 | 2026-11-28 | Claude | §0.2.2 adds #200–#202 and the live conntrackd result; §0.2.3 becomes a status-marked chart with release and safe-change rows and a gap list with bead ids |
 
 ### 0.2 State of the project as of 2026-11-19
 
@@ -93,9 +94,12 @@ has run VRRP since 2026-11-25 and passed power-cut drills, see §0.2.2.]*
 | IPv6 failover | The MASTER sends RAs from a virtual link-local (`fe80::1`, RFC 5798 style), so a dead MASTER leaves clients no stale default route | #193 | `vm-router-ha-pair` ("MASTER power loss") |
 | Fail-back hold | `peerWaitSec`: keepalived's start waits for the peer's advert, so a late-forwarding switch port cannot bypass `preemptDelay` | #196 | `vm-router-ha-pair` ("late LAN forwarding"), mutation-checked |
 | VRRP transport | `unicastPeers`/`unicastSrcIp` for LANs that drop VRRP multicast; validated addresses; VRRP firewall rule covers IPv6 | #197 | `vm-router-ha-pair` runs on unicast with multicast dropped, mutation-checked |
-| Pangolin | gerbil ≥ 1.5.2 so a stop no longer panics and fails the unit on every demotion | #198 (open) | `router-pangolin-etc-dir-eval` |
+| Pangolin | gerbil ≥ 1.5.2 so a stop no longer panics and fails the unit on every demotion; gerbil's own iptables rules off so router-firewall stays authoritative | #198 | `router-pangolin-etc-dir-eval`; live: clean stop on elitedesk |
+| Dashboard | configurable gateway-health ping targets | #200 | doc example check |
+| Project docs | CHANGELOG, stability policy (`docs/STABILITY.md`), README quickstart; GitHub releases up to v0.10.0 | #201 | — |
+| Connection-state sync | `router-ha.conntrackSync`: conntrackd FTFW over unicast UDP, commit before the WAN comes up, `StartupResync`, demotion that does not sync the WAN's masquerade deletes | #202 | `vm-router-ha-conntrack-sync` (power loss, rebooted node resyncs and preempts, keepalived stopped on the MASTER; mutation-checked) |
 
-The flake now has 382 checks, 14 of them NixOS VM tests.
+The flake now has 393 checks, 15 of them NixOS VM tests.
 
 **The homelab pair is live** (nix-clan-homelab `nch-sny.36`):
 
@@ -116,6 +120,12 @@ The flake now has 382 checks, 14 of them NixOS VM tests.
   hosts that lag `main`, one inventory as the source for host and router
   metadata (#85), and fleet alerting through the routers' clustered
   Alertmanagers (#96, decision 0005).
+- Connection-state sync live since 2026-11-27 20:30 (nix-clan-homelab #106,
+  sync over the management NICs). In the first live preempt fail-back the
+  returning MASTER committed 1607 synced entries before its WAN came up; a
+  NATed IPv4 download and an IPv6 download kept running at full rate, with
+  0.3 s of IPv4 loss. Deploys now reach VRRP members over their LAN
+  addresses (nix-clan-homelab #102), so a handover cannot cut a deploy.
 - What the drills found that the VM tests had not: a deploy's networkd
   reconfigure sent DHCP RELEASE and renumbered the /56 (#189); a dead
   MASTER's RA route lingered on clients (#193); a switch between the nodes
@@ -123,50 +133,54 @@ The flake now has 382 checks, 14 of them NixOS VM tests.
   every start (#196, #197); a deploy over the management address cut its own
   SSH session when the VIP moved (nix-clan-homelab #102).
 
-#### 0.2.3 How the project compares (2026-11-27)
+#### 0.2.3 How the project compares (revision 6, 2026-11-28)
 
-This compares what each project does for a home or small-office edge router.
-Facts about other projects come from their documentation and from
-[`router-ha-prior-art.md`](./router-ha-prior-art.md) and
-[`FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md); no
+What each project does for a home or small-office edge router. Facts about
+other projects come from their documentation, from
+[`router-ha-prior-art.md`](./router-ha-prior-art.md) and from
+[`FREEBSD-OPNSENSE-COMPARISON.md`](./FREEBSD-OPNSENSE-COMPARISON.md). No
 throughput benchmarks have been run, so none are claimed.
+
+Marks: ✅ built in and proven · 🟡 partial, needs operator work, or proven
+only in tests · ❌ absent · ❓ not covered by the sources read.
 
 | Concern | `nix-router-optimized` | OPNsense | VyOS | Nix router repos (§3) |
 | --- | --- | --- | --- | --- |
-| Configuration | Nix modules; whole system built from one expression, atomic switch, boot-menu rollback, `router-apply` auto-revert | Web GUI over `config.xml`; imperative upgrades | CLI with commit/rollback of its config tree | Nix modules |
-| Gateway redundancy | VRRP (keepalived), multicast or unicast, tested on two nodes and drilled on hardware | CARP, built in | VRRP, built in | none |
-| One DHCP-assigned WAN address shared by two nodes | Built in: WAN raised only on the MASTER with a cloned MAC and shared DHCP identity, no RELEASE, WAN health yield; lease and /56 kept in live drills | Community hook script or plugin; reported to break across upgrades | Transition scripts written by the operator | none |
-| IPv6 RAs across failover | Virtual link-local router address that moves with the MASTER | not covered by the sources read | not covered by the sources read | none |
-| Fail-back control | `preemptDelay` plus a start gate that waits for the peer | CARP advskew/preempt | `preempt-delay` | none |
-| Connection state sync | conntrackd FTFW (`router-ha.conntrackSync`); a NATed, flowtable-offloaded stream survives a power cut in the VM test | pfsync, built in | conntrack-sync | none |
-| DHCP server HA | Kea HA, hot-standby or load-balancing | Kea HA available; forum reports of instability after upgrades | DHCPv6 server not supported with HA (1.4, forum) | none |
-| Services that must run on one node | Typed single-active ownership (DDNS, UPnP, RAs, Kea D2, DNS zones, any unit) | per-service, mostly manual | transition scripts | none |
-| Config sync between nodes | not needed: both nodes build from the same expression | XMLRPC sync from the primary | config-sync (manual or scripted) | n/a |
-| Monitoring and alerting | Prometheus, Grafana, Netdata, Vector/ulogd; Alertmanager with ntfy, email and webhooks plus a healthchecks watchdog (`router-alerting`). In the homelab (nix-clan-homelab #96) both routers also scrape every other host, alert on failed units, disks (SMART) and certificate expiry, and cluster their Alertmanagers across the VRRP pair | RRD graphs and Monit, built in | Prometheus exporters and Telegraf as services | Vector/ulogd (joshpearce) |
-| Web UI | read-mostly dashboard plus `routerctl`; no configuration through the browser | full configuration GUI | none by default | mostly none |
-| Breadth | 56 modules (VPNs, IPsec, BGP, multi-WAN, SQM, DNS, IDS hooks, tunnels) | large plugin catalogue | broad routing feature set | narrow |
-| Automated tests | 14 NixOS VM tests (most multi-node) and 368 eval checks in CI | project CI | smoketests | few |
+| Configuration model | ✅ whole system from one Nix expression; atomic switch; boot-menu rollback | ✅ web GUI over `config.xml` | ✅ CLI with commit, compare and rollback of its config tree | ✅ Nix modules |
+| Safe change and rollback | ✅ `router-apply` auto-revert; deploy-rs magic rollback in the homelab | 🟡 config history and backups; no automatic revert | ✅ `commit-confirm` | 🟡 generation rollback only |
+| Gateway redundancy | ✅ VRRP, multicast or unicast; live pair since 2026-11-25 | ✅ CARP | ✅ VRRP | ❌ |
+| Two nodes sharing one DHCP-assigned WAN address | ✅ WAN only on the MASTER, cloned MAC and shared DHCP identity, no RELEASE, WAN health yield; lease and /56 kept in every live drill | 🟡 community hook script or plugin, reported to break across upgrades | 🟡 operator-written transition scripts | ❌ |
+| IPv6 RAs across failover | ✅ virtual link-local router address that moves with the MASTER | ❓ | ❓ | ❌ |
+| Fail-back control | ✅ `preemptDelay` plus a start gate that waits for the peer; proven by power-cut drills | ✅ CARP advskew and preempt | ✅ `preempt-delay` | ❌ |
+| Connection-state sync | ✅ conntrackd FTFW, flowtable-offloaded flows included; a live fail-back kept NATed IPv4 and IPv6 downloads running. 🟡 a cable pull on the MASTER's WAN still loses NATed flows (`router-ql1`) | ✅ pfsync, years of field use | ✅ conntrack-sync | ❌ |
+| DHCP server HA | ✅ Kea HA, hot-standby or load-balancing; live | 🟡 Kea HA available; forum reports of instability after upgrades | 🟡 DHCPv6 server not supported with HA (1.4, forum) | ❌ |
+| Services that must run on one node | ✅ typed single-active ownership (DDNS, UPnP, RAs, Kea D2, DNS zones, Pangolin, any unit) | 🟡 per service, mostly manual | 🟡 transition scripts | ❌ |
+| Config sync between nodes | ✅ not needed: both nodes build from the same expression | ✅ XMLRPC sync from the primary | 🟡 config-sync, manual or scripted | n/a |
+| Monitoring and alerting | ✅ Prometheus, Grafana, Netdata, Vector/ulogd; Alertmanager with ntfy, email and webhooks; healthchecks watchdog; in the homelab the pair is the redundant alerting hub for every host | 🟡 RRD graphs and Monit | 🟡 exporters and Telegraf as services | 🟡 Vector/ulogd (joshpearce) |
+| Web UI | 🟡 read-mostly dashboard plus `routerctl --json`; no configuration in the browser | ✅ full configuration GUI | ❌ none by default | ❌ |
+| Breadth | ✅ 56 modules (VPNs, IPsec, BGP, multi-WAN, SQM, DNS, IDS hooks, tunnels) | ✅ large plugin catalogue | ✅ broad routing feature set | 🟡 narrow |
+| Automated tests | ✅ 15 NixOS VM tests, most multi-node, and 378 eval checks in CI; mutation checks for the HA tests | ✅ project CI | ✅ smoketests | 🟡 few |
+| Releases and stability promise | 🟡 0.x releases with a changelog and a stability policy (`docs/STABILITY.md`); options may change between minor releases | ✅ two major releases a year, frequent updates | 🟡 LTS images for subscribers; rolling releases free | ❌ |
 | Who it suits | someone who already runs NixOS and wants the router in the same repository | anyone who wants an appliance with a GUI | network engineers who want a router OS with a CLI | their authors |
 
 **Where it leads:** reproducible whole-system builds and rollback; HA for the
 common residential case of one dynamic WAN address, which OPNsense and VyOS
-leave to community scripts; IPv6 RA failover; typed single-active services;
-HA behaviour checked by multi-node VM tests and live drills; and, in a fleet
-built with Nix, the router pair doubling as the redundant alerting hub for
-every other host, configured from the same inventory.
+leave to community scripts; IPv6 RA failover; connection-state sync that
+covers flowtable-offloaded flows; typed single-active services; HA behaviour
+checked by multi-node VM tests with mutation checks and by live drills; and,
+in a fleet built with Nix, the router pair doubling as the redundant
+alerting hub for every other host.
 
-**Where it trails:**
+**Where it trails, and the open work:**
 
-- Connection-state sync (conntrackd) is new and so far proven in a VM test
-  only; OPNsense's pfsync and VyOS's conntrack-sync have years of field use.
-- No configuration GUI and a steep entry cost: Nix, flakes and a secret
-  manager are prerequisites.
-- One operator and one homelab pair as the only production deployment, so
-  ISP and switch variety are barely sampled (the VRRP-multicast switch
-  problem was found only in the 2026-11-27 drill).
-- Changing VRRP transport or restarting keepalived on the MASTER costs a
-  gateway outage (145 s during the unicast rollout, before
-  nix-clan-homelab #101 raised the deploy-rs activation timeout).
+| Gap | Effect | Tracking |
+| --- | --- | --- |
+| WAN cable pulled on the MASTER | networkd drops the WAN address on carrier loss; the kernel's masquerade deletes sync to the peer before the WAN health check yields, so NATed flows are lost (as without sync) | bead `router-ql1` |
+| DDNS right after a takeover | inadyn's first run on a new MASTER can hang until demotion kills it, leaving a failed unit | bead `router-3xp` |
+| No configuration GUI | Nix, flakes and a secret manager are prerequisites | by design |
+| One production deployment | ISP and switch variety barely sampled; the VRRP-multicast switch problem surfaced only in a live drill | more deployments |
+| Outage cost of keepalived changes on the MASTER | changing VRRP transport or the keepalived unit moves the gateway; seconds with the current deploy path | accepted |
+| Field age | conntrackd sync and unicast VRRP are days old; OPNsense's pfsync and VyOS's conntrack-sync have years of use | time |
 
 **Not done** *[rev 3: the three items below were fixed in #156, #155 and #153]*:
 
@@ -384,9 +398,9 @@ To identify potential architectural improvements, we surveyed leading open-sourc
 | **Observability Pipeline** | ✅ Netdata, Grafana, custom UI; Vector + ulogd (`router-observability`) *[rev 3]* | ❌ No | ✅ Vector + ulogd (JSON) | ⚠️ Minimal | ✅ CoreRAD Prometheus | ✅ Telegraf / Influx |
 | **IPv6 RA Observability** | ⚠️ Opaque systemd-networkd | ⚠️ radvd | ⚠️ systemd-networkd | ⚠️ dnsmasq | ✅ CoreRAD (Native metrics)| ⚠️ radvd / FRR |
 | **High Availability (HA)** | ✅ VRRP (Keepalived, multicast or unicast) with WAN takeover and health-driven yield, `preemptDelay` with a peer-wait start gate, virtual link-local RAs, Kea HA, zone and service ownership; VM-tested and live on a hardware pair since 2026-11-25 with power-cut drills *[rev 5]* | ❌ No | ❌ No | ❌ No | ❌ No | ✅ CARP + pfsync / VRRP |
-| **Conntrack Synchronization** | ✅ conntrackd FTFW over unicast UDP (`router-ha.conntrackSync`), committed before the WAN comes up; flowtable-offloaded flows covered; VM-tested *[rev 5, updated 2026-11-27]* | ❌ No | ❌ No | ❌ No | N/A | ✅ pfsync / conntrackd |
+| **Conntrack Synchronization** | ✅ conntrackd FTFW over unicast UDP (`router-ha.conntrackSync`), committed before the WAN comes up; flowtable-offloaded flows covered; VM-tested and live on the homelab pair *[rev 6]* | ❌ No | ❌ No | ❌ No | N/A | ✅ pfsync / conntrackd |
 | **Secret Backend Agnosticism** | ✅ Runtime file paths (`vrrpPasswordFile`, `pskFile`, TSIG key files); any secret manager; router-technitium also picks up matching `age.secrets` when agenix is present *[rev 3]* | ⚠️ agenix | ⚠️ agenix | ⚠️ Plain text / age | N/A | ✅ Vault / Decoupled |
-| **Unit / Eval Test Harness** | ✅ 368 eval checks plus 14 NixOS VM tests, most of them multi-node *[rev 5]* | ⚠️ Minimal | ✅ Pure Nix unit tests | ❌ No | ✅ Go test suite | ✅ Pytest / CI bats |
+| **Unit / Eval Test Harness** | ✅ 378 eval checks plus 15 NixOS VM tests, most of them multi-node *[rev 6]* | ⚠️ Minimal | ✅ Pure Nix unit tests | ❌ No | ✅ Go test suite | ✅ Pytest / CI bats |
 
 ---
 
