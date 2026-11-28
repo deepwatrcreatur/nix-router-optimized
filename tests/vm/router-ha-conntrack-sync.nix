@@ -293,6 +293,9 @@ mkRouterTest {
         # commit replaces router2's entry with router1's synced, NATed one.
         router2.succeed("systemd-run --unit local-sender ${pkgs.python3}/bin/python3 ${localSender}")
         router1.wait_until_succeeds("conntrack -L -p udp --dport 9998 2>/dev/null | grep -q 'dst=198.51.100.50'", timeout=30)
+        # router2 must hold router1's NATed copy before router1 goes away.
+        # (conntrackd -e prints the original tuple only; the NAT travels with it.)
+        router2.wait_until_succeeds("conntrackd -e 2>/dev/null | grep -q 'src=10.0.10.3 dst=198.51.100.1 .*dport=9998'", timeout=30)
         router1.succeed("systemctl stop keepalived.service")
         wait_role(router2, "master", timeout=30)
         router2.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
