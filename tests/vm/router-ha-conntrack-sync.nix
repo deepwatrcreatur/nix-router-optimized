@@ -25,7 +25,7 @@ let
 
   streamPort = 9000;
 
-  syncModule = local: peer: {
+  syncModule = local: peer: lanIp: {
     imports = [ self.nixosModules.router-firewall ];
     # A BACKUP's own route to the internet through the MASTER, as
     # nix-clan-homelab uses; on a new MASTER it is the only default route
@@ -52,6 +52,8 @@ let
         interface = "eth3";
         localAddress = local;
         peerAddress = peer;
+        # As nix-clan-homelab: flows that end on the node itself.
+        ignoreAddresses = [ lanIp ];
       };
     };
   };
@@ -85,6 +87,20 @@ let
     while True:
         try:
             s.sendto(b"ping", ("198.51.100.1", 9999))
+        except OSError:
+            pass
+        time.sleep(0.05)
+  '';
+
+  # The BACKUP's own long-lived connection (like tailscaled's UDP): a
+  # connected socket, so its source address and port never change.
+  localSender = pkgs.writeText "local-udp-sender.py" ''
+    import socket, time
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("198.51.100.1", 9998))
+    while True:
+        try:
+            s.send(b"ping")
         except OSError:
             pass
         time.sleep(0.05)
@@ -134,14 +150,14 @@ mkRouterTest {
       role = "master";
       lanAddress = "10.0.10.2/24";
       mgmtAddress = "192.168.100.2/24";
-      extraModule = syncModule "192.168.100.2" "192.168.100.3";
+      extraModule = syncModule "192.168.100.2" "192.168.100.3" "10.0.10.2";
     };
 
     router2 = mkRouter {
       role = "backup";
       lanAddress = "10.0.10.3/24";
       mgmtAddress = "192.168.100.3/24";
-      extraModule = syncModule "192.168.100.3" "192.168.100.2";
+      extraModule = syncModule "192.168.100.3" "192.168.100.2" "10.0.10.3";
     };
 
     client = { pkgs, ... }: {
@@ -269,5 +285,24 @@ mkRouterTest {
         print(srcs)
         assert "198.51.100.50" in srcs, f"no NATed packets of the UDP flow reach the ISP: {srcs}"
         assert "10.0.10." not in srcs, f"the UDP flow leaves the WAN un-NATed: {srcs}"
+
+    with subtest("the BACKUP's own long-lived connection is NATed after it is promoted"):
+        # router2 (BACKUP) reaches the ISP through router1 by its LAN fallback
+        # route; its own conntrack entry for this socket has no NAT, as it
+        # should. Once router2 is MASTER the same tuple leaves its WAN: the
+        # commit replaces router2's entry with router1's synced, NATed one.
+        router2.succeed("systemd-run --unit local-sender ${pkgs.python3}/bin/python3 ${localSender}")
+        router1.wait_until_succeeds("conntrack -L -p udp --dport 9998 2>/dev/null | grep -q 'dst=198.51.100.50'", timeout=30)
+        # router2 must hold router1's NATed copy before router1 goes away.
+        # (conntrackd -e prints the original tuple only; the NAT travels with it.)
+        router2.wait_until_succeeds("conntrackd -e 2>/dev/null | grep -q 'src=10.0.10.3 dst=198.51.100.1 .*dport=9998'", timeout=30)
+        router1.succeed("systemctl stop keepalived.service")
+        wait_role(router2, "master", timeout=30)
+        router2.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
+        time.sleep(3)
+        srcs = isp.succeed("timeout 5 ${pkgs.tcpdump}/bin/tcpdump -n -i eth1 -c 20 'udp and dst port 9998' 2>/dev/null | awk '{print $3}' | sed 's/\\.[0-9]*$//' | sort | uniq -c")
+        print(srcs)
+        assert "198.51.100.50" in srcs, f"no NATed packets of router2's own flow reach the ISP: {srcs}"
+        assert "10.0.10." not in srcs, f"router2's own flow leaves the WAN un-NATed: {srcs}"
   '';
 }
