@@ -337,6 +337,23 @@ in
     extra = ddns;
   });
 
+  # WHY: promotion starts inadyn before the WAN lease; it must wait for a
+  # default route on the WAN instead of hanging until demotion kills it.
+  router-ddns-waits-for-wan-eval = check "router-ddns-waits-for-wan" (pair {
+    ha = raOwner // {
+      wan = {
+        enable = true;
+        interface = "wan0";
+      };
+    };
+    extra = lib.recursiveUpdate ddns { services.router-ddns.ha.singleActiveOwner = true; };
+  }) (config: [
+    {
+      assertion = lib.any (x: lib.hasInfix "router-ddns-wait-for-wan" (toString x)) config.systemd.services.inadyn.serviceConfig.ExecStartPre;
+      message = "router-ddns under router-ha.wan must make inadyn wait for a default route on the WAN.";
+    }
+  ]);
+
   router-ddns-owner-without-ha-fails-eval = eval.mkNixosEvalFailureCheck "router-ddns-owner-without-ha" [
     self.nixosModules.router-ha
     self.nixosModules.router-ddns

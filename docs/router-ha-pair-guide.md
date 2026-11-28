@@ -301,6 +301,12 @@ Notes:
   That is why the node's own addresses belong in `ignoreAddresses`: a
   connection to or from the router itself on an address not listed there
   loses its entry, and its replies are dropped as new.
+- With `conntrackSync`, `net.netfilter.nf_conntrack_tcp_be_liberal` defaults
+  to 1. A committed TCP entry lacks the old MASTER's exact window tracking,
+  and strict tracking dropped in-flight segments as invalid after a
+  fail-back in the VM test. Liberal tracking still checks state and
+  addresses, but no longer drops a segment for being out of window, which
+  makes injecting a forged RST into a known connection somewhat easier.
 - `localAddress` must be the sync interface's primary address. conntrackd
   binds only its receive socket; the kernel picks the source of what it
   sends, and the peer's firewall rule accepts only `peerAddress`.

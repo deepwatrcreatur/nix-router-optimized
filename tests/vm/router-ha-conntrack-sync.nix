@@ -27,6 +27,15 @@ let
 
   syncModule = local: peer: {
     imports = [ self.nixosModules.router-firewall ];
+    # A BACKUP's own route to the internet through the MASTER, as
+    # nix-clan-homelab uses; on a new MASTER it is the only default route
+    # until the WAN lease arrives.
+    systemd.network.networks."20-router-lan".routes = [
+      {
+        Gateway = "10.0.10.1";
+        Metric = 2000;
+      }
+    ];
     services.router-firewall = {
       enable = true;
       wanInterfaces = [ "eth1" ];
@@ -66,6 +75,19 @@ let
     while True:
         c, _ = s.accept()
         threading.Thread(target=serve, args=(c,), daemon=True).start()
+  '';
+
+  # A chatty UDP flow from a fixed port, like a WireGuard client.
+  udpSender = pkgs.writeText "udp-sender.py" ''
+    import socket, time
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("10.0.10.50", 40000))
+    while True:
+        try:
+            s.sendto(b"ping", ("198.51.100.1", 9999))
+        except OSError:
+            pass
+        time.sleep(0.05)
   '';
 
   # Counts lines; records the error and exits if the stream breaks.
@@ -154,6 +176,7 @@ mkRouterTest {
     isp.wait_for_unit("stream-server.service")
     for r in [router1, router2]:
         r.wait_for_unit("conntrackd.service")
+        r.succeed("test $(cat /proc/sys/net/netfilter/nf_conntrack_tcp_be_liberal) = 1")
         r.wait_until_succeeds("systemctl is-active keepalived.service", timeout=60)
 
     with subtest("router1 is MASTER with the WAN lease"):
@@ -231,5 +254,20 @@ mkRouterTest {
             assert stream_alive(), "stream broke on keepalived stop: " + client.succeed("cat /tmp/stream-error")
             time.sleep(1)
         assert count() >= before + 50, f"stream stalled at {count()} lines after keepalived stop (was {before})"
+
+    with subtest("a flow the new MASTER has no synced entry for is NATed once the WAN is up"):
+        # Between promotion and the lease's route only the LAN fallback route
+        # exists; a packet of this flow must not leave un-NATed then.
+        client.succeed("systemd-run --unit udp-sender python3 ${udpSender}")
+        router2.wait_until_succeeds("conntrack -L -p udp --dport 9999 2>/dev/null | grep -q 'dst=198.51.100.50'", timeout=30)
+        router1.succeed("systemctl stop conntrackd.service")
+        router1.succeed("systemctl start keepalived.service")
+        wait_role(router1, "master", timeout=90)
+        router1.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
+        time.sleep(3)
+        srcs = isp.succeed("timeout 5 ${pkgs.tcpdump}/bin/tcpdump -n -i eth1 -c 20 'udp and dst port 9999' 2>/dev/null | awk '{print $3}' | sed 's/\\.[0-9]*$//' | sort | uniq -c")
+        print(srcs)
+        assert "198.51.100.50" in srcs, f"no NATed packets of the UDP flow reach the ISP: {srcs}"
+        assert "10.0.10." not in srcs, f"the UDP flow leaves the WAN un-NATed: {srcs}"
   '';
 }

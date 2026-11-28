@@ -528,6 +528,11 @@ in
             message = "conntrackSync must run conntrackd and start keepalived after it (MASTER commits through its socket).";
           }
           {
+            assertion = config.boot.kernel.sysctl."net.netfilter.nf_conntrack_tcp_be_liberal" == 1
+              && builtins.elem "nf_conntrack" config.boot.kernelModules;
+            message = "conntrackSync must enable liberal TCP tracking and load nf_conntrack at boot so the sysctl applies.";
+          }
+          {
             assertion = config.environment.etc ? "conntrackd/conntrackd.conf";
             message = "conntrackSync must install the config at conntrackd's default path for operators.";
           }
