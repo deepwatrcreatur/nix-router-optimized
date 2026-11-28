@@ -221,6 +221,9 @@ let
   vmHaPairCheck = import ./vm/router-ha-pair.nix {
     inherit self lib pkgs;
   };
+  vmHaConntrackSyncCheck = import ./vm/router-ha-conntrack-sync.nix {
+    inherit self lib pkgs;
+  };
 
   vmTechnitiumZoneHaCheck = import ./vm/router-technitium-zone-ha.nix {
     inherit self lib pkgs;
@@ -248,6 +251,7 @@ in
   vm-router-kea-ha-hot-standby = vmKeaHaHotStandbyCheck;
   vm-router-ha-wan-failover = vmHaWanFailoverCheck;
   vm-router-ha-pair = vmHaPairCheck;
+  vm-router-ha-conntrack-sync = vmHaConntrackSyncCheck;
   vm-router-apply = vmRouterApplyCheck;
   vm-router-hw-sensors = vmHwSensorsCheck;
   vm-router-security-hardened = vmSecurityHardenedCheck;

@@ -491,6 +491,110 @@ in
     }
   ];
 
+  router-ha-conntrack-sync-eval = eval.mkNixosEvalCheck "router-ha-conntrack-sync" [
+    self.nixosModules.router-ha
+    self.nixosModules.router-firewall
+    {
+      services.router-firewall = {
+        enable = true;
+        wanInterfaces = [ "wan0" ];
+        lanInterfaces = [ "ens18" ];
+      };
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        conntrackSync = {
+          enable = true;
+          interface = "eno1";
+          localAddress = "192.168.100.2";
+          peerAddress = "192.168.100.3";
+        };
+      };
+    }
+    ({ config, ... }:
+      let
+        ka = config.systemd.services.keepalived;
+        ct = config.systemd.services.conntrackd;
+      in
+      {
+        assertions = [
+          {
+            assertion = lib.hasInfix "/bin/conntrackd -C " ct.serviceConfig.ExecStart
+              && builtins.elem "conntrackd.service" ka.after
+              && builtins.elem "conntrackd.service" ka.wants;
+            message = "conntrackSync must run conntrackd and start keepalived after it (MASTER commits through its socket).";
+          }
+          {
+            assertion = config.environment.etc ? "conntrackd/conntrackd.conf";
+            message = "conntrackSync must install the config at conntrackd's default path for operators.";
+          }
+          {
+            assertion = lib.hasInfix ''iifname "eno1" ip saddr 192.168.100.3 udp dport 3780 accept'' config.services.router-firewall.extraInputRules;
+            message = "conntrackSync must open the sync port to the peer only, on the sync interface.";
+          }
+        ];
+      })
+  ];
+
+  router-ha-conntrack-sync-same-address-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-conntrack-sync-same-address" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        conntrackSync = { enable = true; interface = "eno1"; localAddress = "192.168.100.2"; peerAddress = "192.168.100.2"; };
+      };
+    }
+  ];
+
+  router-ha-conntrack-sync-cidr-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-conntrack-sync-cidr" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        conntrackSync = { enable = true; interface = "eno1"; localAddress = "192.168.100.2/24"; peerAddress = "192.168.100.3"; };
+      };
+    }
+  ];
+
+  router-ha-conntrack-sync-ipv6-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-conntrack-sync-ipv6" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        conntrackSync = { enable = true; interface = "eno1"; localAddress = "fd00::2"; peerAddress = "fd00::3"; };
+      };
+    }
+  ];
+
+  router-ha-conntrack-sync-octet-fails-eval = eval.mkNixosEvalFailureCheck "router-ha-conntrack-sync-octet" [
+    self.nixosModules.router-ha
+    {
+      services.router-ha = {
+        vrrpPasswordFile = "/run/keys/vrrp-password";
+        enable = true;
+        role = "master";
+        virtualIp = "10.10.10.1/16";
+        vrrpInterface = "ens18";
+        conntrackSync = { enable = true; interface = "eno1"; localAddress = "999.168.100.2"; peerAddress = "192.168.100.3"; };
+      };
+    }
+  ];
+
   router-ha-garp-eval = eval.mkNixosEvalCheck "router-ha-garp" [
     self.nixosModules.router-ha
     {

@@ -233,6 +233,82 @@ and start the BACKUP. The gateway is down from the MASTER's keepalived
 restart until it starts again, which with `peerWaitSec` includes the full
 wait, because the stopped peer sends nothing.
 
+## Connection State Sync
+
+Without state sync, the new MASTER has no conntrack entries for flows the old
+one forwarded. Traffic through NAT then has no mapping: the first packet
+from the internet for an existing connection reaches the router's own WAN
+address and is dropped or reset, so downloads, SSH sessions and calls break
+on every failover and fail-back.
+
+`services.router-ha.conntrackSync` runs conntrackd in FTFW mode (reliable
+replication with acknowledgements) and sends every flow event to the peer
+over unicast UDP, normally on the management segment:
+
+```nix
+# node A                                    # node B
+services.router-ha.conntrackSync = {        services.router-ha.conntrackSync = {
+  enable = true;                              enable = true;
+  interface = "eno1";                         interface = "eno1";
+  localAddress = "192.168.100.2";             localAddress = "192.168.100.3";
+  peerAddress = "192.168.100.3";              peerAddress = "192.168.100.2";
+  ignoreAddresses = [ "10.10.10.2" ];         ignoreAddresses = [ "10.10.10.3" ];
+};                                          };
+```
+
+The BACKUP keeps the MASTER's flows in conntrackd's external cache, not in
+its kernel. Transitions drive it:
+
+| Transition | conntrackd commands | Why |
+|---|---|---|
+| MASTER | `-c` commit before the WAN comes up; `-f` flush, `-R` resync, `-B` bulk send after it | the first returning packets find their NAT entries; the rest is not time-critical |
+| BACKUP, FAULT, STOP | stop conntrackd, take the WAN down, start conntrackd again; then `-t` (not on STOP) | see below |
+
+Taking the WAN down makes the kernel delete that interface's masquerade
+entries. A running conntrackd would send those deletes to the peer, which is
+taking over and needs the entries, so conntrackd is stopped (by signal, since
+a `systemctl stop` job would wait for keepalived's own stop) until the WAN is
+down. Restarted, it fetches the new MASTER's whole table (`StartupResync`),
+which also refills a BACKUP whose conntrackd restarted for any other reason.
+`-t` then expires the flows this node forwarded as MASTER. In the VM test the
+peer always committed before the deletes arrived, so the stop guards a
+timing window the test cannot force.
+
+Every conntrackd command has a 10 s timeout and never fails the transition,
+so a dead conntrackd costs state, not the failover; only the commit runs
+before the WAN. keepalived starts after conntrackd.
+With router-firewall, the module opens the sync port to the peer's address on
+the sync interface only. `conntrackd -s` (statistics), `-i` (this node's
+cache) and `-e` (the peer's flows) work by hand; the config is also at
+`/etc/conntrackd/conntrackd.conf`.
+
+Notes:
+
+- The whole thing depends on the new MASTER presenting the same public
+  address, which the cloned MAC and shared DHCP identity give
+  ([WAN Ownership](#wan-ownership)). With a different WAN address the synced
+  NAT entries are useless.
+- Flowtable-offloaded flows are covered. A bulk resync copies the MASTER's
+  kernel table with `IPS_OFFLOAD` set; conntrack-tools 1.4.8 commits it as
+  is, and the kernel ignores status bits userspace may not set. The VM test
+  restarts the BACKUP's conntrackd so its copy of an offloaded stream comes
+  from a bulk resync, then cuts the MASTER's power.
+- List the node's own LAN and WAN addresses in `ignoreAddresses`: flows that
+  end on the router itself (SSH to the router, its DNS) mean nothing to the
+  peer. Loopback and the sync addresses are always ignored.
+- On a BACKUP or FAULT transition `-t` deletes, five seconds later, every
+  entry in that node's kernel that the filter does not ignore, active or not.
+  That is why the node's own addresses belong in `ignoreAddresses`: a
+  connection to or from the router itself on an address not listed there
+  loses its entry, and its replies are dropped as new.
+- `localAddress` must be the sync interface's primary address. conntrackd
+  binds only its receive socket; the kernel picks the source of what it
+  sends, and the peer's firewall rule accepts only `peerAddress`.
+- SECURITY: conntrackd does not authenticate its peer. Anything that can send
+  from `peerAddress` on the sync segment can insert flows that the next
+  MASTER commits. Run sync on a segment only the two routers share (a
+  management network or a direct cable), as for VRRP's PASS authentication.
+
 ## WAN Health Tracking (`wan.healthCheck`)
 
 VRRP adverts travel on the LAN, so by default a master whose WAN is dead
@@ -310,6 +386,7 @@ transition that exactly one node holds the VIP, the WAN and the unit
 | reboot while the LAN hides the peer's adverts (stand-in for a port still learning) | node does not take over; once it hears the peer it starts as BACKUP and waits `preemptDelay` |
 | power loss (no final RA) | LAN client's IPv6 follows the new MASTER through the virtual link-local within seconds |
 | upstream dark, carrier up (`wan.healthCheck`, test `vm-router-ha-wan-health`) | peer is MASTER after about 4 s, despite `preemptDelay` |
+| power loss with `conntrackSync` (test `vm-router-ha-conntrack-sync`) | a NATed, flowtable-offloaded TCP stream continues through the peer |
 
 DNS zone ownership under `zoneReplication.ha` has its own VM test,
 `vm-router-technitium-zone-ha`; see
@@ -347,6 +424,7 @@ master is idle.
 | DDNS updater | `router-ddns.ha.singleActiveOwner` | public identity should follow the active node |
 | UPnP / NAT-PMP | `router-upnp.ha.singleActiveOwner` | mappings belong to the node holding the WAN |
 | VRRP transport | multicast; `router-ha.unicastPeers` when the LAN drops VRRP multicast | a node that cannot hear its peer takes over after every start |
+| Connection state | `router-ha.conntrackSync` over the management segment | without it, flows through NAT break on every failover and fail-back |
 | IPv6 RAs on the LAN | `router-ha.routerAdvertisements.mode = "vrrp-owner"` | clients must not route IPv6 to a backup; the MASTER advertises from `virtualLinkLocal` so a dead MASTER leaves no stale route |
 | Kea D2 | `router-kea.ddns.ha.mode` | updates must reach the zone primary |
 | Chrony / `router-ntp` | shared on both nodes | standby time sync is operationally useful |

@@ -138,7 +138,7 @@ throughput benchmarks have been run, so none are claimed.
 | One DHCP-assigned WAN address shared by two nodes | Built in: WAN raised only on the MASTER with a cloned MAC and shared DHCP identity, no RELEASE, WAN health yield; lease and /56 kept in live drills | Community hook script or plugin; reported to break across upgrades | Transition scripts written by the operator | none |
 | IPv6 RAs across failover | Virtual link-local router address that moves with the MASTER | not covered by the sources read | not covered by the sources read | none |
 | Fail-back control | `preemptDelay` plus a start gate that waits for the peer | CARP advskew/preempt | `preempt-delay` | none |
-| Connection state sync | **none** (conntrackd deferred); established flows through NAT reset on failover | pfsync, built in | conntrack-sync | none |
+| Connection state sync | conntrackd FTFW (`router-ha.conntrackSync`); a NATed, flowtable-offloaded stream survives a power cut in the VM test | pfsync, built in | conntrack-sync | none |
 | DHCP server HA | Kea HA, hot-standby or load-balancing | Kea HA available; forum reports of instability after upgrades | DHCPv6 server not supported with HA (1.4, forum) | none |
 | Services that must run on one node | Typed single-active ownership (DDNS, UPnP, RAs, Kea D2, DNS zones, any unit) | per-service, mostly manual | transition scripts | none |
 | Config sync between nodes | not needed: both nodes build from the same expression | XMLRPC sync from the primary | config-sync (manual or scripted) | n/a |
@@ -157,8 +157,8 @@ every other host, configured from the same inventory.
 
 **Where it trails:**
 
-- No connection-state sync. Flows through NAT reset on failover; OPNsense
-  (pfsync) and VyOS (conntrack-sync) keep them.
+- Connection-state sync (conntrackd) is new and so far proven in a VM test
+  only; OPNsense's pfsync and VyOS's conntrack-sync have years of field use.
 - No configuration GUI and a steep entry cost: Nix, flakes and a secret
   manager are prerequisites.
 - One operator and one homelab pair as the only production deployment, so
@@ -384,7 +384,7 @@ To identify potential architectural improvements, we surveyed leading open-sourc
 | **Observability Pipeline** | ✅ Netdata, Grafana, custom UI; Vector + ulogd (`router-observability`) *[rev 3]* | ❌ No | ✅ Vector + ulogd (JSON) | ⚠️ Minimal | ✅ CoreRAD Prometheus | ✅ Telegraf / Influx |
 | **IPv6 RA Observability** | ⚠️ Opaque systemd-networkd | ⚠️ radvd | ⚠️ systemd-networkd | ⚠️ dnsmasq | ✅ CoreRAD (Native metrics)| ⚠️ radvd / FRR |
 | **High Availability (HA)** | ✅ VRRP (Keepalived, multicast or unicast) with WAN takeover and health-driven yield, `preemptDelay` with a peer-wait start gate, virtual link-local RAs, Kea HA, zone and service ownership; VM-tested and live on a hardware pair since 2026-11-25 with power-cut drills *[rev 5]* | ❌ No | ❌ No | ❌ No | ❌ No | ✅ CARP + pfsync / VRRP |
-| **Conntrack Synchronization** | ❌ Deferred; VRRP is now proven on hardware, so this is the next HA gap *[rev 5]* | ❌ No | ❌ No | ❌ No | N/A | ✅ pfsync / conntrackd |
+| **Conntrack Synchronization** | ✅ conntrackd FTFW over unicast UDP (`router-ha.conntrackSync`), committed before the WAN comes up; flowtable-offloaded flows covered; VM-tested *[rev 5, updated 2026-11-27]* | ❌ No | ❌ No | ❌ No | N/A | ✅ pfsync / conntrackd |
 | **Secret Backend Agnosticism** | ✅ Runtime file paths (`vrrpPasswordFile`, `pskFile`, TSIG key files); any secret manager; router-technitium also picks up matching `age.secrets` when agenix is present *[rev 3]* | ⚠️ agenix | ⚠️ agenix | ⚠️ Plain text / age | N/A | ✅ Vault / Decoupled |
 | **Unit / Eval Test Harness** | ✅ 368 eval checks plus 14 NixOS VM tests, most of them multi-node *[rev 5]* | ⚠️ Minimal | ✅ Pure Nix unit tests | ❌ No | ✅ Go test suite | ✅ Pytest / CI bats |
 
