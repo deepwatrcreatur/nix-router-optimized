@@ -314,6 +314,16 @@ Notes:
   (`vm-router-ha-conntrack-sync`). Without `conntrackSync` the un-NATed
   entry would stay and the flow would leave the WAN with a LAN source
   address until it goes quiet long enough to expire.
+- A pulled WAN cable on the MASTER: on carrier loss networkd drops the
+  WAN's DHCP address, and the kernel deletes the masquerade entries bound to
+  it, while the node is still MASTER; conntrackd would sync those deletes to
+  the peer before the WAN health check yields. With `conntrackSync` and
+  `wan.healthCheck`, router-ha sets `IgnoreCarrierLoss` on the WAN network to
+  the check's detection time plus 10 s, so the address and the entries stay
+  until the demotion (which stops conntrackd first). The demotion also
+  flushes the WAN's IPv4 address, which IgnoreCarrierLoss would otherwise
+  keep. `vm-router-ha-conntrack-sync` cuts the MASTER's WAN carrier during a
+  stream; without the setting the stream dies.
 - `localAddress` must be the sync interface's primary address. conntrackd
   binds only its receive socket; the kernel picks the source of what it
   sends, and the peer's firewall rule accepts only `peerAddress`.

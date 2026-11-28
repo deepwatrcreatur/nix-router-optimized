@@ -45,6 +45,57 @@ let
   # WHY: with vrrpPasswordFile, ExecStart reads the rendered /run copy; the
   # store keepalived.conf (password still a $VAR) is named in ExecStartPre.
   keepalivedPreStart = builtins.head garpSystem.systemd.services.keepalived.serviceConfig.ExecStartPre;
+  carrierLossCheck =
+    name: extra: expect:
+    eval.mkNixosEvalCheck name [
+      self.nixosModules.router-networking
+      self.nixosModules.router-ha
+      {
+        services.router-networking = {
+          enable = true;
+          wan = {
+            device = "wan0";
+            mode = "dhcp";
+          };
+          routedInterfaces.lan = {
+            device = "lan0";
+            ipv4Address = "10.10.10.2/24";
+          };
+        };
+        services.router-ha = {
+          enable = true;
+          role = "master";
+          virtualIp = "10.10.10.1/24";
+          vrrpInterface = "lan0";
+          vrrpPasswordFile = "/run/keys/vrrp-password";
+          routerAdvertisements.mode = "vrrp-owner";
+          wan = {
+            enable = true;
+            interface = "wan0";
+            healthCheck.enable = true;
+          };
+          conntrackSync = {
+            enable = true;
+            interface = "mgmt0";
+            localAddress = "192.168.100.2";
+            peerAddress = "192.168.100.3";
+          };
+        };
+      }
+      extra
+      ({ config, ... }:
+        let
+          v = config.systemd.network.networks.${config.services.router-ha.wan.network}.networkConfig.IgnoreCarrierLoss or null;
+        in
+        {
+          assertions = [
+            {
+              assertion = expect v;
+              message = "${name}: unexpected IgnoreCarrierLoss on the WAN network: ${builtins.toJSON v}";
+            }
+          ];
+        })
+    ];
   keaHaPair = extraHa: [
     self.nixosModules.router-ha
     self.nixosModules.router-kea
@@ -599,6 +650,25 @@ in
       };
     }
   ];
+
+  # WHY: with conntrackSync and the WAN health check, the WAN keeps its
+  # address through carrier loss for the check's detection time + 10 s.
+  router-ha-carrier-loss-default-eval = carrierLossCheck "router-ha-carrier-loss-default" { } (v: v == "13s");
+  router-ha-carrier-loss-timing-eval = carrierLossCheck "router-ha-carrier-loss-timing" {
+    services.router-ha.wan.healthCheck = {
+      interval = 2;
+      failures = 4;
+    };
+  } (v: v == "18s");
+  router-ha-carrier-loss-no-sync-eval = carrierLossCheck "router-ha-carrier-loss-no-sync" {
+    services.router-ha.conntrackSync.enable = lib.mkForce false;
+  } (v: v == null);
+  router-ha-carrier-loss-no-health-eval = carrierLossCheck "router-ha-carrier-loss-no-health" {
+    services.router-ha.wan.healthCheck.enable = lib.mkForce false;
+  } (v: v == null);
+  router-ha-carrier-loss-override-eval = carrierLossCheck "router-ha-carrier-loss-override" {
+    systemd.network.networks."10-router-wan-primary".networkConfig.IgnoreCarrierLoss = "5s";
+  } (v: v == "5s");
 
   router-ha-garp-eval = eval.mkNixosEvalCheck "router-ha-garp" [
     self.nixosModules.router-ha

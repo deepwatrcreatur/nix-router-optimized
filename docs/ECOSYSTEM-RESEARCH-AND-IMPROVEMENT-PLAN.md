@@ -152,7 +152,7 @@ only in tests · ❌ absent · ❓ not covered by the sources read.
 | Two nodes sharing one DHCP-assigned WAN address | ✅ WAN only on the MASTER, cloned MAC and shared DHCP identity, no RELEASE, WAN health yield; lease and /56 kept in every live drill | 🟡 community hook script or plugin, reported to break across upgrades | 🟡 operator-written transition scripts | ❌ |
 | IPv6 RAs across failover | ✅ virtual link-local router address that moves with the MASTER | ❓ | ❓ | ❌ |
 | Fail-back control | ✅ `preemptDelay` plus a start gate that waits for the peer; proven by power-cut drills | ✅ CARP advskew and preempt | ✅ `preempt-delay` | ❌ |
-| Connection-state sync | ✅ conntrackd FTFW, flowtable-offloaded flows included; a live fail-back kept NATed IPv4 and IPv6 downloads running. 🟡 a cable pull on the MASTER's WAN still loses NATed flows (`router-ql1`) | ✅ pfsync, years of field use | ✅ conntrack-sync | ❌ |
+| Connection-state sync | ✅ conntrackd FTFW, flowtable-offloaded flows included; a live fail-back kept NATed IPv4 and IPv6 downloads running. a cable pull on the MASTER's WAN keeps them too (`IgnoreCarrierLoss` until the health-check handover) | ✅ pfsync, years of field use | ✅ conntrack-sync | ❌ |
 | DHCP server HA | ✅ Kea HA, hot-standby or load-balancing; live | 🟡 Kea HA available; forum reports of instability after upgrades | 🟡 DHCPv6 server not supported with HA (1.4, forum) | ❌ |
 | Services that must run on one node | ✅ typed single-active ownership (DDNS, UPnP, RAs, Kea D2, DNS zones, Pangolin, any unit) | 🟡 per service, mostly manual | 🟡 transition scripts | ❌ |
 | Config sync between nodes | ✅ not needed: both nodes build from the same expression | ✅ XMLRPC sync from the primary | 🟡 config-sync, manual or scripted | n/a |
@@ -175,8 +175,6 @@ alerting hub for every other host.
 
 | Gap | Effect | Tracking |
 | --- | --- | --- |
-| WAN cable pulled on the MASTER | networkd drops the WAN address on carrier loss; the kernel's masquerade deletes sync to the peer before the WAN health check yields, so NATed flows are lost (as without sync) | bead `router-ql1` |
-| DDNS right after a takeover | inadyn's first run on a new MASTER can hang until demotion kills it, leaving a failed unit | bead `router-3xp` |
 | No configuration GUI | Nix, flakes and a secret manager are prerequisites | by design |
 | One production deployment | ISP and switch variety barely sampled; the VRRP-multicast switch problem surfaced only in a live drill | more deployments |
 | Outage cost of keepalived changes on the MASTER | changing VRRP transport or the keepalived unit moves the gateway; seconds with the current deploy path | accepted |

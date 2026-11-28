@@ -199,6 +199,13 @@ let
       echo "Transitioning away from MASTER: Bringing down WAN ${cfg.wan.interface}..."
       ${pkgs.systemd}/bin/networkctl down ${escapeShellArg cfg.wan.interface} \
         || ${pkgs.iproute2}/bin/ip link set dev ${escapeShellArg cfg.wan.interface} down
+      ${optionalString keepWanThroughCarrierLoss ''
+        # INVARIANT: a demoted WAN holds no address. IgnoreCarrierLoss would
+        # keep it after this networkctl down; a stale address removed later
+        # deletes every masquerade entry bound to it. Flush it while
+        # conntrackd is stopped.
+        ${pkgs.iproute2}/bin/ip -4 addr flush dev ${escapeShellArg cfg.wan.interface} scope global || true
+      ''}
     ''}
     ${optionalString cts.enable ''
       ${optionalString cfg.wan.enable ''
@@ -232,6 +239,7 @@ let
   notifyFaultScript = demoteActiveOwnership "fault" faultRoleScript;
   keepalivedStopScript = demoteActiveOwnership "stop" backupRoleScript;
 
+  keepWanThroughCarrierLoss = cts.enable && wanHealthEnabled && cfg.wan.network != null;
   hasNotifyHooks = cfg.wan.enable || cts.enable || bgpSingleActiveOwner || ndpProxySingleActiveOwner || cfg.singleActiveUnits != [ ];
 
   # INVARIANT: one reader applies transitions one at a time, in the order
@@ -1365,6 +1373,19 @@ in
       # WHY: keepalived's MASTER transition commits through conntrackd's socket.
       systemd.services.keepalived.wants = [ "conntrackd.service" ];
       systemd.services.keepalived.after = [ "conntrackd.service" ];
+    })
+
+    (mkIf keepWanThroughCarrierLoss {
+      # WHY: on carrier loss networkd drops the WAN's DHCP address, and the
+      # kernel then deletes the masquerade entries for it while this node is
+      # still MASTER; conntrackd syncs those deletes to the peer before the
+      # WAN health check yields, so NATed flows were lost on a cable pull.
+      # Keeping the configuration for the check's detection time (plus a
+      # margin) leaves the entries until the demotion, which stops conntrackd
+      # before taking the WAN down. Bounded, because networkctl down on
+      # demotion counts as carrier loss too: the address lingers that long.
+      systemd.network.networks.${cfg.wan.network}.networkConfig.IgnoreCarrierLoss =
+        mkDefault "${toString (hc.interval * hc.failures + 10)}s";
     })
 
     (mkIf usePasswordFile {
