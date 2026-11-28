@@ -134,6 +134,12 @@ first run. inadyn skips the update when its cache matches the WAN address,
 so without this a node returning as MASTER would leave the peer's address
 published when the two nodes have different public IPs.
 
+Promotion also starts inadyn before the new MASTER's WAN has its lease. With
+`router-ha.wan` enabled, inadyn therefore waits (up to 60 s) for a default
+route on the WAN before it runs. Without the wait its first connections
+failed, and on 2026-11-27 a run hung until the next demotion killed it,
+leaving `inadyn.service` failed (`router-ddns-waits-for-wan-eval`).
+
 Configs that list these units in `singleActiveUnits` by hand still evaluate
 (both inadyn units are needed), with a warning to switch to the typed option.
 

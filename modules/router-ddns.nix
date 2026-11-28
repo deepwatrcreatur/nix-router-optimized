@@ -200,6 +200,20 @@ in
     systemd.services.inadyn = {
       wantedBy = mkForce [ ];
       after = [ "router-ddns-ha-owner.service" ];
+      # WHY: promotion starts inadyn before the WAN has its lease. Its first
+      # connections then failed and it retried for minutes, until demotion
+      # killed it and left the unit failed (2026-11-27). Wait for a default
+      # route on the WAN; give up after 60 s and let inadyn report the failure.
+      serviceConfig.ExecStartPre = mkIf (routerHaEnabled && (config.services.router-ha.wan.enable or false)) (mkAfter [
+        (pkgs.writeShellScript "router-ddns-wait-for-wan" ''
+          wan=${escapeShellArg config.services.router-ha.wan.interface}
+          for _ in $(${pkgs.coreutils}/bin/seq 120); do
+            ${pkgs.iproute2}/bin/ip -4 route show default dev "$wan" | ${pkgs.gnugrep}/bin/grep -q . && exit 0
+            ${pkgs.coreutils}/bin/sleep 0.5
+          done
+          echo "router-ddns: no default route on $wan after 60 s; running inadyn anyway" >&2
+        '')
+      ]);
     };
     systemd.timers.inadyn.wantedBy = mkForce [ ];
 

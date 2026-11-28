@@ -924,6 +924,7 @@ in
         '';
       };
 
+
       healthCheck = {
         enable = mkEnableOption ''
           the WAN health check. While this node is master, it checks the WAN
@@ -1336,6 +1337,15 @@ in
     })
 
     (mkIf cts.enable {
+      # WHY: a committed TCP entry starts without the old MASTER's window
+      # tracking, so in-flight segments can be judged out of window and
+      # dropped as invalid by the new MASTER's firewall; the VM test caught
+      # it on a fail-back. Liberal tracking accepts them (the usual setting
+      # for conntrackd pairs); the trade-off is in the pair guide.
+      boot.kernel.sysctl."net.netfilter.nf_conntrack_tcp_be_liberal" = mkDefault 1;
+      # GOTCHA: the sysctl exists only once nf_conntrack is loaded;
+      # systemd-sysctl otherwise skips it at boot.
+      boot.kernelModules = [ "nf_conntrack" ];
       environment.systemPackages = [ cts.package ];
       # conntrackd's default path, so `conntrackd -s`, `-i` and `-e` work by hand.
       environment.etc."conntrackd/conntrackd.conf".source = conntrackdConf;
