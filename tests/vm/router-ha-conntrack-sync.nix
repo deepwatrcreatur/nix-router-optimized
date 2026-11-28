@@ -47,6 +47,11 @@ let
       peerWaitSec = 0;
       # A rebooted router1 stays BACKUP long enough to resync first.
       preemptDelay = 15;
+      # A MASTER whose WAN loses carrier yields through the health check.
+      wan.healthCheck = {
+        enable = true;
+        startupGraceSec = 10;
+      };
       conntrackSync = {
         enable = true;
         interface = "eth3";
@@ -258,7 +263,9 @@ mkRouterTest {
         router1.succeed("systemctl stop keepalived.service")
         took = time.monotonic() - stop_start
         assert took < 20, f"stopping keepalived took {took:.0f} s (a transition blocked)"
-        router1.succeed("! ip -4 addr show dev eth1 | grep -q inet")
+        # With the WAN health check, IgnoreCarrierLoss keeps the demoted WAN's
+        # address for the check's detection time (13 s here).
+        router1.wait_until_succeeds("! ip -4 addr show dev eth1 | grep -q inet", timeout=30)
         wait_role(router2, "master", timeout=30)
         router2.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
         t0 = time.monotonic()
@@ -304,5 +311,32 @@ mkRouterTest {
         print(srcs)
         assert "198.51.100.50" in srcs, f"no NATed packets of router2's own flow reach the ISP: {srcs}"
         assert "10.0.10." not in srcs, f"router2's own flow leaves the WAN un-NATed: {srcs}"
+    with subtest("the MASTER's WAN cable is pulled: the stream survives the health-check handover"):
+        # GOTCHA: on carrier loss networkd would drop the WAN address and the
+        # kernel the masquerade entries, synced to router2 before the health
+        # check yields; IgnoreCarrierLoss keeps them until the demotion.
+        # Earlier subtests left router1's conntrackd and keepalived stopped,
+        # and the old stream went through router1 unsynced: bring router1
+        # back as MASTER with sync, then start a fresh stream that router2
+        # learns from live events.
+        router1.succeed("systemctl start conntrackd.service keepalived.service")
+        wait_role(router1, "master", timeout=90)
+        router1.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
+        client.succeed("systemctl stop stream-client.service || true; rm -f /tmp/stream-count /tmp/stream-error")
+        client.succeed("systemd-run --unit stream-client2 python3 ${streamClient}")
+        client.wait_until_succeeds("test $(cat /tmp/stream-count 2>/dev/null || echo 0) -gt 20", timeout=30)
+        sport = client.succeed("ss -tnH state established '( dport = :${toString streamPort} )' | awk '{print $3}' | sed 's/.*://' | head -1").strip()
+        router2.wait_until_succeeds(f"conntrackd -e 2>/dev/null | grep -q 'sport={sport} dport=${toString streamPort}'", timeout=30)
+        before = count()
+        router1.send_monitor_command("set_link vlan1 off")
+        wait_role(router2, "master", timeout=90)
+        router2.wait_until_succeeds("ip -4 addr show dev eth1 | grep -q 'inet 198.51.100.50/'", timeout=60)
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline and count() < before + 50:
+            assert stream_alive(), "stream broke on WAN carrier loss: " + client.succeed("cat /tmp/stream-error")
+            time.sleep(1)
+        assert stream_alive(), "stream broke on WAN carrier loss: " + client.succeed("cat /tmp/stream-error")
+        assert count() >= before + 50, f"stream stalled at {count()} lines after WAN carrier loss (was {before})"
+        router1.send_monitor_command("set_link vlan1 on")
   '';
 }
