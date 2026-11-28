@@ -208,7 +208,8 @@ in
         (pkgs.writeShellScript "router-ddns-wait-for-wan" ''
           wan=${escapeShellArg config.services.router-ha.wan.interface}
           for _ in $(${pkgs.coreutils}/bin/seq 120); do
-            ${pkgs.iproute2}/bin/ip -4 route show default dev "$wan" | ${pkgs.gnugrep}/bin/grep -q . && exit 0
+            # Either family: an IPv6-only WAN has no IPv4 default route.
+            { ${pkgs.iproute2}/bin/ip -4 route show default dev "$wan"; ${pkgs.iproute2}/bin/ip -6 route show default dev "$wan"; } | ${pkgs.gnugrep}/bin/grep -q . && exit 0
             ${pkgs.coreutils}/bin/sleep 0.5
           done
           echo "router-ddns: no default route on $wan after 60 s; running inadyn anyway" >&2
