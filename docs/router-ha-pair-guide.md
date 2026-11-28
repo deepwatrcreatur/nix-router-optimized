@@ -307,6 +307,13 @@ Notes:
   fail-back in the VM test. Liberal tracking still checks state and
   addresses, but no longer drops a segment for being out of window, which
   makes injecting a forged RST into a known connection somewhat easier.
+- A BACKUP's own long-lived connections (tailscaled's UDP, for example)
+  leave through the MASTER, which NATs them; the BACKUP's own entry for
+  such a flow has no NAT. When the BACKUP is promoted, the commit replaces
+  that entry with the MASTER's synced, NATed one, so the flow keeps working
+  (`vm-router-ha-conntrack-sync`). Without `conntrackSync` the un-NATed
+  entry would stay and the flow would leave the WAN with a LAN source
+  address until it goes quiet long enough to expire.
 - `localAddress` must be the sync interface's primary address. conntrackd
   binds only its receive socket; the kernel picks the source of what it
   sends, and the peer's firewall rule accepts only `peerAddress`.
